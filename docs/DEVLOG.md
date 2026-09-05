@@ -384,3 +384,53 @@
 - SoulPerceptionSystem 集成温度信息到 PerceptionFrame
 - 世界事件系统集成温度条件（寒潮/热浪触发）
 
+
+
+---
+
+## 2026-09-05 灵魂环境感知集成：LightSystem + ThermalSystem → SoulPerceptionSystem（第13轮迭代）
+
+**需求5（物体对灵魂的影响）+ 需求11（现实逼近）：** 将上两轮构建的环境物理系统（LightSystem 光照、ThermalSystem 温度）集成到灵魂感知管道，让灵魂能感知到所处位置的本地光照强度、本地温度、附近光源和附近热源。这打通了"环境物理变化 → 灵魂感知 → 灵魂决策 → 灵魂动作"的完整闭环。
+
+**修改模块：**
+- `src/types/index.ts` — PerceptionFrame.environment 新增 4 个可选字段
+- `src/entity/SoulPerceptionSystem.ts` — 集成 LightSystem 和 ThermalSystem
+
+**PerceptionFrame 新增字段（environment 内）：**
+- `localTemperature`：灵魂所在位置的本地温度（°C），包含热源辐射。ThermalSystem 不可用时为 undefined
+- `localLightLevel`：灵魂所在位置的本地光照强度（0-1+），包含点光源/方向光/环境光。LightSystem 不可用时为 undefined
+- `nearbyHeatSources`：感知范围内的附近热源列表（id/distance/intensity），仅包含启用的热源
+- `nearbyLights`：感知范围内的附近光源列表（id/distance/intensity），仅包含启用的光源
+
+**SoulPerceptionSystem 变更：**
+- 新增 `LightSystem` 和 `ThermalSystem` 懒加载引用（与 WeatherSimulator 相同模式，通过 `world.systems` 遍历 + instanceof 匹配）
+- 新增配置项：`sensoryRange`（感知范围，默认15米）、`maxNearbySensory`（最多返回附近感官源数量，默认8）
+- `buildFrame()` 中计算灵魂位置处的本地光照（`light.getIlluminationAt(pos)`）和本地温度（`thermal.getTemperatureAt(pos)`）
+- 收集附近热源（`thermal.getAllHeatSources()` 过滤启用+距离+排序+截断）和附近光源（`light.getEnabledLights()` 过滤距离+排序+截断）
+- 所有新字段为可选，保持向后兼容：LightSystem/ThermalSystem 不存在时字段为 undefined，全局环境字段（temperature/lightLevel 等）仍正常工作
+
+**架构约束遵守：**
+- 通用引擎，不硬编码具体世界属性
+- 不实现灵魂认知/决策逻辑（只做感知生成，决策由 SoulArena 负责）
+- SoulPerceptionSystem 只处理标准化 PerceptionFrame 格式
+- 系统间通过懒加载查找，不硬依赖
+
+**测试：**
+- `tests/soul-perception-environment.test.ts` 新增 14 个测试：
+  - LightSystem 集成（5个）：localLightLevel 存在性、靠近点光源增强、远离点光源降低、nearbyLights 列表、无光源时空列表
+  - ThermalSystem 集成（6个）：localTemperature 存在性、靠近热源增强、远离热源降低、nearbyHeatSources 列表、无热源时空列表、禁用热源不出现
+  - 组合感知（2个）：篝火同时发光发热、全局字段与本地字段共存
+  - 向后兼容（1个）：无 LightSystem/ThermalSystem 时本地字段为 undefined
+- 完整测试套件 270/270 通过（上一轮 256，新增 14）
+
+**需求覆盖：**
+- 需求5（物体定义与交互、对灵魂的影响和反馈）：环境物体（光源/热源）现在能影响灵魂的感知输入
+- 需求11（持续向现实世界逼近）：灵魂能感知到真实的局部光照和温度差异，而非全局统一值
+
+**后续可扩展方向（列入 backlog）：**
+- SoulBridgeAdapter 将 localTemperature/localLightLevel 转换为 SoulArena 感知格式中的 situation 描述
+- 温度/光照对灵魂状态的直接影响（如极寒导致灵魂行动力下降）
+- 光照遮挡对感知的影响（暗处的实体可见性降低）
+- 声音传播与环境感知的统一感官框架
+- 世界事件系统集成温度/光照条件（如极寒触发寒潮事件、高温触发火灾风险）
+

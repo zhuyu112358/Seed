@@ -349,14 +349,24 @@ export interface PerceptionFrame {
   }>;
   nearbySouls: Array<{ id: string; name: string; element: string; position: IVector3; distance: number }>;
   environment: {
+    /** Global ambient temperature from WeatherSimulator (Celsius). */
     temperature: number;
     pressure: number;
     humidity: number;
     windSpeed: number;
     windDirection: IVector3;
+    /** Global light level from WeatherSimulator (0-1, based on time of day). */
     lightLevel: number;
     weather: WeatherState;
     timeOfDay: number;
+    /** Local temperature at the soul's exact position, including heat source radiation (Celsius). Undefined if ThermalSystem not available. */
+    localTemperature?: number;
+    /** Local illumination at the soul's exact position, including point/directional lights (0-1+). Undefined if LightSystem not available. */
+    localLightLevel?: number;
+    /** Nearby heat sources within perception range. */
+    nearbyHeatSources?: Array<{ id: string; distance: number; intensity: number }>;
+    /** Nearby light sources within perception range. */
+    nearbyLights?: Array<{ id: string; distance: number; intensity: number }>;
   };
   events: Array<{
     id: string;

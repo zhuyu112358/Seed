@@ -13,6 +13,8 @@
 import type { World, WorldSystem } from "../engine/World.js";
 import type { EventSystem } from "../event/EventSystem.js";
 import { WeatherSimulator } from "../event/WeatherSimulator.js";
+import { LightSystem } from "../event/LightSystem.js";
+import { ThermalSystem } from "../event/ThermalSystem.js";
 import { Vector3 } from "../entity/Vector3.js";
 import type { GameObject } from "../entity/Entity.js";
 import type {
@@ -31,6 +33,10 @@ export interface SoulPerceptionConfig {
   commRetentionTicks?: number;
   /** How many ticks an event stays perceivable. Default 600 (10s @60fps). */
   eventRetentionTicks?: number;
+  /** Maximum distance for perceiving nearby heat sources and lights. Default 15. */
+  sensoryRange?: number;
+  /** Maximum nearby heat sources/lights returned per frame. Default 8. */
+  maxNearbySensory?: number;
 }
 
 const DEFAULT_CONFIG: Required<SoulPerceptionConfig> = {
@@ -38,6 +44,8 @@ const DEFAULT_CONFIG: Required<SoulPerceptionConfig> = {
   maxVisibleEntities: 20,
   commRetentionTicks: 300,
   eventRetentionTicks: 600,
+  sensoryRange: 15,
+  maxNearbySensory: 8,
 };
 
 interface BufferedEvent {
@@ -61,6 +69,8 @@ export class SoulPerceptionSystem implements WorldSystem {
 
   private readonly config: Required<SoulPerceptionConfig>;
   private weather: WeatherSimulator | null = null;
+  private light: LightSystem | null = null;
+  private thermal: ThermalSystem | null = null;
   private readonly frames = new Map<string, PerceptionFrame>();
   private readonly eventBuffer: BufferedEvent[] = [];
   private readonly commBuffer: BufferedCommunication[] = [];
@@ -110,6 +120,14 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (!this.weather || !world.systems.includes(this.weather)) {
       this.weather = world.systems.find(s => s instanceof WeatherSimulator) as WeatherSimulator | null ?? null;
     }
+    // Lazy-locate LightSystem for local illumination.
+    if (!this.light || !world.systems.includes(this.light)) {
+      this.light = world.systems.find(s => s instanceof LightSystem) as LightSystem | null ?? null;
+    }
+    // Lazy-locate ThermalSystem for local temperature.
+    if (!this.thermal || !world.systems.includes(this.thermal)) {
+      this.thermal = world.systems.find(s => s instanceof ThermalSystem) as ThermalSystem | null ?? null;
+    }
 
     // Expire old buffers.
     this.expireBuffers();
@@ -146,6 +164,31 @@ export class SoulPerceptionSystem implements WorldSystem {
     world: World,
   ): PerceptionFrame {
     const pos = soul.position;
+
+    // Local sensory data: illumination and temperature at the soul's exact position.
+    const localLightLevel = this.light ? this.light.getIlluminationAt(pos) : undefined;
+    const localTemperature = this.thermal ? this.thermal.getTemperatureAt(pos) : undefined;
+
+    // Nearby heat sources within sensory range.
+    const nearbyHeatSources = this.thermal
+      ? this.thermal.getAllHeatSources()
+          .filter(s => s.enabled)
+          .map(s => ({ source: s, dist: pos.distance(s.position) }))
+          .filter(x => x.dist <= this.config.sensoryRange)
+          .sort((a, b) => a.dist - b.dist)
+          .slice(0, this.config.maxNearbySensory)
+          .map(x => ({ id: x.source.id, distance: Math.round(x.dist * 100) / 100, intensity: x.source.intensity }))
+      : undefined;
+
+    // Nearby light sources within sensory range.
+    const nearbyLights = this.light
+      ? this.light.getEnabledLights()
+          .map(l => ({ light: l, dist: pos.distance(l.position) }))
+          .filter(x => x.dist <= this.config.sensoryRange)
+          .sort((a, b) => a.dist - b.dist)
+          .slice(0, this.config.maxNearbySensory)
+          .map(x => ({ id: x.light.id, distance: Math.round(x.dist * 100) / 100, intensity: x.light.intensity }))
+      : undefined;
 
     // Visible entities: within view distance, sorted by distance, capped.
     const visible = allEntities
@@ -205,7 +248,13 @@ export class SoulPerceptionSystem implements WorldSystem {
       position: { x: pos.x, y: pos.y, z: pos.z },
       visibleEntities: visible,
       nearbySouls,
-      environment: env,
+      environment: {
+        ...env,
+        localTemperature: localTemperature !== undefined ? Math.round(localTemperature * 10) / 10 : undefined,
+        localLightLevel: localLightLevel !== undefined ? Math.round(localLightLevel * 100) / 100 : undefined,
+        nearbyHeatSources,
+        nearbyLights,
+      },
       events,
       communications,
     };
