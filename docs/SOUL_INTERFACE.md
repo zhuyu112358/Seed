@@ -223,3 +223,41 @@ src/entity/SoulActionSystem.ts 已实现 ActionRequest/ActionResult 执行引擎
 配置项：maxMoveDistance（默认5）、maxInteractDistance（默认3）、maxQueuePerSoul（默认10）。
 
 API：executeAction(request, world) 同步执行、queueAction(request) 排队（tick中处理）、getHistory(soulId) 动作历史、executedCount/failedCount/queueLength 统计。
+
+
+## 9. 世界事件系统（WorldEventSystem）
+
+src/event/WorldEventSystem.ts 实现基于条件的世界事件触发与大规模影响。事件可基于天气/时间/实体数等条件自动触发，对物体和灵魂产生持续影响。
+
+### 内置事件定义
+
+调用 `registerBuiltinEvents()` 自动注册以下 4 个事件：
+
+| 事件 | 类型 | 严重度 | 触发条件 | 持续时间 | 冷却 |
+|------|------|--------|----------|----------|------|
+| Wind Gust（阵风） | weather | medium | 风速 > 10 | 10-30s | 60s |
+| Rain Storm（暴雨） | weather | medium | 湿度 > 70 且 气压 < 1005 | 20-60s | 120s |
+| Typhoon（台风） | disaster | extreme | 风速 > 25 且 湿度 > 80 | 30-90s | 300s |
+| Cold Snap（寒潮） | seasonal | high | 温度 < 0 | 30-120s | 180s |
+
+### 条件评估
+
+支持 9 种条件类型：temperature、humidity、windSpeed、pressure、weather、timeOfDay、lightLevel、entityCount、custom。操作符：gt、gte、lt、lte、eq、neq、between。多个条件为 AND 关系。
+
+### 事件效果
+
+- **applyForce**：对目标实体施加风力（基于风速和风向），支持 all/souls/dynamicEntities/staticEntities 目标筛选
+- **modifyProperty**：修改实体 state 属性（如 `wet: true`、`frozen: true`）
+- **emitEvent**：通过 EventSystem 广播事件（如 `weather.rain`、`disaster.typhoon`）
+- **damage / heal / custom**：预留扩展点
+
+### 灵魂感知集成
+
+事件触发时自动查找 SoulPerceptionSystem（按 name="soul-perception"），调用 `recordEvent()` 将事件记录到灵魂感知缓冲区。灵魂在 PerceptionFrame.events 中可感知到事件名称、类型、严重度。
+
+### API
+
+- `registerDefinition(def)` / `registerBuiltinEvents()` / `removeDefinition(id)`
+- `bindSystems(weather, clock)` 绑定天气和时钟系统
+- `getActiveEvents()` / `getEventsTriggered()` / `getDefinitions()`
+- `tick(dt, world, events)` 每帧检查条件、触发事件、应用效果、结束过期事件

@@ -122,3 +122,19 @@
 **文档：** 新增 docs/WORLD_EVENTS.md，详细描述架构、API、集成方式和扩展指南。
 
 **需求覆盖：** 需求12（模拟世界事件）核心架构落地。
+---
+
+## 2026-09-05 世界事件系统增强（第5轮迭代）
+
+**增强内容：**
+
+- egisterBuiltinEvents() 方法：一键注册全部 4 个内置事件（阵风/暴雨/台风/寒潮），无需手动逐个 registerDefinition
+- modifyProperty 效果类型：事件持续期间修改目标实体的 state 属性（如 wet/frozen），支持 all/souls/dynamicEntities/staticEntities 目标筛选
+- 灵魂感知集成：事件触发时自动按 name 查找 SoulPerceptionSystem，调用 recordEvent() 将事件写入灵魂感知缓冲区，灵魂在 PerceptionFrame.events 中可感知
+- triggerEvent 签名增加 world 参数，用于访问 world.systems 查找感知系统
+
+**测试：** 新增 3 个单元测试（registerBuiltinEvents、modifyProperty 效果、灵魂感知集成），完整测试套件 149/149 通过。
+
+**文档：** SOUL_INTERFACE.md 新增第 9 节「世界事件系统」，包含内置事件表、条件评估、事件效果、灵魂感知集成、API 说明。
+
+**需求覆盖：** 需求12（模拟世界事件）增强——事件现在能影响灵魂感知，形成完整的"天气条件→事件触发→物体影响→灵魂感知"链路。

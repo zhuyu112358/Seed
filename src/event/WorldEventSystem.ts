@@ -66,6 +66,14 @@ export class WorldEventSystem implements WorldSystem {
     this.definitions.set(def.id, def);
   }
 
+  /** Register all built-in event definitions (wind gust, rain storm, typhoon, cold snap). */
+  registerBuiltinEvents(): void {
+    this.registerDefinition(WIND_GUST_EVENT);
+    this.registerDefinition(RAIN_STORM_EVENT);
+    this.registerDefinition(TYPHOON_EVENT);
+    this.registerDefinition(COLD_SNAP_EVENT);
+  }
+
   removeDefinition(id: string): boolean { return this.definitions.delete(id); }
   getDefinitions(): WorldEventDefinition[] { return [...this.definitions.values()]; }
   getActiveEvents(): ActiveWorldEvent[] { return [...this.activeEvents.values()]; }
@@ -87,7 +95,7 @@ export class WorldEventSystem implements WorldSystem {
       const cooldownEnd = this.cooldowns.get(def.id) ?? 0;
       if (now < cooldownEnd) continue;
       if (this.evaluateConditions(def.conditions, world)) {
-        this.triggerEvent(def, now, events);
+        this.triggerEvent(def, now, events, world);
       }
     }
 
@@ -140,7 +148,7 @@ export class WorldEventSystem implements WorldSystem {
     }
   }
 
-  private triggerEvent(def: WorldEventDefinition, now: number, events: EventSystem): void {
+  private triggerEvent(def: WorldEventDefinition, now: number, events: EventSystem, world: World): void {
     const duration = def.minDuration + Math.random() * (def.maxDuration - def.minDuration);
     const active: ActiveWorldEvent = {
       id: def.id + "-" + Date.now(),
@@ -161,6 +169,15 @@ export class WorldEventSystem implements WorldSystem {
       timestamp: Date.now(),
       data: { eventId: active.id, name: def.name, severity: def.severity, duration },
     } as never);
+
+    // Notify SoulPerceptionSystem so nearby souls perceive the event.
+    for (const sys of world.systems) {
+      if (sys.name === "soul-perception") {
+        const perception = sys as unknown as { recordEvent: (id: string, type: string, name: string, severity: string, position: { x: number; y: number; z: number }, affectsSoul?: boolean) => void };
+        perception.recordEvent(active.id, def.type, def.name, def.severity, { x: 0, y: 0, z: 0 }, true);
+        break;
+      }
+    }
   }
 
   private endEvent(id: string, events: EventSystem): void {
@@ -199,6 +216,16 @@ export class WorldEventSystem implements WorldSystem {
           timestamp: Date.now(),
           data: { sourceEvent: active.id, ...effect.parameters },
         } as never);
+        active.effectsApplied++;
+      } else if (effect.type === "modifyProperty") {
+        const propKey = effect.parameters.property as string;
+        const propValue = effect.parameters.value;
+        for (const entity of world.entities.values()) {
+          if (effect.target === "souls" && entity.type !== "soul") continue;
+          if (effect.target === "dynamicEntities" && entity.type === "static") continue;
+          if (effect.target === "staticEntities" && entity.type !== "static") continue;
+          entity.state.set(propKey, propValue);
+        }
         active.effectsApplied++;
       }
     }
