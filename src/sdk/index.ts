@@ -129,6 +129,10 @@ export { CraftingRecipe, CraftingRecipeRegistry } from '../resource/CraftingReci
 export type { CraftingRecipeConfig, RecipeInput } from '../resource/CraftingRecipe.js';
 export { ConsumptionRule, ConsumptionRuleRegistry } from '../resource/ConsumptionRule.js';
 export type { ConsumptionRuleConfig } from '../resource/ConsumptionRule.js';
+export { GrowthRule, GrowthRuleRegistry } from '../resource/GrowthRule.js';
+export type { GrowthRuleConfig } from '../resource/GrowthRule.js';
+export { GrowthSystem } from '../resource/GrowthSystem.js';
+export type { GrowthSystemConfig } from '../resource/GrowthSystem.js';
 export { ConsumptionSystem } from '../resource/ConsumptionSystem.js';
 export type { ConsumptionSystemConfig } from '../resource/ConsumptionSystem.js';
 export { CraftingSystem } from '../resource/CraftingSystem.js';
@@ -145,6 +149,8 @@ export {
   CraftFailEvent,
   ResourceConsumedEvent,
   ResourceConsumptionFailedEvent,
+  XPGainedEvent,
+  LevelUpEvent,
 } from '../event/Event.js';
 
 // --- Core Types (PerceptionFrame, ActionRequest, ActionResult, etc.) ---

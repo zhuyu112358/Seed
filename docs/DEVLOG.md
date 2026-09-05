@@ -4317,3 +4317,86 @@ HarvestSystem和CraftingSystem各自维护库存Map。SoulActionSystem.doCraft()
 - 单元测试：620个（M3启动时550个，+70）
 - 测试文件：51个
 
+
+
+---
+
+## 2026-09-06 M3阶段6：成长规则系统（第57轮迭代）
+
+### 本轮完成
+
+#### 1. GrowthRule (`src/resource/GrowthRule.ts`)
+- 成长规则定义：triggerEventType（触发事件类型）、soulIdField（payload中灵魂ID字段名）、xpPerEvent（每次事件获得经验）
+- 等级曲线：baseXP（1→2级所需经验）、growthMultiplier（每级经验增长倍数，几何级数）、maxLevel（最大等级）
+- 运行时注册（GrowthRuleRegistry），不硬编码技能类型（woodcutting/crafting等）
+- xpForLevel(level)：计算达到某级所需总经验（几何级数公式）
+- xpForNextLevel(currentLevel)：计算下一级所需增量经验
+- levelFromXP(totalXP)：根据总经验计算当前等级
+- getByTriggerEventType(eventType)：按触发事件类型筛选规则
+
+#### 2. GrowthSystem (`src/resource/GrowthSystem.ts`)
+- WorldSystem实现，追踪灵魂经验和等级
+- registerSoul/unregisterSoul：注册/取消注册灵魂进行成长追踪
+- grantXP(soulId, ruleId, amount, events)：直接授予经验，自动计算升级，发射XPGainedEvent和LevelUpEvent
+- getXP/getLevel/getSoulGrowth：查询灵魂成长状态
+- **事件驱动**：tick()中设置事件监听器，监听规则定义的triggerEventType，事件触发时自动授予经验
+- **soulIdField配置**：不同事件payload中灵魂ID字段名不同（HarvestCompleteEvent用harvesterId，CraftCompleteEvent用soulId），规则可指定字段名
+- enabled开关，可全局暂停成长
+- maxLevel防止继续升级
+
+#### 3. 2个新事件 (`src/event/Event.ts`)
+- XPGainedEvent（growth.xp_gained）：soulId/ruleId/ruleName/amount/totalXP/level
+- LevelUpEvent（growth.level_up）：soulId/ruleId/ruleName/oldLevel/newLevel/totalXP
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- 新增GrowthRule/GrowthRuleRegistry/GrowthSystem导出
+- 新增XPGainedEvent/LevelUpEvent导出
+
+#### 5. 测试 (`tests/growth-system.test.ts`)
+- 16个新测试：
+  - GrowthRule：5个（默认值/几何曲线/增量经验/等级计算/线性曲线）
+  - GrowthRuleRegistry：3个（注册/按事件类型筛选/删除清空）
+  - GrowthSystem：8个（直接授予经验+升级/事件发射/事件驱动自动授予/未注册灵魂失败/不存在规则失败/禁用系统/取消注册/最大等级）
+
+### Bug修复
+
+**事件payload灵魂ID字段名不一致**：HarvestCompleteEvent用`harvesterId`，CraftCompleteEvent用`soulId`。GrowthSystem回调最初只查找`soulId`，导致采集事件无法触发成长。修复：GrowthRule新增`soulIdField`配置，回调按规则指定的字段名提取灵魂ID。
+
+### 架构抽象原则（用户强调）
+
+成长系统严格遵循抽象原则：
+- **不硬编码技能类型**：woodcutting/crafting等由应用层通过GrowthRule注册
+- **不硬编码等级曲线**：baseXP/growthMultiplier/maxLevel全部可配置
+- **不实现升级后果**：Seed只追踪经验/等级+发射事件，解锁配方/属性提升等后果由应用层监听LevelUpEvent决定
+- **事件驱动**：成长规则绑定到事件类型，应用层可绑定任意事件作为成长触发
+- **soulIdField可配置**：兼容不同事件的payload结构
+
+### 验证结果
+
+- **单元测试**：636/636 全绿（620+16）
+- **构建**：0错误（主项目+SDK）
+- **GitHub**：0待推送
+
+### M3里程碑进度：80%
+
+- ✅ 阶段1：核心资源系统
+- ✅ 阶段2：采集动作集成+事件感知
+- ✅ 阶段3：资源点感知+生产系统
+- ✅ 阶段4：craft动作集成+生产感知
+- ✅ 阶段5：消耗规则系统
+- ✅ 阶段6：成长规则系统
+- ⬜ 阶段7：集成测试验证+SDK v1.2.0发布
+
+### 下一轮计划
+
+1. 集成测试添加采集+生产+消耗+成长场景
+2. M3完成标准核对
+3. 准备SDK v1.2.0发布（CHANGELOG/API文档/tag）
+4. 如M3完成，打SDK v1.2.0 tag并发布
+
+### 迭代统计
+
+- 总迭代轮数：57轮
+- 单元测试：636个（M3启动时550个，+86）
+- 测试文件：52个
+

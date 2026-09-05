@@ -15,3 +15,7 @@ export { ConsumptionRule, ConsumptionRuleRegistry } from "./ConsumptionRule.js";
 export type { ConsumptionRuleConfig } from "./ConsumptionRule.js";
 export { ConsumptionSystem } from "./ConsumptionSystem.js";
 export type { ConsumptionSystemConfig } from "./ConsumptionSystem.js";
+export { GrowthRule, GrowthRuleRegistry } from "./GrowthRule.js";
+export type { GrowthRuleConfig } from "./GrowthRule.js";
+export { GrowthSystem } from "./GrowthSystem.js";
+export type { GrowthSystemConfig } from "./GrowthSystem.js";

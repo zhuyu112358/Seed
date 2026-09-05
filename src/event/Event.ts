@@ -462,3 +462,53 @@ export class ResourceConsumptionFailedEvent extends Event<{
     });
   }
 }
+
+/** Emitted when a soul gains experience points. */
+export class XPGainedEvent extends Event<{
+  soulId: string;
+  ruleId: string;
+  ruleName: string;
+  amount: number;
+  totalXP: number;
+  level: number;
+}> {
+  constructor(
+    soulId: string,
+    ruleId: string,
+    ruleName: string,
+    amount: number,
+    totalXP: number,
+    level: number,
+  ) {
+    super({
+      type: 'growth.xp_gained',
+      payload: { soulId, ruleId, ruleName, amount, totalXP, level },
+      sourceId: soulId,
+    });
+  }
+}
+
+/** Emitted when a soul levels up in a growth rule. */
+export class LevelUpEvent extends Event<{
+  soulId: string;
+  ruleId: string;
+  ruleName: string;
+  oldLevel: number;
+  newLevel: number;
+  totalXP: number;
+}> {
+  constructor(
+    soulId: string,
+    ruleId: string,
+    ruleName: string,
+    oldLevel: number,
+    newLevel: number,
+    totalXP: number,
+  ) {
+    super({
+      type: 'growth.level_up',
+      payload: { soulId, ruleId, ruleName, oldLevel, newLevel, totalXP },
+      sourceId: soulId,
+    });
+  }
+}
