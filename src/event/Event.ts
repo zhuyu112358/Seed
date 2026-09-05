@@ -288,3 +288,76 @@ export class PathCompletedEvent extends Event<{
     });
   }
 }
+
+/** Emitted when a soul starts harvesting a resource node. */
+export class HarvestStartEvent extends Event<{
+  harvesterId: string;
+  nodeId: string;
+  resourceTypeId: string;
+  harvestTime: number;
+}> {
+  constructor(
+    harvesterId: string,
+    nodeId: string,
+    resourceTypeId: string,
+    harvestTime: number,
+  ) {
+    super({
+      type: 'resource.harvest.start',
+      payload: { harvesterId, nodeId, resourceTypeId, harvestTime },
+      sourceId: harvesterId,
+    });
+  }
+}
+
+/** Emitted when a soul completes harvesting a resource node. */
+export class HarvestCompleteEvent extends Event<{
+  harvesterId: string;
+  nodeId: string;
+  resourceTypeId: string;
+  amount: number;
+  remaining: number;
+}> {
+  constructor(
+    harvesterId: string,
+    nodeId: string,
+    resourceTypeId: string,
+    amount: number,
+    remaining: number,
+  ) {
+    super({
+      type: 'resource.harvest.complete',
+      payload: { harvesterId, nodeId, resourceTypeId, amount, remaining },
+      sourceId: harvesterId,
+    });
+  }
+}
+
+/** Emitted when a resource node is fully depleted (currentAmount reaches 0). */
+export class ResourceDepletedEvent extends Event<{
+  nodeId: string;
+  resourceTypeId: string;
+}> {
+  constructor(nodeId: string, resourceTypeId: string) {
+    super({
+      type: 'resource.node.depleted',
+      payload: { nodeId, resourceTypeId },
+      sourceId: nodeId,
+    });
+  }
+}
+
+/** Emitted when a resource node regenerates from depleted to available. */
+export class ResourceRegeneratedEvent extends Event<{
+  nodeId: string;
+  resourceTypeId: string;
+  amount: number;
+}> {
+  constructor(nodeId: string, resourceTypeId: string, amount: number) {
+    super({
+      type: 'resource.node.regenerated',
+      payload: { nodeId, resourceTypeId, amount },
+      sourceId: nodeId,
+    });
+  }
+}

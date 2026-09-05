@@ -8,6 +8,7 @@
 
 import { World } from "../src/engine/World.js";
 import { PhysicsSystem } from "../src/physics/PhysicsSystem.js";
+import { PhysicsConfig } from "../src/physics/PhysicsConfig.js";
 import { CollisionSystem } from "../src/physics/CollisionSystem.js";
 import { GameObject } from "../src/entity/Entity.js";
 
@@ -40,8 +41,8 @@ function runBenchmark(
   broadPhase: "brute-force" | "spatial-hash",
   entities: GameObject[],
 ): { totalMs: number; avgMs: number; pairsChecked: number } {
-  const world = new World({ tickRate: 60 });
-  const physics = new PhysicsSystem({ gravity: 0, friction: 0, airResistance: 0 });
+  const world = new World({ name: "benchmark", tickRate: 60 });
+  const physics = new PhysicsSystem({ config: new PhysicsConfig({ gravity: 0, friction: 0, airResistance: 0 }) });
   const collision = new CollisionSystem({
     broadPhase,
     spatialHashCellSize: CELL_SIZE,

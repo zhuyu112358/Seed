@@ -116,6 +116,24 @@ export { WorldBuilder } from './WorldBuilder.js';
 export { createListener } from './WorldEventListener.js';
 export type { WorldEventHub } from './WorldEventListener.js';
 
+// --- Resource System (M3) ---
+export { ResourceType, ResourceTypeRegistry } from '../resource/ResourceType.js';
+export type { ResourceTypeConfig } from '../resource/ResourceType.js';
+export { ResourceNode } from '../resource/ResourceNode.js';
+export type { ResourceNodeConfig, HarvestState } from '../resource/ResourceNode.js';
+export { ResourceInventory } from '../resource/ResourceInventory.js';
+export type { ResourceInventoryConfig } from '../resource/ResourceInventory.js';
+export { HarvestSystem } from '../resource/HarvestSystem.js';
+export type { HarvestSystemConfig } from '../resource/HarvestSystem.js';
+
+// --- Resource Events ---
+export {
+  HarvestStartEvent,
+  HarvestCompleteEvent,
+  ResourceDepletedEvent,
+  ResourceRegeneratedEvent,
+} from '../event/Event.js';
+
 // --- Core Types (PerceptionFrame, ActionRequest, ActionResult, etc.) ---
 export type {
   PerceptionFrame,

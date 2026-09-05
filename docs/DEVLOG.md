@@ -3911,3 +3911,92 @@ git tag -a seed-sdk-v1.1.0 -m "Seed SDK v1.1.0 - Physics & Perception Deepening"
 - SDK版本：v1.0.0 → v1.1.0
 - 已发布tag：seed-sdk-v1.0.0, seed-sdk-v1.1.0
 
+
+
+---
+
+## 2026-09-06 M3里程碑启动：资源系统核心（第52轮迭代）
+
+### 里程碑切换
+
+SDK v1.1.0已正式发布（上一轮完成），当前进入**M3里程碑：资源系统+经济规则+成长规则**。
+
+M3设计文档：`docs/M3_RESOURCE_SYSTEM_DESIGN.md`
+
+### 本轮完成：核心资源系统（阶段1）
+
+#### 1. ResourceType + ResourceTypeRegistry (`src/resource/ResourceType.ts`)
+- 资源类型定义：id、name、description、maxStackSize、icon、renewable
+- 运行时注册，不硬编码具体世界资源类型
+- Registry支持register/get/has/getAll/remove/clear
+
+#### 2. ResourceNode (`src/resource/ResourceNode.ts`)
+- 资源点组件：resourceTypeId、currentAmount、maxAmount、regenRate、harvestTime、harvestAmount、renewable
+- 采集操作：startHarvest()、tickHarvest()、cancelHarvest()
+- 采集进度跟踪（HarvestState：harvesterId、ticksRemaining、totalTicks）
+- 资源再生：regenerate()，不超过maxAmount
+- 状态快照：getSnapshot()用于感知
+
+#### 3. ResourceInventory (`src/resource/ResourceInventory.ts`)
+- 实体库存组件：Map<resourceTypeId, amount>
+- add/remove/has/getAmount/getTotal/getAll/clear
+- 容量限制（maxCapacity，0=无限）
+- getRemainingCapacity()、canAdd()
+
+#### 4. HarvestSystem (`src/resource/HarvestSystem.ts`)
+- WorldSystem实现，管理资源节点和采集操作
+- 距离检测（harvestRange，默认3单位，2D x/z平面）
+- 采集倒计时处理（每tick递减ticksRemaining）
+- 采集完成后自动添加到harvester库存
+- 资源再生处理
+- 事件发射：HarvestStartEvent、HarvestCompleteEvent、ResourceDepletedEvent、ResourceRegeneratedEvent
+- 库存管理：getOrCreateInventory()、getInventory()
+
+#### 5. 事件 (`src/event/Event.ts` 新增4个)
+- HarvestStartEvent (resource.harvest.start)
+- HarvestCompleteEvent (resource.harvest.complete)
+- ResourceDepletedEvent (resource.node.depleted)
+- ResourceRegeneratedEvent (resource.node.regenerated)
+
+#### 6. SDK导出 (`src/sdk/index.ts`)
+- 新增资源系统全部导出（ResourceType/Registry/Node/Inventory/HarvestSystem）
+- 新增4个资源事件导出
+- SDK构建0错误
+
+#### 7. 修复benchmark示例编译错误
+- examples/benchmark-collision.ts：World需要name参数，PhysicsSystem需要PhysicsConfig包装
+
+### 测试
+
+- 新增 `tests/resource-system.test.ts`：24个测试
+  - ResourceType：2个（默认值/自定义值）
+  - ResourceTypeRegistry：3个（注册/获取/删除）
+  - ResourceNode：7个（创建/采集流程/失败场景/取消/再生/快照）
+  - ResourceInventory：6个（增删/超额删除/容量/无限/获取全部/清空）
+  - HarvestSystem：6个（注册/距离检测/采集完成+库存/事件/耗尽+再生/库存创建）
+- 完整测试套件：**574/574 全绿**（550+24）
+
+### 架构约束遵守
+
+- ✅ 无硬编码具体世界资源类型（ResourceType运行时注册）
+- ✅ 无灵魂认知/决策逻辑（采集决策由SoulArena发出，Seed只执行）
+- ✅ SoulPerceptionSystem/SoulActionSystem未修改（后续轮次集成）
+- ✅ SoulBridgeAdapter未修改（格式转换唯一模块）
+- ✅ 代码注释英语
+- ✅ 新增系统有设计文档和测试
+
+### 下一轮计划（M3阶段2）
+
+1. SoulActionSystem集成harvest动作（ActionRequest type="harvest"）
+2. SoulPerceptionSystem集成资源点感知和采集事件感知
+3. 采集动作的ActionResult反馈
+4. 集成测试验证（灵魂采集资源）
+5. 生产系统（CraftingSystem）设计
+
+### 迭代统计
+
+- 总迭代轮数：52轮
+- 单元测试：574个（v1.1.0时550个，+24）
+- 测试文件：47个
+- M3里程碑进度：10%（核心资源系统完成，待集成动作/感知）
+
