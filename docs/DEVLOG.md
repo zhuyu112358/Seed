@@ -3811,3 +3811,103 @@ npx tsx examples/benchmark-collision.ts 200 30
 6. **预测性重规划**（提前检测前方障碍）
 7. **天气事件通过 SoulBridgeAdapter 通知 SoulArena**
 
+
+
+---
+
+## 2026-09-06 SDK v1.1.0 发布（第51轮迭代，里程碑M2完成）
+
+### 里程碑完成
+
+**M2 → SDK v1.1.0 正式发布！** 所有11项完成标准全部达到：
+
+1. ✅ 碰撞系统完善：碰撞生命周期回调(Enter/Stay/Exit)+空间哈希宽相+碰撞层掩码+碰撞摩擦冲量
+2. ✅ Trigger Volumes + 物理材质系统
+3. ✅ CCD连续碰撞检测（扫掠AABB+隧道回退）
+4. ✅ 动态障碍局部重规划 + path_replanned事件
+5. ✅ 碰撞/触发器/路径/天气事件感知集成到SoulPerceptionSystem
+6. ✅ 声学通信+衍射功能
+7. ✅ 多灵魂集成测试（2灵魂/3灵魂）
+8. ✅ 550+单元测试全部通过（实际550个）
+9. ✅ 无未解决的P0/P1 bug（BUG-007/008/009已关闭）
+10. ✅ 端到端集成测试通过
+11. ✅ 集成测试前自动清理stale灵魂状态
+
+### 自验证结果
+
+- **单元测试**：550/550 全绿，0失败
+- **端到端集成测试**：PASS（3感知/0失败，3动作/0失败，选中Vex active灵魂）
+- **SDK构建**：0错误（tsconfig.sdk.json）
+- **SDK示例**：basic-world.ts ✅ 运行成功，pathfinding.ts ✅ 运行成功
+- **SDK导出**：70+符号（从v1.0.0的56个扩展，新增13个事件类导出）
+
+### 自检查清单
+
+| 检查项 | 状态 |
+|--------|------|
+| 接口文档一致 | ✅ interface_spec.md对齐 |
+| 测试全通过 | ✅ 550/550 |
+| 无P0P1 bug | ✅ BUG-007/008/009已关闭 |
+| CHANGELOG更新 | ✅ v1.1.0完整条目（新增/变更/修复/性能/已知限制/升级说明） |
+| API文档更新 | ✅ SDK导出补充13个事件类 |
+| 示例代码可运行 | ✅ basic-world/pathfinding验证通过 |
+| DEVLOG更新 | ✅ 本轮记录 |
+
+### v1.0.0 → v1.1.0 主要变更摘要
+
+**新增（12大功能）**：
+1. 碰撞层与掩码（9个预定义层，canCollideWith双向过滤）
+2. 碰撞生命周期回调（Enter/Stay/Exit事件，持续时间跟踪）
+3. Trigger Volumes（重叠无物理响应，Enter/Stay/Exit事件）
+4. 物理材质系统（10种预定义材质，combineMaterials平均策略）
+5. 碰撞摩擦冲量（库仑摩擦模型，切向冲量，防反向）
+6. CCD连续碰撞检测（扫掠AABB，高速实体隧道检测+回退）
+7. 空间哈希宽相（SpatialHash，O(n²)→O(n)，可配置格子大小）
+8. 动态障碍局部重规划（DDA射线检测，自动重路径，次数限制）
+9. PathReplannedEvent + PathCompletedEvent（proper Event类）
+10. 碰撞/触发器/路径/天气事件感知集成（SoulPerceptionSystem 8个事件监听器）
+11. 声学衍射（绕墙角传播，衍射损失替代穿墙衰减）
+12. WeatherSimulator事件发射（状态变化+阵风检测）
+
+**变更（3项）**：
+1. restitution=0行为变更：从"无速度响应"改为"非弹性碰撞（动量交换）"
+2. EventSystem.emit严格要求Event实例（纯对象as never会崩溃）
+3. SDK导出扩展（新增13个事件类，70+符号）
+
+**修复（8项）**：
+1. BUG-007声学衍射6个测试失败
+2. BUG-008集成测试选中sleeping灵魂
+3. BUG-009 flaky测试（调查确认已不存在）
+4. 字符串方向NaN bug（SoulArena返回direction:"south"）
+5. 事件总线系统性bug（纯对象vs Event实例）
+6. PathFollowerSystem高速过冲bug（enableDynamicAiming修复）
+7. movement.path_completed事件崩溃（纯对象→PathCompletedEvent）
+8. SDK导出缺失新事件类
+
+### Git Tag
+
+```
+git tag -a seed-sdk-v1.1.0 -m "Seed SDK v1.1.0 - Physics & Perception Deepening"
+```
+
+指向当前最新commit（包含SDK导出补充+CHANGELOG更新+DEVLOG记录）。
+
+### 下一里程碑 M3
+
+**资源系统+经济规则+成长规则**：
+- 资源点（ResourceNode）：可采集的自然资源（矿石/木材/食物/水）
+- 采集系统（HarvestingSystem）：灵魂靠近资源点执行采集动作，获得资源
+- 生产系统（CraftingSystem）：消耗资源生产物品/建筑
+- 消耗规则（ConsumptionRule）：灵魂生存需要消耗食物/水
+- 成长规则（GrowthRule）：灵魂通过采集/生产获得经验，提升能力
+- 经济规则（EconomyRule）：资源稀缺性、价格波动、交易系统
+
+### 迭代统计
+
+- 总迭代轮数：51轮
+- 单元测试：550个（v1.0.0时444个，+106个）
+- 测试文件：46个
+- Git commits：51+
+- SDK版本：v1.0.0 → v1.1.0
+- 已发布tag：seed-sdk-v1.0.0, seed-sdk-v1.1.0
+

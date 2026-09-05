@@ -45,7 +45,22 @@ export { WindForceSystem } from '../physics/WindForceSystem.js';
 
 // --- Event ---
 export { EventSystem } from '../event/EventSystem.js';
-export { Event, EntityArrivedEvent } from '../event/Event.js';
+export {
+  Event,
+  EntityArrivedEvent,
+  CollisionEvent,
+  CollisionEnterEvent,
+  CollisionStayEvent,
+  CollisionExitEvent,
+  TriggerEnterEvent,
+  TriggerStayEvent,
+  TriggerExitEvent,
+  PathReplannedEvent,
+  PathCompletedEvent,
+  WeatherEvent,
+  EntityEnterZone,
+  WorldTickEvent,
+} from '../event/Event.js';
 export { ConditionEngine } from '../event/ConditionEngine.js';
 
 // --- Pathfinding ---
