@@ -1,4 +1,4 @@
-// SimplePhysics2D: a deterministic integrator + AABB narrow-phase backend.
+﻿// SimplePhysics2D: a deterministic integrator + AABB narrow-phase backend.
 //
 // - Integrates position with gravity, friction and air resistance.
 // - Detects AABB overlap between two bodies and resolves it by reflecting the
@@ -12,6 +12,7 @@ import { GameObject } from '../entity/Entity.js';
 import { Vector3 } from '../entity/Vector3.js';
 import type { PhysicsConfig } from './PhysicsConfig.js';
 import { aabbOverlap, type CollisionPair, type IPhysicsBackend } from './IPhysicsBackend.js';
+import { Quadtree, type AABB } from './Quadtree.js';
 
 export class SimplePhysics2D implements IPhysicsBackend {
   public readonly name = 'simple-2d';
@@ -41,26 +42,27 @@ export class SimplePhysics2D implements IPhysicsBackend {
       );
     }
 
-    // 2) Collision detection (O(n^2) broad phase, fine for v0.1 world sizes).
-    for (let i = 0; i < bodies.length; i++) {
+    // 2) Collision detection with quadtree broad phase (O(n log n) avg).
+    const worldBounds = this.computeBounds(bodies);
+    const quadtree = new Quadtree(worldBounds, 0, { maxObjects: 8, maxLevels: 12 });
+    for (const b of bodies) {
+      if (b.active && b.hittable) quadtree.insert(b);
+    }
+    const pairs = quadtree.queryAllPairs(bodies);
+    for (const [i, j] of pairs) {
       const a = bodies[i];
-      if (!a.active || !a.hittable) continue;
-      for (let j = i + 1; j < bodies.length; j++) {
-        const b = bodies[j];
-        if (!b.active || !b.hittable) continue;
-        if (a.type === 'trigger' || b.type === 'trigger') continue;
+      const b = bodies[j];
+      if (a.type === 'trigger' || b.type === 'trigger') continue;
+      if (!aabbOverlap(a.aabbMin(), a.aabbMax(), b.aabbMin(), b.aabbMax())) continue;
 
-        if (!aabbOverlap(a.aabbMin(), a.aabbMax(), b.aabbMin(), b.aabbMax())) continue;
-
-        const relSpeed = a.velocity.distance(b.velocity);
-        const point = {
-          x: (a.position.x + b.position.x) / 2,
-          y: (a.position.y + b.position.y) / 2,
-          z: (a.position.z + b.position.z) / 2,
-        };
-        collisions.push({ a, b, point, relativeSpeed: relSpeed });
-        this.resolveCollision(a, b, config);
-      }
+      const relSpeed = a.velocity.distance(b.velocity);
+      const point = {
+        x: (a.position.x + b.position.x) / 2,
+        y: (a.position.y + b.position.y) / 2,
+        z: (a.position.z + b.position.z) / 2,
+      };
+      collisions.push({ a, b, point, relativeSpeed: relSpeed });
+      this.resolveCollision(a, b, config);
     }
 
     return { collisions };
@@ -101,6 +103,20 @@ export class SimplePhysics2D implements IPhysicsBackend {
     };
     apply(a);
     apply(b);
+  }
+
+  /** Compute bounding AABB covering all active bodies, with padding. */
+  private computeBounds(bodies: GameObject[]): AABB {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const b of bodies) {
+      if (!b.active) continue;
+      const mn = b.aabbMin(), mx = b.aabbMax();
+      minX = Math.min(minX, mn.x); minY = Math.min(minY, mn.y);
+      maxX = Math.max(maxX, mx.x); maxY = Math.max(maxY, mx.y);
+    }
+    if (!Number.isFinite(minX)) { minX = -100; minY = -100; maxX = 100; maxY = 100; }
+    const pad = 10;
+    return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
   }
 
   applyImpulse(body: GameObject, ix: number, iy: number, iz: number): void {
