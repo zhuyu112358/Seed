@@ -52,6 +52,7 @@ export class SoulActionSystem implements WorldSystem {
   private readonly queue: ActionRequest[] = [];
   private readonly history: ActionHistoryEntry[] = [];
   private perception: SoulPerceptionSystem | null = null;
+  private interaction: unknown = null;
   private actionsExecuted = 0;
   private actionsFailed = 0;
 
@@ -62,6 +63,7 @@ export class SoulActionSystem implements WorldSystem {
   /** Execute an action immediately (synchronous). */
   executeAction(request: ActionRequest, world: World): ActionResult {
     this.ensurePerception(world);
+    this.ensureInteraction(world);
     const result = this.dispatch(request, world);
     this.history.push({ request, result, tick: world.tick });
     if (this.history.length > 200) this.history.shift();
@@ -100,8 +102,18 @@ export class SoulActionSystem implements WorldSystem {
     }
   }
 
+  /** Lazy-locate InteractionSystem by name. */
+  private ensureInteraction(world: World): void {
+    if (this.interaction && world.systems.includes(this.interaction as unknown as WorldSystem)) return;
+    this.interaction = null;
+    for (const s of world.systems) {
+      if (s.name === 'interaction') { this.interaction = s; break; }
+    }
+  }
+
   tick(_dt: number, world: World, _events: EventSystem): void {
     this.ensurePerception(world);
+    this.ensureInteraction(world);
 
     // Process queued actions.
     const pending = [...this.queue];
@@ -173,6 +185,29 @@ export class SoulActionSystem implements WorldSystem {
       return this.fail(request, `target too far: ${dist.toFixed(2)}m > ${this.config.maxInteractDistance}m`);
     }
 
+    // If InteractionSystem is available and target is registered, trigger state machine.
+    if (this.interaction) {
+      const isRegistered = (this.interaction as { isRegistered?: (id: string) => boolean }).isRegistered;
+      if (isRegistered && isRegistered.call(this.interaction, target.id)) {
+        const interact = (this.interaction as { interact: (id: string, actorId?: string, events?: unknown) => { success: boolean; message: string; previousState: string; newState: string; transitioned: boolean } }).interact;
+        const result = interact.call(this.interaction, target.id, request.soulId, world.events);
+        // Also update legacy counters for backward compatibility.
+        target.state.set("lastInteractedBy", request.soulId);
+        target.state.set("lastInteractedAt", Date.now());
+        const interactionCount = (target.state.get("interactionCount") as number ?? 0) + 1;
+        target.state.set("interactionCount", interactionCount);
+        return this.success(request, result.message, {
+          targetId: target.id,
+          targetName: target.name,
+          interactionCount,
+          previousState: result.previousState,
+          newState: result.newState,
+          transitioned: result.transitioned,
+        });
+      }
+    }
+
+    // Fallback: counter-only behavior when InteractionSystem is not available.
     target.state.set("lastInteractedBy", request.soulId);
     target.state.set("lastInteractedAt", Date.now());
     const interactionCount = (target.state.get("interactionCount") as number ?? 0) + 1;
@@ -220,6 +255,29 @@ export class SoulActionSystem implements WorldSystem {
       return this.fail(request, `target too far: ${dist.toFixed(2)}m > ${this.config.maxInteractDistance}m`);
     }
 
+    // If InteractionSystem is available and target is registered, trigger use.
+    if (this.interaction) {
+      const isRegistered = (this.interaction as { isRegistered?: (id: string) => boolean }).isRegistered;
+      if (isRegistered && isRegistered.call(this.interaction, target.id)) {
+        const use = (this.interaction as { use: (id: string, actorId?: string, events?: unknown) => { success: boolean; message: string } }).use;
+        const result = use.call(this.interaction, target.id, request.soulId, world.events);
+        if (!result.success) {
+          return this.fail(request, result.message);
+        }
+        // Also update legacy counters.
+        target.state.set("lastUsedBy", request.soulId);
+        target.state.set("lastUsedAt", Date.now());
+        const useCount = (target.state.get("useCount") as number ?? 0) + 1;
+        target.state.set("useCount", useCount);
+        return this.success(request, result.message, {
+          targetId: target.id,
+          targetName: target.name,
+          useCount,
+        });
+      }
+    }
+
+    // Fallback: counter-only behavior.
     target.state.set("lastUsedBy", request.soulId);
     target.state.set("lastUsedAt", Date.now());
     const useCount = (target.state.get("useCount") as number ?? 0) + 1;

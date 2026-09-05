@@ -224,10 +224,10 @@ describe("InteractionSystem", () => {
     assert.equal(emitted.length, 1);
     const event = emitted[0] as { type: string; data: Record<string, unknown> };
     assert.equal(event.type, "interaction.state-change");
-    assert.equal(event.data.entityId, "door1");
-    assert.equal(event.data.previousState, "closed");
-    assert.equal(event.data.newState, "open");
-    assert.equal(event.data.actorId, "soul_vex");
+    assert.equal(event.payload.entityId, "door1");
+    assert.equal(event.payload.previousState, "closed");
+    assert.equal(event.payload.newState, "open");
+    assert.equal(event.payload.actorId, "soul_vex");
   });
 
   it("emits events on use when EventSystem provided", () => {
@@ -239,7 +239,7 @@ describe("InteractionSystem", () => {
     assert.equal(emitted.length, 1);
     const event = emitted[0] as { type: string; data: Record<string, unknown> };
     assert.equal(event.type, "interaction.use");
-    assert.equal(event.data.useCount, 1);
+    assert.equal(event.payload.useCount, 1);
   });
 
   it("respects maxInteractables config", () => {

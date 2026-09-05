@@ -224,3 +224,38 @@
 
 **需求覆盖：** 需求5（虚拟物理世界搭建，物体的定义与互相之间的交互）——物体交互从"只记录计数"升级为"实际状态机转换"，门可以开关、灯可以亮灭、按钮可以按下、容器可以打开。
 
+
+
+---
+
+## 2026-09-05 SoulActionSystem × InteractionSystem 集成（第9轮迭代）
+
+**需求5闭环完成：** 灵魂的 interact/use 动作现在会实际触发 InteractionSystem 状态机转换，形成"灵魂动作→物体状态变化→事件发射→灵魂感知"完整闭环。
+
+**核心修改：**
+
+1. **SoulActionSystem 集成 InteractionSystem**（src/entity/SoulActionSystem.ts）
+   - 新增 `interaction` 字段和 `ensureInteraction(world)` 懒加载方法（按 name='interaction' 查找）
+   - `executeAction()` 和 `tick()` 中调用 `ensureInteraction()`
+   - `doInteract()`：如果 InteractionSystem 可用且目标已注册，调用 `interaction.interact(targetId, soulId, world.events)` 触发状态转换，返回 previousState/newState/transitioned；否则回退到原有的计数-only 行为
+   - `doUse()`：如果 InteractionSystem 可用且目标已注册，调用 `interaction.use(targetId, soulId, world.events)`，支持耗尽失败；否则回退到计数-only 行为
+   - 向后兼容：InteractionSystem 不可用时保持原有行为，不破坏现有测试
+
+2. **InteractionSystem 事件发射 bug 修复**（src/entity/InteractionSystem.ts）
+   - **重要 bug**：之前 `events.emit({...} as never)` 传入的是普通对象，不是 Event 类实例，导致 EventSystem.emit() 运行时抛出 `event.isCancelled is not a function`
+   - 修复：import Event 类，使用 `new Event({ type, payload, sourceId })` 格式发射事件
+   - `interaction.state-change` 事件：payload 包含 entityId/entityName/interactableType/previousState/newState/actorId/interactCount
+   - `interaction.use` 事件：payload 包含 entityId/entityName/useCount/maxUses/depleted/actorId
+
+**测试：**
+- soul-action.test.ts 新增 5 个集成测试：门打开、门开关切换、use 计数、无 InteractionSystem 回退、事件发射验证
+- interaction-system.test.ts 修复 2 个测试：event.data → event.payload（适配 Event 类格式）
+- 完整测试套件 205/205 通过
+
+**架构约束遵守：**
+- SoulActionSystem 只处理标准化 ActionRequest 格式，不绑定具体灵魂
+- InteractionSystem 是通用状态机，不硬编码具体世界属性
+- 两个系统通过 name 懒加载解耦，不直接 import 彼此
+
+**需求覆盖：** 需求5（虚拟物理世界，物体定义与互相交互，对灵魂的影响和反馈）——灵魂交互从"只记录计数"升级为"实际状态机转换+事件发射"，物体状态变化可被灵魂感知系统捕获。
+

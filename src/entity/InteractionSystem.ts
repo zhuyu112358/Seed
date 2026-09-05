@@ -7,6 +7,7 @@
 
 import type { World, WorldSystem } from '../engine/World.js';
 import type { EventSystem } from '../event/EventSystem.js';
+import { Event } from '../event/Event.js';
 import { Logger } from '../reliability/Logger.js';
 
 const log = Logger.for('interaction-system');
@@ -184,11 +185,9 @@ export class InteractionSystem implements WorldSystem {
 
     // Emit event if requested.
     if (this.config.emitEvents && events) {
-      events.emit({
-        id: `interaction-${entityId}-${Date.now()}`,
+      events.emit(new Event({
         type: 'interaction.state-change',
-        timestamp: Date.now(),
-        data: {
+        payload: {
           entityId,
           entityName: runtime.def.name,
           interactableType: runtime.def.type,
@@ -197,7 +196,8 @@ export class InteractionSystem implements WorldSystem {
           actorId: actorId ?? null,
           interactCount: runtime.interactCount,
         },
-      } as never);
+        sourceId: entityId,
+      }));
     }
 
     log.info(
@@ -239,11 +239,9 @@ export class InteractionSystem implements WorldSystem {
     const depleted = runtime.def.maxUses ? runtime.useCount >= runtime.def.maxUses : false;
 
     if (this.config.emitEvents && events) {
-      events.emit({
-        id: `use-${entityId}-${Date.now()}`,
+      events.emit(new Event({
         type: 'interaction.use',
-        timestamp: Date.now(),
-        data: {
+        payload: {
           entityId,
           entityName: runtime.def.name,
           useCount: runtime.useCount,
@@ -251,7 +249,8 @@ export class InteractionSystem implements WorldSystem {
           depleted,
           actorId: actorId ?? null,
         },
-      } as never);
+        sourceId: entityId,
+      }));
     }
 
     return {

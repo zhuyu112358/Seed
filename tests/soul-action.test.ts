@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { SoulActionSystem } from "../src/entity/SoulActionSystem.js";
 import { SoulPerceptionSystem } from "../src/entity/SoulPerceptionSystem.js";
+import { InteractionSystem, createDoorDef, createToggleDef } from "../src/entity/InteractionSystem.js";
 import { WeatherSimulator } from "../src/event/WeatherSimulator.js";
 import { World } from "../src/engine/World.js";
 import { GameObject } from "../src/entity/Entity.js";
@@ -166,5 +167,105 @@ describe("SoulActionSystem", () => {
     action.executeAction({ soulId: "vex", action: "move", parameters: { x: 999, y: 0, z: 0 }, timestamp: Date.now() }, world);
     assert.equal(action.executedCount, 1);
     assert.equal(action.failedCount, 1);
+  });
+
+  // === InteractionSystem integration tests ===
+
+  it("interact triggers InteractionSystem state transition (door opens)", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const interaction = new InteractionSystem();
+    const action = new SoulActionSystem();
+    world.addSystem(interaction);
+    world.addSystem(action);
+
+    const door = new GameObject({ id: "door1", name: "Wooden Door", type: "interactive", position: { x: 1, y: 0, z: 0 } });
+    world.addEntity(door);
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    interaction.register(createDoorDef("door1"));
+
+    assert.equal(interaction.getState("door1"), "closed");
+    const result = action.executeAction({
+      soulId: "vex", action: "interact", targetId: "door1",
+      parameters: {}, timestamp: Date.now(),
+    }, world);
+    assert.ok(result.success);
+    assert.equal(interaction.getState("door1"), "open");
+    assert.equal((result.data as { newState: string }).newState, "open");
+    assert.equal((result.data as { previousState: string }).previousState, "closed");
+    assert.equal((result.data as { transitioned: boolean }).transitioned, true);
+  });
+
+  it("interact toggles door open -> closed on second interaction", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const interaction = new InteractionSystem();
+    const action = new SoulActionSystem();
+    world.addSystem(interaction);
+    world.addSystem(action);
+
+    const door = new GameObject({ id: "door1", name: "Door", type: "interactive", position: { x: 1, y: 0, z: 0 } });
+    world.addEntity(door);
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    interaction.register(createDoorDef("door1"));
+
+    action.executeAction({ soulId: "vex", action: "interact", targetId: "door1", parameters: {}, timestamp: Date.now() }, world);
+    assert.equal(interaction.getState("door1"), "open");
+    action.executeAction({ soulId: "vex", action: "interact", targetId: "door1", parameters: {}, timestamp: Date.now() }, world);
+    assert.equal(interaction.getState("door1"), "closed");
+  });
+
+  it("use triggers InteractionSystem use with counter", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const interaction = new InteractionSystem();
+    const action = new SoulActionSystem();
+    world.addSystem(interaction);
+    world.addSystem(action);
+
+    const torch = new GameObject({ id: "torch1", name: "Torch", type: "interactive", position: { x: 1, y: 0, z: 0 } });
+    world.addEntity(torch);
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    interaction.register(createToggleDef("torch1"));
+
+    const result = action.executeAction({
+      soulId: "vex", action: "use", targetId: "torch1",
+      parameters: {}, timestamp: Date.now(),
+    }, world);
+    assert.ok(result.success);
+    const runtime = interaction.getRuntime("torch1")!;
+    assert.equal(runtime.useCount, 1);
+  });
+
+  it("interact falls back to counter-only when InteractionSystem not registered", () => {
+    const { world, action } = makeWorld(); // no InteractionSystem
+    const door = new GameObject({ id: "door1", name: "Door", type: "interactive", position: { x: 1, y: 0, z: 0 } });
+    world.addEntity(door);
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+
+    const result = action.executeAction({
+      soulId: "vex", action: "interact", targetId: "door1",
+      parameters: {}, timestamp: Date.now(),
+    }, world);
+    assert.ok(result.success);
+    assert.equal(door.state.get("interactionCount"), 1);
+    // No state transition data when InteractionSystem is absent.
+    assert.equal((result.data as { newState?: string }).newState, undefined);
+  });
+
+  it("interact emits interaction.state-change event via world.events", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const interaction = new InteractionSystem();
+    const action = new SoulActionSystem();
+    world.addSystem(interaction);
+    world.addSystem(action);
+
+    const door = new GameObject({ id: "door1", name: "Door", type: "interactive", position: { x: 1, y: 0, z: 0 } });
+    world.addEntity(door);
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    interaction.register(createDoorDef("door1"));
+
+    const emitted: unknown[] = [];
+    world.events.on("interaction.state-change", (e: unknown) => { emitted.push(e); });
+
+    action.executeAction({ soulId: "vex", action: "interact", targetId: "door1", parameters: {}, timestamp: Date.now() }, world);
+    assert.equal(emitted.length, 1);
   });
 });
