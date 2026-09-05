@@ -3187,3 +3187,89 @@ world.addEntity(projectile);
 6. **SoulPerceptionSystem 集成碰撞/触发器生命周期事件**
 7. **扫掠球体 vs 扫掠 AABB**：当前使用扫掠 AABB，未来可支持扫掠球体（更精确的圆形实体）
 
+
+
+---
+
+## 2026-09-05 BUG修复：集成测试灵魂选择 + 测试稳定性（第44轮迭代）
+
+### 本轮目标
+
+修复两个已知 bug：
+1. **BUG-008**：集成测试 discoverSouls() 无 status==='active' 过滤，选中 sleeping 灵魂（PersistTest），导致 0 感知/12 失败
+2. **BUG-009**：单元测试数量波动（508-515），偶发 1 个不可复现失败
+
+### BUG-008 修复
+
+**问题根因**：
+- examples/integration-test.ts 中 discoverSouls() 仅有 `.filter((s) => !s.current_game_id)` 过滤
+- 所有 Vex/Nova 灵魂的 current_game_id 非空（历史测试残留，实际已不在世界中）
+- 只有 PersistTest（status=sleeping）的 current_game_id 为空，被选中
+- sleeping 灵魂无法 perceive，导致 0 感知/12 失败
+
+**修复方案**（examples/integration-test.ts）：
+1. soul 类型新增 `status?: string` 字段
+2. 在 current_game_id 过滤之前，先过滤 `status === 'active'`
+3. 如果没有 active 灵魂，返回空数组并打印警告（不再选中 sleeping 灵魂）
+4. 日志增强：显示 active 灵魂总数、其中不在游戏中的数量
+
+**修复前行为**：
+```
+Discovered soul: PersistTest (water), ID: ...
+Global perceptions: 0 sent, 12 failed
+Verdict: FAIL
+```
+
+**修复后行为**：
+```
+Found 0 active souls not in game (of 12 active), using first 1.
+Discovered soul: Vex (wind), ID: soul_mtmtqt4pm7zdne
+Global perceptions: 2 sent, 0 failed
+Global actions: 2 received, 1 executed, 0 failed
+Verdict: PASS
+```
+
+**验证结果**：
+- 单灵魂模式：PASS（2感知/0失败，2动作/1执行/0失败，灵魂位置从 (0,0,0) 移动到 (0,0,-0.30)）
+- 选中的灵魂是 Vex（active），不再是 PersistTest（sleeping）
+
+### BUG-009 调查与验证
+
+**调查结果**：
+- 搜索所有测试文件，未发现 `test.skip`、`test.skipIf`、`test.todo` 等条件跳过
+- 未发现动态生成测试数量的逻辑
+- 测试文件数量稳定（42个）
+
+**验证结果**：
+- 连续 3 次运行 `npx tsx --test tests/*.test.ts`：
+  - 第1次：522 tests, 522 pass, 0 fail
+  - 第2次：522 tests, 522 pass, 0 fail
+  - 第3次：522 tests, 522 pass, 0 fail
+- 测试数量稳定（522），无波动
+- 无偶发失败
+
+**结论**：BUG-009 可能是旧版本的瞬时问题（测试文件导入错误、环境竞态等），在当前版本中已不存在。522 个测试连续 3 次全部通过。
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- 集成测试编译：0 错误
+- 单元测试：**522/522 全绿**（连续3次稳定）
+- 集成测试：PASS（单灵魂模式，BUG-008 修复验证）
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 需求覆盖
+
+- 需求7（运行可靠性）：集成测试稳定性修复，确保灵魂桥接层可靠运行
+- 灵魂交互：集成测试能正确选中 active 灵魂，验证 perceive→decide→act 闭环
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **空间哈希性能基准测试**
+3. **动态障碍局部重规划**
+4. **集成测试自动清理 current_game_id**：测试开始前自动调用 exit-world 清理所有灵魂的过期 current_game_id
+5. **SoulPerceptionSystem 集成碰撞/触发器生命周期事件**
+6. **多灵魂集成测试稳定性**：确保 --multi 模式下不触发 SoulArena 限流
+

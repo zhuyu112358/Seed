@@ -44,22 +44,29 @@ async function discoverSouls(count: number): Promise<SoulInfo[]> {
     const res = await fetch(`${SOUL_ARENA_URL}/api/souls`, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return [];
     const body = (await res.json()) as {
-      souls?: Array<{ id: string; name: string; element: string; current_game_id?: string | null }>;
+      souls?: Array<{ id: string; name: string; element: string; current_game_id?: string | null; status?: string }>;
     };
     if (!body.souls || body.souls.length === 0) return [];
 
-    // Prefer souls not currently in a game (they can enter the test world without 400 errors).
-    const available = body.souls.filter((s) => !s.current_game_id);
-    const inGame = body.souls.filter((s) => s.current_game_id);
+    // Filter to only active souls — sleeping/dead souls cannot perceive or act.
+    const activeSouls = body.souls.filter((s) => s.status === 'active');
+    if (activeSouls.length === 0) {
+      console.log(`  WARNING: No active souls found (total ${body.souls.length}, all sleeping/inactive).`);
+      return [];
+    }
 
-    let selected: typeof body.souls;
+    // Prefer souls not currently in a game (they can enter the test world without 400 errors).
+    const available = activeSouls.filter((s) => !s.current_game_id);
+    const inGame = activeSouls.filter((s) => s.current_game_id);
+
+    let selected: typeof activeSouls;
     if (available.length >= count) {
       selected = available.slice(0, count);
-      console.log(`  Found ${available.length} available souls (not in game), using first ${count}.`);
+      console.log(`  Found ${available.length} active souls not in game (of ${activeSouls.length} active), using first ${count}.`);
     } else {
       selected = [...available, ...inGame].slice(0, count);
       if (inGame.length > 0) {
-        console.log(`  WARNING: Only ${available.length} available souls, using ${count - available.length} souls currently in a game (may cause perceive 400 errors).`);
+        console.log(`  WARNING: Only ${available.length} active souls not in game, using ${count - available.length} currently in a game (may cause perceive 400 errors).`);
       }
     }
 
