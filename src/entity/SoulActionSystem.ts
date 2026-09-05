@@ -27,6 +27,7 @@ import { AcousticPropagation } from "../communication/AcousticPropagation.js";
 import { Message } from "../communication/Message.js";
 import type { AcousticConfig } from "../communication/AcousticPropagation.js";
 import type { PathfinderSystem } from "../pathfinding/PathfinderSystem.js";
+import type { HarvestSystem } from "../resource/HarvestSystem.js";
 
 export interface SoulActionConfig {
   /** Maximum move distance per action. Default 5. */
@@ -82,6 +83,7 @@ export class SoulActionSystem implements WorldSystem {
   private interaction: unknown = null;
   private acoustic: AcousticPropagation | null = null;
   private pathfinder: PathfinderSystem | null = null;
+  private harvest: HarvestSystem | null = null;
   private actionsExecuted = 0;
   private actionsFailed = 0;
 
@@ -97,6 +99,7 @@ export class SoulActionSystem implements WorldSystem {
     this.ensurePerception(world);
     this.ensureInteraction(world);
     this.ensurePathfinder(world);
+    this.ensureHarvest(world);
     const result = this.dispatch(request, world);
     this.history.push({ request, result, tick: world.tick });
     if (this.history.length > 200) this.history.shift();
@@ -153,10 +156,20 @@ export class SoulActionSystem implements WorldSystem {
     }
   }
 
+  /** Lazy-locate HarvestSystem by name. */
+  private ensureHarvest(world: World): void {
+    if (this.harvest && world.systems.includes(this.harvest as unknown as WorldSystem)) return;
+    this.harvest = null;
+    for (const s of world.systems) {
+      if (s.name === 'harvest') { this.harvest = s as unknown as HarvestSystem; break; }
+    }
+  }
+
   tick(_dt: number, world: World, _events: EventSystem): void {
     this.ensurePerception(world);
     this.ensureInteraction(world);
     this.ensurePathfinder(world);
+    this.ensureHarvest(world);
 
     // Process queued actions.
     const pending = [...this.queue];
@@ -178,6 +191,7 @@ export class SoulActionSystem implements WorldSystem {
       case "communicate": return this.doCommunicate(request, soul, world);
       case "use": return this.doUse(request, soul, world);
       case "attack": return this.doAttack(request, soul, world);
+      case "harvest": return this.doHarvest(request, soul, world);
       case "wait": return this.success(request, "soul waits", {});
       case "stop": return this.doStop(request, soul);
       case "custom": return this.doCustom(request, soul, world);
@@ -394,6 +408,57 @@ export class SoulActionSystem implements WorldSystem {
     return this.success(request, `stopped (previous speed ${prevSpeed.toFixed(2)}m/s)`, {
       position: { x: soul.position.x, y: soul.position.y, z: soul.position.z },
       previousSpeed: Math.round(prevSpeed * 100) / 100,
+    });
+  }
+
+  /**
+   * Harvest a resource node. The soul must be within harvestRange of the target.
+   * Harvesting is asynchronous (takes harvestTime ticks); this action starts the
+   * harvest and returns immediately. Completion is communicated via HarvestCompleteEvent
+   * and soul perception.
+   */
+  private doHarvest(request: ActionRequest, soul: GameObject, world: World): ActionResult {
+    if (!request.targetId) return this.fail(request, "harvest requires targetId");
+
+    if (!this.harvest) {
+      return this.fail(request, "HarvestSystem not available in this world");
+    }
+
+    const target = world.getEntity(request.targetId) as GameObject | undefined;
+    if (!target) return this.fail(request, `target not found: ${request.targetId}`);
+
+    const node = this.harvest.getNode(target.id);
+    if (!node) {
+      return this.fail(request, `target ${target.name} is not a harvestable resource node`);
+    }
+
+    if (!node.isAvailable) {
+      return this.fail(request, `resource node ${target.name} is depleted`);
+    }
+
+    if (node.isBeingHarvested) {
+      return this.fail(request, `resource node ${target.name} is already being harvested`);
+    }
+
+    // startHarvest performs distance check internally.
+    const started = this.harvest.startHarvest(soul, target);
+    if (!started) {
+      // Determine failure reason for better error message.
+      const dx = soul.position.x - target.position.x;
+      const dz = soul.position.z - target.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      const range = this.harvest.harvestRange;
+      if (dist > range) {
+        return this.fail(request, `target too far: ${dist.toFixed(2)}m > ${range}m harvest range`);
+      }
+      return this.fail(request, `harvest failed for unknown reason (dist=${dist.toFixed(2)}m)`);
+    }
+
+    return this.success(request, `harvesting ${node.resourceTypeId} from ${target.name}`, {
+      targetId: target.id,
+      resourceType: node.resourceTypeId,
+      harvestTime: node.harvestTime,
+      remaining: node.currentAmount,
     });
   }
 

@@ -24,6 +24,8 @@ import {
   TriggerExitEvent,
   PathReplannedEvent,
   WeatherEvent,
+  HarvestCompleteEvent,
+  ResourceDepletedEvent,
 } from "../event/Event.js";
 import { Vector3 } from "../entity/Vector3.js";
 import type { GameObject } from "../entity/Entity.js";
@@ -102,6 +104,10 @@ export class SoulPerceptionSystem implements WorldSystem {
   private pathReplannedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for world.weather event, set on first tick. */
   private weatherUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for resource.harvest.complete event, set on first tick. */
+  private harvestCompleteUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for resource.node.depleted event, set on first tick. */
+  private resourceDepletedUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -268,6 +274,36 @@ export class SoulPerceptionSystem implements WorldSystem {
           "world.weather",
           `${label} (strength: ${p.strength.toFixed(2)})`,
           severity,
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for harvest completion events.
+    if (!this.harvestCompleteUnsubscribe) {
+      this.harvestCompleteUnsubscribe = events.on("resource.harvest.complete", (evt: HarvestCompleteEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `harvest_complete_${p.nodeId}_${evt.timestamp}`,
+          "resource.harvest.complete",
+          `Harvested ${p.amount} ${p.resourceTypeId} (${p.remaining} remaining)`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for resource node depletion events.
+    if (!this.resourceDepletedUnsubscribe) {
+      this.resourceDepletedUnsubscribe = events.on("resource.node.depleted", (evt: ResourceDepletedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `resource_depleted_${p.nodeId}_${evt.timestamp}`,
+          "resource.node.depleted",
+          `Resource node depleted: ${p.resourceTypeId}`,
+          "medium",
           { x: 0, y: 0, z: 0 },
           true,
         );
@@ -483,6 +519,16 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.weatherUnsubscribe) {
       this.weatherUnsubscribe();
       this.weatherUnsubscribe = null;
+    }
+
+    if (this.harvestCompleteUnsubscribe) {
+      this.harvestCompleteUnsubscribe();
+      this.harvestCompleteUnsubscribe = null;
+    }
+
+    if (this.resourceDepletedUnsubscribe) {
+      this.resourceDepletedUnsubscribe();
+      this.resourceDepletedUnsubscribe = null;
     }
   }
 }

@@ -4000,3 +4000,84 @@ M3设计文档：`docs/M3_RESOURCE_SYSTEM_DESIGN.md`
 - 测试文件：47个
 - M3里程碑进度：10%（核心资源系统完成，待集成动作/感知）
 
+
+
+---
+
+## 2026-09-06 M3阶段2：采集动作集成+感知（第53轮迭代）
+
+### 本轮完成
+
+#### 1. SoulActionSystem集成harvest动作 (`src/entity/SoulActionSystem.ts`)
+- 新增`harvest`属性（HarvestSystem | null），懒加载按名称查找
+- 新增`ensureHarvest(world)`方法，在tick()和executeAction()中调用
+- switch新增`case "harvest"`，调用`doHarvest()`
+- `doHarvest()`方法：
+  - 校验targetId、HarvestSystem可用、目标实体存在
+  - 校验目标是可采集资源节点（HarvestSystem.getNode()）
+  - 校验节点未耗尽、未被其他灵魂采集
+  - 调用harvestSystem.startHarvest()（内部做距离检测）
+  - 失败时给出具体原因（距离过远/节点耗尽/已被采集）
+  - 成功返回ActionResult含resourceType/harvestTime/remaining
+
+#### 2. ActionRequest类型扩展 (`src/types/index.ts`)
+- action类型新增`'harvest'`选项
+
+#### 3. SoulPerceptionSystem集成采集事件 (`src/entity/SoulPerceptionSystem.ts`)
+- 新增`harvestCompleteUnsubscribe`和`resourceDepletedUnsubscribe`字段
+- 新增2个事件监听器：
+  - `resource.harvest.complete`：记录"Harvested N type (M remaining)"，low严重度
+  - `resource.node.depleted`：记录"Resource node depleted: type"，medium严重度
+- stop()中清理2个新监听器
+- 导入HarvestCompleteEvent和ResourceDepletedEvent
+
+#### 4. 测试 (`tests/harvest-action.test.ts`)
+- 10个新测试：
+  - SoulActionSystem harvest动作（8个）：
+    - 正常启动采集
+    - 目标不存在失败
+    - 目标非资源节点失败
+    - 距离过远失败
+    - 节点耗尽失败
+    - 节点已被采集失败
+    - 采集完成后库存增加（多tick）
+    - 缺少targetId失败
+  - SoulPerceptionSystem采集事件（2个）：
+    - 感知采集完成事件
+    - 感知资源耗尽事件
+
+### 验证结果
+
+- **单元测试**：584/584 全绿（574+10）
+- **构建**：0错误（主项目）
+- **架构约束**：
+  - ✅ 无硬编码世界资源
+  - ✅ 无认知决策逻辑（采集决策由SoulArena发出）
+  - ✅ SoulBridgeAdapter未修改
+  - ✅ 代码注释英语
+
+### 已知时序注意事项
+
+- 系统添加顺序影响事件感知：如果HarvestSystem在SoulPerceptionSystem之后tick，采集完成事件会在perception构建帧之后发射，需要多step一帧才能在感知帧中看到
+- 测试中已通过额外step处理此时序问题
+
+### GitHub状态
+
+- 上轮commit 077b4ac（核心资源系统）仍待推送（GitHub 443连接重置）
+- 本轮commit待创建后一并推送
+
+### 下一轮计划（M3阶段3）
+
+1. 集成测试验证（examples/integration-test.ts添加采集场景）
+2. 资源点感知（SoulPerceptionSystem在感知帧中包含附近资源点信息）
+3. ActionResult采集结果反馈给SoulArena（当前仅返回启动成功，完成结果通过事件）
+4. 生产系统（CraftingSystem）设计与实现
+5. 重试git push
+
+### 迭代统计
+
+- 总迭代轮数：53轮
+- 单元测试：584个（M3启动时550个，+34）
+- 测试文件：48个
+- M3里程碑进度：25%（核心资源系统+动作集成完成，待感知增强+生产系统+集成测试）
+
