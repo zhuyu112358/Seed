@@ -1,14 +1,11 @@
 // npm run eval entrypoint: builds a tiny synthetic world, runs a fixed number of
 // ticks while timing each, then writes logs/eval-<timestamp>.json.
-
 import { WorldBuilder, EntityFactory, PhysicsConfig, AcousticPropagation } from '../sdk/index.js';
 import { Message } from '../communication/Message.js';
 import type { GameObject } from '../entity/Entity.js';
 import { WorldEvaluator } from './WorldEvaluator.js';
 import { Logger } from '../reliability/Logger.js';
-
 const log = Logger.for('eval-main');
-
 function main(): void {
   const world = new WorldBuilder('eval-world')
     .setConfig({ tickRate: 60 })
@@ -18,22 +15,11 @@ function main(): void {
     .addEntity(EntityFactory.dynamicBox({ name: 'box-b', position: { x: 2, y: 7, z: 0 }, mass: 3, material: 'metal' }))
     .addEntity(EntityFactory.soulProxy({ soulId: 'eval_vex', name: 'Vex', element: 'wind', position: { x: -1, y: 1, z: 0 } }))
     .build();
-
   const evaluator = new WorldEvaluator();
-
-  // Instrument events/collisions.
   world.events.on('physics.collision', () => evaluator.bump('collisions'));
   world.events.on('world.tick', () => evaluator.bump('events'));
-
-  const TICKS = 120;
-  const dt = 1 / 60;
-  for (let i = 0; i < TICKS; i++) {
-    const t0 = performance.now();
-    world.step(dt);
-    evaluator.recordTick(performance.now() - t0);
-  }
-
-  // One acoustic communication demo.
+  const TICKS = 120; const dt = 1 / 60;
+  for (let i = 0; i < TICKS; i++) { const t0 = performance.now(); world.step(dt); evaluator.recordTick(performance.now() - t0); }
   const acoustic = new AcousticPropagation({ maxRadius: 30 });
   const vex = world.getEntity('soul_eval_vex')!;
   const nova = EntityFactory.soulProxy({ soulId: 'eval_nova', name: 'Nova', element: 'fire', position: { x: 5, y: 1, z: 0 } });
@@ -44,9 +30,7 @@ function main(): void {
     { entities: world.bodies() as unknown as GameObject[], byId: (id) => world.getEntity(id) as never },
   );
   evaluator.bump('messages', received.length);
-
   evaluator.flush(world);
   log.info({ received: received.length }, 'eval complete');
 }
-
 main();

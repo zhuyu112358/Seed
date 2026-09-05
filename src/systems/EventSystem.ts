@@ -65,11 +65,8 @@ export class EventSystem {
     for (const event of Array.from(this.activeEvents.values())) {
       event.elapsed += deltaTime;
       if (event.elapsed >= event.duration) {
-        event.status = 'expired';
-        this.activeEvents.delete(event.id);
-        this.pushHistory(event);
-        this.notifyListeners(event);
-        continue;
+        event.status = 'expired'; this.activeEvents.delete(event.id);
+        this.pushHistory(event); this.notifyListeners(event); continue;
       }
       this.applyEffects(event, worldContext);
     }

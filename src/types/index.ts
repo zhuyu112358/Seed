@@ -609,3 +609,12 @@ export interface IPhysicsEngine {
   setConfig(config: Partial<PhysicsConfig>): void;
   destroy(): void;
 }
+export interface RolePermissions { role: Role; permissions: Permission[]; }
+export interface TransactionOperation { type: string; entityId?: string; data: Record<string, unknown>; }
+export interface UndoEntry { operation: TransactionOperation; previousState: Record<string, unknown>; }
+export interface Transaction { id: string; timestamp: number; operations: TransactionOperation[]; status: 'pending' | 'committed' | 'rolled_back'; undoLog: UndoEntry[]; }
+export interface LogEntry { timestamp: string; level: LogLevel; module: string; message: string; meta?: Record<string, unknown>; stack?: string; }
+export interface LoggerConfig { level: LogLevel; consoleEnabled: boolean; fileEnabled: boolean; logDirectory: string; maxFileSize: string; maxFiles: number; jsonFormat: boolean; }
+export type ExceptionSeverity = 'recoverable' | 'degraded' | 'fatal';
+export interface ExceptionInfo { error: Error; module: string; entityId?: string; timestamp: number; severity: ExceptionSeverity; context: Record<string, unknown>; }
+export interface RecoveryAction { type: 'restart_entity' | 'isolate_entity' | 'rollback' | 'degrade' | 'restart_world' | 'alert'; target?: string; reason: string; }

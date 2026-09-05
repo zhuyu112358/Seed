@@ -1,0 +1,20 @@
+
+> seed-system@0.1.0 build
+> tsc -p tsconfig.json
+
+examples/test-world/index.ts(149,19): error TS2322: Type 'Entity | undefined' is not assignable to type 'GameObject | undefined'.
+  Type 'Entity' is missing the following properties from type 'GameObject': halfExtents, interactable, hittable, aabbMin, aabbMax
+examples/test-world/index.ts(187,64): error TS2493: Tuple type '[]' of length '0' has no element at index '0'.
+examples/test-world/index.ts(187,67): error TS2339: Property 'worldEngine' does not exist on type 'undefined'.
+examples/test-world/index.ts(189,40): error TS2554: Expected 0 arguments, but got 1.
+examples/test-world/index.ts(190,18): error TS2345: Argument of type '"eventTriggers"' is not assignable to parameter of type 'keyof EvalCounters'.
+examples/test-world/index.ts(191,18): error TS2345: Argument of type '"communications"' is not assignable to parameter of type 'keyof EvalCounters'.
+examples/test-world/index.ts(192,13): error TS2339: Property 'setActiveSouls' does not exist on type 'WorldEvaluator'.
+examples/test-world/index.ts(193,13): error TS2339: Property 'printReport' does not exist on type 'WorldEvaluator'.
+examples/test-world/index.ts(197,19): error TS2339: Property 'saveReport' does not exist on type 'WorldEvaluator'.
+src/api/server.ts(26,33): error TS2345: Argument of type '{ enabled: boolean; maxRequests: number; windowMs: number; perSoul: boolean; perIP: boolean; burstMultiplier: number; }' is not assignable to parameter of type 'number'.
+src/api/server.ts(70,36): error TS2339: Property 'validateInline' does not exist on type 'InputValidator'.
+src/api/server.ts(91,24): error TS2339: Property 'consume' does not exist on type 'RateLimiter'.
+src/api/server.ts(94,36): error TS2339: Property 'validateInline' does not exist on type 'InputValidator'.
+src/evaluator/index.ts(6,15): error TS2305: Module '"./WorldEvaluator.js"' has no exported member 'EvaluatorConfig'.
+src/evaluator/index.ts(6,32): error TS2305: Module '"./WorldEvaluator.js"' has no exported member 'EvalActivityCounters'.
