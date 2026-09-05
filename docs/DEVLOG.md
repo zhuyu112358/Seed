@@ -293,3 +293,47 @@
 
 **需求覆盖：** 需求7（可靠性，log/异常恢复）——修复运行时崩溃 bug，提升系统稳定性。
 
+
+
+---
+
+## 2026-09-05 光照系统 LightSystem（第11轮迭代）
+
+**现实逼近（需求11）：** 新增动态光照系统，支持点光源（位置/强度/颜色/衰减半径）、方向光（与 WorldClock 昼夜循环集成）、环境光、点光照度计算、实体可见度计算、彩色光照计算。
+
+**核心模块：** `src/event/LightSystem.ts`
+
+**PointLight（点光源）：**
+- 位置（Vector3）、强度（0-1）、颜色（RGB 0-1）、衰减半径（米）、启用状态
+- `contributionAt(point)`：逆平方归一化衰减，距离 0 处 = intensity，距离 = radius 处 = 0，公式 `(1 - dist/radius)² × intensity`
+- `colorAt(point)`：按贡献度缩放的 RGB 颜色
+
+**LightSystem（光照系统）：**
+- 点光源管理：addLight/removeLight/getLight/getAllLights/getEnabledLights，maxLights 容量限制（默认 128），ID 去重
+- `getIlluminationAt(point)`：总照度 = 环境光 + 方向光（太阳/月亮） + 所有点光源贡献，钳制到 [0,1]
+- `getColoredIlluminationAt(point)`：彩色 RGB 照度计算，环境光和方向光为白色，点光源带颜色
+- `getEntityVisibility(entity)`：基于实体位置照度计算可见度（0-1），低于 visibilityThreshold 为 0
+- `bindClock(clock)`：绑定 WorldClock，方向光强度跟随 `getLightLevel()`（昼夜循环）
+- `getDirectionalIntensity()`：获取当前方向光强度
+- 事件：`light.changed`（add/remove/modify），使用正确的 `new Event({ type, payload, sourceId })` 格式
+- `getStats()`：完整统计（总光源数/启用数/环境光/方向光/容量/新增删除计数/可见度阈值）
+
+**架构约束遵守：**
+- 通用引擎，不硬编码具体世界属性（所有参数通过配置传入）
+- 不实现灵魂认知/决策逻辑
+- 只处理光照计算，不绑定具体灵魂或世界
+- 事件发射使用 Event 类实例（上一轮修复的格式）
+
+**测试：**
+- light-system.test.ts 新增 24 个测试：PointLight（7个：默认值/自定义配置/全强度/超半径零/禁用零/距离衰减/彩色贡献）、LightSystem（17个：初始化/自定义配置/添加获取/重复ID/容量限制/删除/启用过滤/环境光/点光源贡献/多光源求和/钳制/时钟绑定/无时钟方向光/实体可见度/事件发射/彩色照度/World tick 集成）
+- 完整测试套件 231/231 通过（上一轮 207，新增 24）
+
+**需求覆盖：** 需求11（持续向现实世界逼近）——动态光照是虚拟世界现实感的基础组件，影响灵魂感知（环境光、可见度）、昼夜循环体验、氛围营造。
+
+**后续可扩展方向（列入 backlog）：**
+- 光照遮挡计算（障碍物阻挡光线）
+- 阴影投射
+- 光源闪烁/脉冲动画
+- 光照对实体状态的影响（如植物生长、冰融化）
+- SoulPerceptionSystem 集成光照信息到 PerceptionFrame
+
