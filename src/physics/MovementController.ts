@@ -34,6 +34,17 @@ export interface MovementControllerConfig {
   /** Distance calculation mode: '2d' ignores y (planar movement), '3d' includes all axes.
    *  Default '3d'. Use '2d' for top-down / platformer worlds where y is height. */
   distanceMode?: '2d' | '3d';
+  /** If true, MovementController actively controls velocity with acceleration/deceleration
+   *  curves instead of relying on one-shot velocity + friction. Default false (backward
+   *  compatible with existing behavior). */
+  enableAcceleration?: boolean;
+  /** Maximum acceleration (m/s²) when speeding up. Default 10. */
+  maxAcceleration?: number;
+  /** Maximum deceleration (m/s²) when slowing down (stronger than acceleration for
+   *  responsive stopping). Default 15. */
+  maxDeceleration?: number;
+  /** Cruise speed (m/s) — maximum speed during controlled movement. Default 5. */
+  cruiseSpeed?: number;
 }
 
 const DEFAULT_CONFIG: Required<MovementControllerConfig> = {
@@ -42,6 +53,10 @@ const DEFAULT_CONFIG: Required<MovementControllerConfig> = {
   minSpeed: 0.05,
   maxEntitiesPerTick: 1000,
   distanceMode: '3d',
+  enableAcceleration: false,
+  maxAcceleration: 10,
+  maxDeceleration: 15,
+  cruiseSpeed: 5,
 };
 
 /** Statistics for MovementController. */
@@ -75,7 +90,7 @@ export class MovementController implements WorldSystem {
     this.enabled = true;
   }
 
-  tick(_dt: number, world: World, events: EventSystem): void {
+  tick(dt: number, world: World, events: EventSystem): void {
     if (!this.enabled) return;
 
     const bodies = world.bodies();
@@ -83,15 +98,17 @@ export class MovementController implements WorldSystem {
 
     for (let i = 0; i < limit; i++) {
       const body = bodies[i];
-      this.checkAndStop(body, events);
+      this.checkAndStop(body, events, dt);
     }
   }
 
   /**
    * Check a single body for arrival and stop it if conditions are met.
+   * When acceleration control is enabled, also adjusts velocity with
+   * acceleration/deceleration curves.
    * Returns true if the body was stopped, false otherwise.
    */
-  private checkAndStop(body: GameObject, events: EventSystem): boolean {
+  private checkAndStop(body: GameObject, events: EventSystem, dt: number): boolean {
     this.stats.entitiesChecked++;
 
     // Only process bodies with a pending moveTarget.
@@ -106,6 +123,11 @@ export class MovementController implements WorldSystem {
     const distance = this.config.distanceMode === '2d'
       ? Math.sqrt(dx * dx + dz * dz)
       : Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    // Acceleration control: adjust velocity with smooth acceleration/deceleration.
+    if (this.config.enableAcceleration && distance > this.config.arrivalThreshold) {
+      this.controlVelocity(body, dx, dy, dz, distance, dt);
+    }
 
     // Arrival check: within threshold of target.
     if (distance <= this.config.arrivalThreshold) {
@@ -126,6 +148,65 @@ export class MovementController implements WorldSystem {
     }
 
     return false;
+  }
+
+  /**
+   * Control entity velocity with acceleration/deceleration curves.
+   *
+   * Strategy:
+   *   - Compute desired speed based on distance to target:
+   *     - If distance > braking distance: cruise at cruiseSpeed
+   *     - Else: decelerate so v = sqrt(2 * a * d), ensuring stop at target
+   *   - Move current velocity toward desired velocity at maxAcceleration
+   *     (speeding up) or maxDeceleration (slowing down).
+   *   - Frame-rate independent via dt.
+   */
+  private controlVelocity(
+    body: GameObject,
+    dx: number, dy: number, dz: number,
+    distance: number,
+    dt: number,
+  ): void {
+    // Direction toward target (normalized).
+    const invDist = 1 / (distance || 1);
+    const dirX = dx * invDist;
+    const dirY = this.config.distanceMode === '2d' ? 0 : dy * invDist;
+    const dirZ = dz * invDist;
+
+    // Current speed projected onto movement direction.
+    const currentSpeed = body.velocity.x * dirX + body.velocity.y * dirY + body.velocity.z * dirZ;
+
+    // Braking distance needed to stop at current deceleration.
+    const brakingDistance = (currentSpeed * currentSpeed) / (2 * this.config.maxDeceleration);
+
+    // Desired speed: cruise if far enough, else decelerate to stop at target.
+    let desiredSpeed: number;
+    if (distance > brakingDistance + 0.01) {
+      desiredSpeed = this.config.cruiseSpeed;
+    } else {
+      desiredSpeed = Math.sqrt(2 * this.config.maxDeceleration * Math.max(0, distance));
+    }
+
+    // Determine acceleration magnitude: use maxAcceleration when speeding up,
+    // maxDeceleration when slowing down.
+    const speedDiff = desiredSpeed - currentSpeed;
+    const accel = speedDiff >= 0 ? this.config.maxAcceleration : this.config.maxDeceleration;
+    const maxDelta = accel * dt;
+
+    // Clamp speed change to max acceleration/deceleration.
+    let newSpeed = currentSpeed;
+    if (Math.abs(speedDiff) <= maxDelta) {
+      newSpeed = desiredSpeed;
+    } else {
+      newSpeed = currentSpeed + Math.sign(speedDiff) * maxDelta;
+    }
+
+    // Clamp to cruise speed (don't overshoot).
+    newSpeed = Math.min(newSpeed, this.config.cruiseSpeed);
+    if (newSpeed < 0) newSpeed = 0;
+
+    // Apply velocity in movement direction.
+    body.velocity = new Vector3(dirX * newSpeed, dirY * newSpeed, dirZ * newSpeed);
   }
 
   /** Zero velocity, clear moveTarget state, and emit EntityArrivedEvent. */
