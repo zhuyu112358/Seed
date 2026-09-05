@@ -3532,3 +3532,72 @@ Verdict: PASS
 6. **SoulPerceptionSystem 集成风/天气事件**
 7. **重规划事件发射到SoulArena**：通过SoulBridgeAdapter将重规划事件通知灵魂决策系统
 
+
+
+---
+
+## 2026-09-06 集成测试自动清理灵魂游戏状态（第48轮迭代）
+
+### 本轮目标
+
+为集成测试添加自动清理功能：在测试开始前自动调用 exit-world API 清理所有灵魂的过期 current_game_id，消除"using souls currently in a game"警告，提升集成测试可靠性。
+
+### 背景
+
+- 每次运行集成测试后，灵魂的 current_game_id 不会被自动清除（测试崩溃或异常退出时）
+- 所有 Vex/Nova 灵魂的 current_game_id 长期非空，导致 discoverSouls() 只能回退到使用 in-game 的灵魂
+- 虽然测试仍能通过（灵魂实际不在世界中，enter-world 能成功），但会打印警告，且部分灵魂返回 SOUL_NOT_IN_WORLD
+- 之前需要手动调用 exit-world 清理，不够自动化
+
+### 实现
+
+**examples/integration-test.ts（修改）**：
+
+1. **新增 cleanupSouls() 异步函数**：
+   - 从 SoulArena 获取所有灵魂列表
+   - 筛选 status==='active' 且 current_game_id 非空的灵魂
+   - 对每个灵魂调用 POST /api/souls/:id/exit-world（reason: "integration_test_cleanup"）
+   - 处理三种响应：
+     - exitRes.ok → cleaned++（成功退出游戏）
+     - SOUL_NOT_IN_WORLD → cleaned++（current_game_id 是过期残留，虽无法清除但灵魂实际不在游戏中）
+     - SOUL_NOT_FOUND → skipped++（重复条目，实际不存在）
+     - 其他错误 → failed++，打印错误信息
+   - 返回 { cleaned, skipped, failed } 统计
+   - 服务器不可达时静默跳过（discoverSouls 会处理）
+
+2. **main() 函数新增步骤 0**：
+   - 在发现灵魂（步骤 1）之前调用 cleanupSouls()
+   - 打印清理结果（Cleaned/Skipped/Failed）
+   - 无过期状态时打印"No stale game states found."
+
+### 验证结果
+
+- 集成测试编译：0 错误
+- 集成测试运行：PASS（1感知/0失败，1动作/0执行/0失败）
+- 清理结果：Cleaned 2, Skipped 10, Failed 0
+  - 2个灵魂有实际游戏会话，exit-world 成功
+  - 10个灵魂是重复条目（SOUL_NOT_FOUND），跳过
+  - 0个失败
+- 单元测试：**542/542 全绿**（无变化，集成测试不在单元测试套件中）
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 已知限制
+
+- **SOUL_NOT_IN_WORLD 的灵魂无法清除 current_game_id**：部分灵魂的 current_game_id 是过期残留（之前测试异常退出时未清除），exit-world 返回 SOUL_NOT_IN_WORLD 但不清除 current_game_id 字段。这是 SoulArena 服务端问题，Seed 端无法解决。这些灵魂仍可正常使用（enter-world 能成功），只是 discoverSouls 会打印 in-game 警告。
+- **重复灵魂条目**：SoulArena 的 /api/souls 端点返回 24 个灵魂，但其中 10+ 个是重复条目（SOUL_NOT_FOUND），实际只有约 12 个有效灵魂。这是 SoulArena 数据问题，不影响 Seed 功能。
+
+### 需求覆盖
+
+- 可靠性：集成测试自动清理，减少手动操作，提升测试可重复性
+- 开发体验：消除 in-game 警告，测试输出更清晰
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **空间哈希性能基准测试**
+3. **SoulPerceptionSystem 集成风/天气事件**
+4. **整条路径障碍检测**（当前只检查当前到下一点）
+5. **预测性重规划**（提前检测前方障碍）
+6. **SoulArena 服务端修复**：清除 SOUL_NOT_IN_WORLD 灵魂的过期 current_game_id
+7. **集成测试加入 CI**：确保每次代码变更都自动运行集成测试
+

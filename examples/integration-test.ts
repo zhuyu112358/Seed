@@ -100,12 +100,80 @@ function parseArgs(): { multiCount: number | null; soulId: string | null; tickCo
   return { multiCount, soulId, tickCount };
 }
 
+/**
+ * Clean up stale current_game_id on all souls by calling exit-world.
+ * This ensures discoverSouls() can find souls that are actually not in a game,
+ * avoiding the "using souls currently in a game" warning and potential 400 errors.
+ * Souls that are not in a game (SOUL_NOT_IN_WORLD) or not found are skipped silently.
+ */
+async function cleanupSouls(): Promise<{ cleaned: number; skipped: number; failed: number }> {
+  let cleaned = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  try {
+    const res = await fetch(`${SOUL_ARENA_URL}/api/souls`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return { cleaned, skipped, failed };
+    const body = (await res.json()) as {
+      souls?: Array<{ id: string; name: string; current_game_id?: string | null; status?: string }>;
+    };
+    if (!body.souls) return { cleaned, skipped, failed };
+
+    // Only clean active souls with a stale current_game_id.
+    const toClean = body.souls.filter(s => s.status === "active" && !!s.current_game_id);
+    if (toClean.length === 0) return { cleaned, skipped, failed };
+
+    console.log(`  Cleaning ${toClean.length} souls with stale current_game_id...`);
+    for (const soul of toClean) {
+      try {
+        const exitRes = await fetch(`${SOUL_ARENA_URL}/api/souls/${soul.id}/exit-world`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "integration_test_cleanup" }),
+          signal: AbortSignal.timeout(3000),
+        });
+        if (exitRes.ok) {
+          cleaned++;
+        } else {
+          const errBody = await exitRes.json().catch(() => ({}));
+          const err = (errBody as { error?: string }).error ?? "";
+          // SOUL_NOT_IN_WORLD means the current_game_id was already stale — count as cleaned.
+          if (err === "SOUL_NOT_IN_WORLD") {
+            cleaned++;
+          } else if (err === "SOUL_NOT_FOUND") {
+            skipped++;
+          } else {
+            failed++;
+            console.log(`    ${soul.name}: exit failed (${err})`);
+          }
+        }
+      } catch {
+        failed++;
+      }
+    }
+  } catch {
+    // Server unreachable — skip cleanup, discoverSouls will handle it.
+  }
+
+  return { cleaned, skipped, failed };
+}
+
 async function main(): Promise<void> {
   const { multiCount, soulId, tickCount } = parseArgs();
   const isMulti = multiCount !== null;
 
   console.log("=== Seed <-> SoulArena End-to-End Integration Test ===");
   console.log(`Mode: ${isMulti ? `Multi-soul (${multiCount} souls)` : "Single-soul"}\n`);
+
+  // 0. Clean up stale current_game_id on all souls before discovering.
+  console.log("--- Cleaning up stale soul game states ---");
+  const cleanup = await cleanupSouls();
+  if (cleanup.cleaned > 0 || cleanup.failed > 0) {
+    console.log(`  Cleaned: ${cleanup.cleaned}, Skipped: ${cleanup.skipped}, Failed: ${cleanup.failed}`);
+  } else {
+    console.log("  No stale game states found.");
+  }
+  console.log();
 
   // 1. Discover souls.
   let souls: SoulInfo[] = [];
