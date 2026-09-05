@@ -24,4 +24,10 @@
 见 ROADMAP.md：WebSocket 双向帧、perception LOD、world-effect 回写、NetworkPacket/Resonance 真实化、空间分区、3D 物理后端等。
 
 ### GitHub 推送状态
-见下文（push 后更新）。
+**失败**。本地 commit 完整：`1047c75ce7fda7ea2893df618c7ca701ff9933bf`。
+已尝试 3 次 `git push -u origin main`：
+1. 第一次：`Recv failure: Connection was reset`
+2. 第二次：挂起 2 分钟无响应，手动停止
+3. 第三次：`Failed to connect to github.com port 443 after 21061 ms: Couldn't connect to server`
+原因：本机到 github.com:443 网络不通（可能需代理）。本地仓库 D:\Seed 完整可运行，待网络恢复后执行 `git push -u origin main` 即可。
+

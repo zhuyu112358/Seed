@@ -8,9 +8,11 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/api/server.js",
     "dev": "tsx src/api/server.ts",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test tests/**/*.test.ts",
     "eval": "tsx src/evaluator/runEval.ts",
-    "test-world": "tsx examples/test-world/index.ts"
+    "evaluate": "tsx src/evaluator/runEvaluation.ts",
+    "test-world": "tsx examples/test-world/index.ts",
+    "demo:test-world": "tsx examples/test-world/index.ts"
   },
   "keywords": [
     "game-engine",

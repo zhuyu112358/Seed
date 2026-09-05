@@ -432,6 +432,29 @@ export interface ValidationSchema {
   items?: ValidationSchema;
 }
 
+/** Result returned by InputValidator validation calls. */
+export interface ValidationResult {
+  valid: boolean;
+  errors: Array<{ field: string; message: string }>;
+}
+
+/** A single permission entry in the RBAC table. */
+export interface Permission {
+  resource: string;
+  action: string;
+  condition?: string;
+}
+
+/** Configuration for the token-bucket rate limiter. */
+export interface RateLimitConfig {
+  enabled: boolean;
+  maxRequests: number;
+  windowMs: number;
+  perSoul: boolean;
+  perIP: boolean;
+  burstMultiplier: number;
+}
+
 // ============================================================================
 // Evaluation
 // ============================================================================
@@ -545,4 +568,44 @@ export interface WorldEvent {
   status: string;
   createdAt: number;
   data: Record<string, unknown>;
+}
+
+// ============================================================================
+// Core engine contracts (implemented by src/engine/*)
+// ============================================================================
+
+/** Pluggable spatial partitioning index over entity 2D footprints. */
+export interface ISpatialIndex {
+  insert(entity: IEntity): void;
+  remove(entityId: string): void;
+  update(entity: IEntity): void;
+  queryRange(min: IVector3, max: IVector3): IEntity[];
+  queryNear(point: IVector3, radius: number): IEntity[];
+  queryRay(origin: IVector3, direction: IVector3, maxDistance: number): IEntity[];
+  clear(): void;
+  size(): number;
+}
+
+/** Generic recyclable instance pool. */
+export interface IObjectPool<T> {
+  acquire(): T;
+  release(obj: T): void;
+  preallocate(count: number): void;
+  shrink(): void;
+  getStats(): { active: number; pooled: number; total: number };
+  clear(): void;
+}
+
+/** Pluggable physics engine contract. */
+export interface IPhysicsEngine {
+  initialize(config: PhysicsConfig): void;
+  step(deltaTime: number): CollisionResult[];
+  addEntity(entity: IEntity): void;
+  removeEntity(entityId: string): void;
+  updateEntity(entity: IEntity): void;
+  applyForce(application: ForceApplication): void;
+  raycast(origin: IVector3, direction: IVector3, maxDistance: number): RaycastHit | null;
+  getConfig(): PhysicsConfig;
+  setConfig(config: Partial<PhysicsConfig>): void;
+  destroy(): void;
 }
