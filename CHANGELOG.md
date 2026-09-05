@@ -5,6 +5,79 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-09-06
+
+### Milestone M6: NPC Behavior System & Dynamic Tasks & World Narrative
+
+#### Added
+- **Behavior Tree System** (`src/behavior/`): Reusable behavior execution framework for NPC agents
+  - BehaviorStatus enum (Success/Failure/Running)
+  - Blackboard: per-agent shared data store with change notification (onChange/onKeyChange)
+  - 9 node types: Sequence, Selector, Parallel (RequireAll/RequireAny/RequireCount),
+    Inverter, Repeater, UntilFail, ActionNode, ConditionNode, WaitNode
+  - BehaviorTree container with tick/reset/serialize
+  - BehaviorTreeSystem (WorldSystem) managing multi-agent behavior trees
+  - All decision logic in callbacks defined by application layer; Seed only executes
+  - 43 unit tests
+- **Dynamic Task System** (`src/task/`): Task definitions, instances, lifecycle, and event emission
+  - ObjectiveType: collect/reach/interact/kill/custom (extensible via callback)
+  - TaskDefinition with objectives/rewards/acceptConditions/autoAccept/repeatable
+  - TaskInstance with status (locked/available/active/completed/failed), objective progress
+  - TaskSystem (WorldSystem): register/accept/updateProgress/complete/fail/abandon
+  - Condition checking (prerequisite tasks), auto-accept on tick
+  - 6 event classes (Available/Accepted/Progress/Completed/Failed/StatusChanged)
+  - 26 unit tests
+- **Task event perception** in SoulPerceptionSystem
+  - 6 new event listeners (lazy-loaded on first tick):
+    - `task.available`: low severity
+    - `task.accepted`: medium severity
+    - `task.progress`: low severity, includes current/required amounts
+    - `task.completed`: high severity
+    - `task.failed`: high severity, includes reason
+    - `task.status_changed`: low severity, includes old→new status
+  - stop() cleanup for all 6 listeners
+  - 10 unit tests
+- **World Narrative System** (`src/narrative/`): Narrative chains with node state machine
+  - NarrativeNode with entryConditions/onEnter/exitConditions/onExit/branches/terminal
+  - NarrativeChainDefinition with nodes/repeatable/autoStartConditions
+  - NarrativeChainInstance with status (idle/active/paused/completed), currentNodeIndex, blackboard
+  - NarrativeSystem (WorldSystem): register/start/pause/resume/reset chains
+  - tick() advances active chains: exitConditions → onExit → branches (priority) → sequential → entryConditions → onEnter → terminal auto-complete
+  - Branch system: condition → targetNodeId for non-linear narratives
+  - 5 event classes (Started/NodeEntered/NodeExited/Branch/Completed)
+  - 20 unit tests
+- **Narrative event perception** in SoulPerceptionSystem
+  - 5 new event listeners (lazy-loaded on first tick):
+    - `narrative.started`: medium severity, includes chain name
+    - `narrative.node_entered`: low severity, includes node name
+    - `narrative.node_exited`: low severity
+    - `narrative.branch`: medium severity, includes from→to
+    - `narrative.completed`: high severity, includes nodes entered count
+  - stop() cleanup for all 5 listeners
+  - 5 unit tests
+- **M6 end-to-end demo** (`examples/m6-demo.ts`): Full pipeline demonstration
+  - Behavior tree controls NPC agent (accept task → gather wood loop)
+  - Task system tracks objectives (collect 5 wood)
+  - Narrative chain advances story (intro → gathering → return → celebration)
+  - SoulPerceptionSystem captures all events for soul delivery
+  - Verified: task 100%, narrative 100%, 10 perceived events (2 high severity)
+
+#### Changed
+- SDK exports: added behavior, task, and narrative modules to `src/sdk/index.ts`
+- SoulPerceptionSystem: added 11 new event listeners (6 task + 5 narrative)
+
+#### Architecture
+- All NPC behavior/task/narrative content defined by application layer
+- Seed only provides execution frameworks and event emission
+- No cognitive/decision logic in Seed — all conditions/actions are callbacks
+- No hardcoded behaviors/tasks/narratives — fully configurable and extensible
+
+#### Test Summary
+- Total: 842 unit tests (738 at M5 end + 104 new in M6)
+- Behavior tree: 43, Task system: 26, Task perception: 10, Narrative: 20, Narrative perception: 5
+- All tests passing, 0 failures
+- Build: 0 TypeScript errors
+
 ## [2.1.0] - 2026-09-06
 
 ### Milestone M5: Dynamic World Events & Ecosystem & World Rules

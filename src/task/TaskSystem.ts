@@ -18,6 +18,7 @@ import {
 } from "./TaskEvents.js";
 
 export class TaskSystem {
+  readonly name = "task";
   enabled = true;
   private definitions = new Map<string, TaskDefinition>();
   /** agentId -> taskId -> TaskInstance */

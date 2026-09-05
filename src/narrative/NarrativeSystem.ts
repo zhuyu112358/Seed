@@ -17,6 +17,7 @@ import {
 } from "./NarrativeEvents.js";
 
 export class NarrativeSystem {
+  readonly name = "narrative";
   enabled = true;
   private definitions = new Map<string, NarrativeChainDefinition>();
   /** chainId -> NarrativeChainInstance */

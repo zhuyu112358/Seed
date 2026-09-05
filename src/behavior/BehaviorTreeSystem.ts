@@ -5,6 +5,7 @@ import { BehaviorTree } from "./BehaviorTree.js";
 import { BehaviorAgent } from "./BehaviorNode.js";
 
 export class BehaviorTreeSystem {
+  readonly name = "behavior-tree";
   enabled = true;
   private trees = new Map<string, BehaviorTree>();
   private agentData = new Map<string, BehaviorAgent>();
