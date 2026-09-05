@@ -270,4 +270,107 @@ describe("CollisionSystem", () => {
     assert.equal(reset.pairsChecked, 0);
     assert.equal(reset.collisionsDetected, 0);
   });
+
+  // --- Spatial Hash Broad Phase Integration Tests ---
+
+  it("spatial hash broad phase detects same collisions as brute force", () => {
+    // Two overlapping souls — both broad phases should detect and resolve.
+    const worldBF = makeWorld();
+    const csBF = new CollisionSystem({ broadPhase: 'brute-force' });
+    worldBF.addSystem(csBF);
+    const aBF = makeSoul("a", 0, 0);
+    const bBF = makeSoul("b", 0.5, 0);
+    worldBF.addEntity(aBF);
+    worldBF.addEntity(bBF);
+    worldBF.step(1 / 60);
+
+    const worldSH = makeWorld();
+    const csSH = new CollisionSystem({ broadPhase: 'spatial-hash', spatialHashCellSize: 5 });
+    worldSH.addSystem(csSH);
+    const aSH = makeSoul("a", 0, 0);
+    const bSH = makeSoul("b", 0.5, 0);
+    worldSH.addEntity(aSH);
+    worldSH.addEntity(bSH);
+    worldSH.step(1 / 60);
+
+    // Both should detect the collision.
+    assert.ok(csBF.getStats().collisionsDetected >= 1, "brute force should detect collision");
+    assert.ok(csSH.getStats().collisionsDetected >= 1, "spatial hash should detect collision");
+
+    // Both should produce the same separation result (within floating point tolerance).
+    assert.ok(Math.abs(aBF.position.x - aSH.position.x) < 0.001,
+      `soul A x should match: BF=${aBF.position.x.toFixed(4)}, SH=${aSH.position.x.toFixed(4)}`);
+    assert.ok(Math.abs(bBF.position.x - bSH.position.x) < 0.001,
+      `soul B x should match: BF=${bBF.position.x.toFixed(4)}, SH=${bSH.position.x.toFixed(4)}`);
+  });
+
+  it("spatial hash broad phase reduces pair checks for distributed entities", () => {
+    const world = makeWorld();
+    const cs = new CollisionSystem({ broadPhase: 'spatial-hash', spatialHashCellSize: 5 });
+    world.addSystem(cs);
+
+    // 20 souls spread across a 50x50 world — most won't be in the same cell.
+    for (let i = 0; i < 20; i++) {
+      const x = (i % 5) * 10 + 2;
+      const z = Math.floor(i / 5) * 10 + 2;
+      world.addEntity(makeSoul(`soul_${i}`, x, z));
+    }
+
+    cs.resetStats();
+    world.step(1 / 60);
+
+    const stats = cs.getStats();
+    // Brute force would check C(20,2) = 190 pairs.
+    // Spatial hash with 1 soul per 5m cell should check far fewer.
+    assert.ok(stats.pairsChecked < 190,
+      `spatial hash should check fewer than 190 pairs, got ${stats.pairsChecked}`);
+    // No collisions since souls are 10m apart (well outside 1m AABB).
+    assert.equal(stats.collisionsDetected, 0, "no collisions expected for distributed souls");
+  });
+
+  it("spatial hash broad phase handles clustered entities", () => {
+    const world = makeWorld();
+    const cs = new CollisionSystem({ broadPhase: 'spatial-hash', spatialHashCellSize: 5, maxPairsPerTick: 1000 });
+    world.addSystem(cs);
+
+    // 5 souls all clustered at origin — all in the same cell.
+    for (let i = 0; i < 5; i++) {
+      world.addEntity(makeSoul(`soul_${i}`, i * 0.3, 0));
+    }
+
+    cs.resetStats();
+    world.step(1 / 60);
+
+    const stats = cs.getStats();
+    // 5 souls in same cell = C(5,2) = 10 pairs.
+    assert.equal(stats.pairsChecked, 10, `should check 10 pairs for 5 clustered souls, got ${stats.pairsChecked}`);
+    assert.ok(stats.collisionsDetected > 0, "should detect collisions among clustered souls");
+  });
+
+  it("spatial hash broad phase respects maxPairsPerTick", () => {
+    const world = makeWorld();
+    const cs = new CollisionSystem({ broadPhase: 'spatial-hash', spatialHashCellSize: 5, maxPairsPerTick: 3 });
+    world.addSystem(cs);
+
+    // 5 souls clustered — would be 10 pairs, but capped at 3.
+    for (let i = 0; i < 5; i++) {
+      world.addEntity(makeSoul(`soul_${i}`, i * 0.3, 0));
+    }
+
+    cs.resetStats();
+    world.step(1 / 60);
+
+    assert.equal(cs.getStats().pairsChecked, 3, "should respect maxPairsPerTick=3");
+  });
+
+  it("spatial hash cell size config is respected", () => {
+    const cs = new CollisionSystem({ broadPhase: 'spatial-hash', spatialHashCellSize: 10 });
+    assert.equal(cs.config.spatialHashCellSize, 10);
+    assert.equal(cs.config.broadPhase, 'spatial-hash');
+  });
+
+  it("default broad phase is brute-force for backward compatibility", () => {
+    const cs = new CollisionSystem();
+    assert.equal(cs.config.broadPhase, 'brute-force');
+  });
 });

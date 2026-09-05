@@ -22,6 +22,7 @@ import { Vector3 } from '../entity/Vector3.js';
 import { GameObject } from '../entity/Entity.js';
 import { CollisionEvent } from '../event/Event.js';
 import { Logger } from '../reliability/Logger.js';
+import { SpatialHash } from './SpatialHash.js';
 
 const log = Logger.for('collision-system');
 
@@ -42,6 +43,12 @@ export interface CollisionSystemConfig {
   checkYAxis?: boolean;
   /** Maximum number of collision pairs to process per tick (safety cap). Default 500. */
   maxPairsPerTick?: number;
+  /** Broad-phase strategy: 'brute-force' (O(n²), simple) or 'spatial-hash' (O(n*k), scalable).
+   *  Default 'brute-force' for backward compatibility. Use 'spatial-hash' for worlds with >50 entities. */
+  broadPhase?: 'brute-force' | 'spatial-hash';
+  /** Cell size for spatial hash broad phase, in world units. Default 5.
+   *  Should be roughly 1-2x the average entity size for optimal performance. */
+  spatialHashCellSize?: number;
 }
 
 const DEFAULT_CONFIG: Required<CollisionSystemConfig> = {
@@ -52,6 +59,8 @@ const DEFAULT_CONFIG: Required<CollisionSystemConfig> = {
   slop: 0.01,
   checkYAxis: false,
   maxPairsPerTick: 500,
+  broadPhase: 'brute-force',
+  spatialHashCellSize: 5,
 };
 
 /** Statistics for CollisionSystem. */
@@ -78,6 +87,8 @@ export class CollisionSystem implements WorldSystem {
     collisionsDetected: 0,
     collisionsResolved: 0,
   };
+  /** Spatial hash for broad-phase collision detection (lazy-initialized). */
+  private spatialHash: SpatialHash | null = null;
 
   constructor(config?: CollisionSystemConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -99,8 +110,15 @@ export class CollisionSystem implements WorldSystem {
 
     if (bodies.length < 2) return;
 
-    // Brute-force pair check (O(n²)) — acceptable for moderate entity counts.
-    // For large worlds, a spatial hash or quadtree broad phase can be added later.
+    if (this.config.broadPhase === 'spatial-hash') {
+      this.tickSpatialHash(bodies, events);
+    } else {
+      this.tickBruteForce(bodies, events);
+    }
+  }
+
+  /** Brute-force pair check (O(n²)) — default for backward compatibility. */
+  private tickBruteForce(bodies: GameObject[], events: EventSystem): void {
     let pairsProcessed = 0;
     for (let i = 0; i < bodies.length && pairsProcessed < this.config.maxPairsPerTick; i++) {
       for (let j = i + 1; j < bodies.length && pairsProcessed < this.config.maxPairsPerTick; j++) {
@@ -108,6 +126,32 @@ export class CollisionSystem implements WorldSystem {
         this.stats.pairsChecked++;
         this.checkAndResolve(bodies[i], bodies[j], events);
       }
+    }
+  }
+
+  /** Spatial hash broad phase — reduces pair checks for large worlds. */
+  private tickSpatialHash(bodies: GameObject[], events: EventSystem): void {
+    // Lazy-initialize spatial hash.
+    if (!this.spatialHash) {
+      this.spatialHash = new SpatialHash(this.config.spatialHashCellSize);
+    }
+
+    const hash = this.spatialHash;
+    hash.clear();
+
+    // Insert all bodies into the hash.
+    for (const body of bodies) {
+      hash.insert(body);
+    }
+
+    // Get unique collision pairs from the hash and resolve them.
+    const pairs = hash.getCollisionPairs();
+    let pairsProcessed = 0;
+    for (const [a, b] of pairs) {
+      if (pairsProcessed >= this.config.maxPairsPerTick) break;
+      pairsProcessed++;
+      this.stats.pairsChecked++;
+      this.checkAndResolve(a, b, events);
     }
   }
 

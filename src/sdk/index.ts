@@ -36,6 +36,7 @@ export { Vector3 } from '../entity/Vector3.js';
 export { PhysicsSystem } from '../physics/PhysicsSystem.js';
 export { PhysicsConfig, PhysicsConfigBuilder } from '../physics/PhysicsConfig.js';
 export { CollisionSystem } from '../physics/CollisionSystem.js';
+export { SpatialHash } from '../physics/SpatialHash.js';
 export { MovementController } from '../physics/MovementController.js';
 export { WindForceSystem } from '../physics/WindForceSystem.js';
 
