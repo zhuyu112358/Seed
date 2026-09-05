@@ -47,12 +47,17 @@ interface ZoneState {
 }
 
 /** Event emitted when a resource node spawns in an ecosystem zone. */
-export class EcosystemSpawnEvent extends Event {
+export class EcosystemSpawnEvent extends Event<{
+  zoneId: string;
+  entityId: string;
+  resourceTypeId: string;
+  position: { x: number; z: number };
+}> {
   constructor(
-    public readonly zoneId: string,
-    public readonly entityId: string,
-    public readonly resourceTypeId: string,
-    public readonly position: { x: number; z: number },
+    zoneId: string,
+    entityId: string,
+    resourceTypeId: string,
+    position: { x: number; z: number },
   ) {
     super({
       type: "ecosystem.resource_spawned",
@@ -63,11 +68,15 @@ export class EcosystemSpawnEvent extends Event {
 }
 
 /** Event emitted when a resource node is depleted. */
-export class EcosystemDepletedEvent extends Event {
+export class EcosystemDepletedEvent extends Event<{
+  zoneId: string;
+  entityId: string;
+  resourceTypeId: string;
+}> {
   constructor(
-    public readonly zoneId: string,
-    public readonly entityId: string,
-    public readonly resourceTypeId: string,
+    zoneId: string,
+    entityId: string,
+    resourceTypeId: string,
   ) {
     super({
       type: "ecosystem.resource_depleted",
@@ -78,11 +87,15 @@ export class EcosystemDepletedEvent extends Event {
 }
 
 /** Event emitted when a depleted resource node is removed. */
-export class EcosystemRemovedEvent extends Event {
+export class EcosystemRemovedEvent extends Event<{
+  zoneId: string;
+  entityId: string;
+  resourceTypeId: string;
+}> {
   constructor(
-    public readonly zoneId: string,
-    public readonly entityId: string,
-    public readonly resourceTypeId: string,
+    zoneId: string,
+    entityId: string,
+    resourceTypeId: string,
   ) {
     super({
       type: "ecosystem.resource_removed",
@@ -93,10 +106,13 @@ export class EcosystemRemovedEvent extends Event {
 }
 
 /** Event emitted when ecosystem zone fertility changes. */
-export class EcosystemZoneChangedEvent extends Event {
+export class EcosystemZoneChangedEvent extends Event<{
+  zoneId: string;
+  fertility: number;
+}> {
   constructor(
-    public readonly zoneId: string,
-    public readonly fertility: number,
+    zoneId: string,
+    fertility: number,
   ) {
     super({
       type: "ecosystem.zone_changed",

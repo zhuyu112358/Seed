@@ -17,6 +17,12 @@ import { LightSystem } from "../event/LightSystem.js";
 import { ThermalSystem } from "../event/ThermalSystem.js";
 import type { HarvestSystem } from "../resource/HarvestSystem.js";
 import {
+  EcosystemSpawnEvent,
+  EcosystemDepletedEvent,
+  EcosystemRemovedEvent,
+  EcosystemZoneChangedEvent,
+} from "../ecosystem/EcosystemSystem.js";
+import {
   EntityArrivedEvent,
   CollisionEvent,
   CollisionEnterEvent,
@@ -113,6 +119,14 @@ export class SoulPerceptionSystem implements WorldSystem {
   private resourceDepletedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for crafting.complete event, set on first tick. */
   private craftCompleteUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for ecosystem.resource_spawned event, set on first tick. */
+  private ecoSpawnUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for ecosystem.resource_depleted event, set on first tick. */
+  private ecoDepletedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for ecosystem.resource_removed event, set on first tick. */
+  private ecoRemovedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for ecosystem.zone_changed event, set on first tick. */
+  private ecoZoneChangedUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -324,6 +338,67 @@ export class SoulPerceptionSystem implements WorldSystem {
           "crafting.complete",
           `Crafted ${p.outputAmount} ${p.outputResourceTypeId} (${p.recipeName})`,
           "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for ecosystem resource spawned events.
+    if (!this.ecoSpawnUnsubscribe) {
+      this.ecoSpawnUnsubscribe = events.on("ecosystem.resource_spawned", (evt: EcosystemSpawnEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `eco_spawn_${p.entityId}_${evt.timestamp}`,
+          "ecosystem.resource_spawned",
+          `Resource spawned: ${p.resourceTypeId} at (${p.position.x.toFixed(1)}, ${p.position.z.toFixed(1)})`,
+          "low",
+          { x: p.position.x, y: 0, z: p.position.z },
+          true,
+        );
+      });
+    }
+
+    // Listen for ecosystem resource depleted events.
+    if (!this.ecoDepletedUnsubscribe) {
+      this.ecoDepletedUnsubscribe = events.on("ecosystem.resource_depleted", (evt: EcosystemDepletedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `eco_depleted_${p.entityId}_${evt.timestamp}`,
+          "ecosystem.resource_depleted",
+          `Resource depleted: ${p.resourceTypeId} (zone: ${p.zoneId})`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for ecosystem resource removed events.
+    if (!this.ecoRemovedUnsubscribe) {
+      this.ecoRemovedUnsubscribe = events.on("ecosystem.resource_removed", (evt: EcosystemRemovedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `eco_removed_${p.entityId}_${evt.timestamp}`,
+          "ecosystem.resource_removed",
+          `Resource removed: ${p.resourceTypeId} (zone: ${p.zoneId})`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for ecosystem zone changed events.
+    if (!this.ecoZoneChangedUnsubscribe) {
+      this.ecoZoneChangedUnsubscribe = events.on("ecosystem.zone_changed", (evt: EcosystemZoneChangedEvent) => {
+        const p = evt.payload;
+        const severity = p.fertility < 0.2 ? "high" : p.fertility < 0.5 ? "medium" : "low";
+        this.recordEvent(
+          `eco_zone_${p.zoneId}_${evt.timestamp}`,
+          "ecosystem.zone_changed",
+          `Zone ${p.zoneId} fertility changed: ${(p.fertility * 100).toFixed(0)}%`,
+          severity,
           { x: 0, y: 0, z: 0 },
           true,
         );
@@ -579,6 +654,26 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.craftCompleteUnsubscribe) {
       this.craftCompleteUnsubscribe();
       this.craftCompleteUnsubscribe = null;
+    }
+
+    if (this.ecoSpawnUnsubscribe) {
+      this.ecoSpawnUnsubscribe();
+      this.ecoSpawnUnsubscribe = null;
+    }
+
+    if (this.ecoDepletedUnsubscribe) {
+      this.ecoDepletedUnsubscribe();
+      this.ecoDepletedUnsubscribe = null;
+    }
+
+    if (this.ecoRemovedUnsubscribe) {
+      this.ecoRemovedUnsubscribe();
+      this.ecoRemovedUnsubscribe = null;
+    }
+
+    if (this.ecoZoneChangedUnsubscribe) {
+      this.ecoZoneChangedUnsubscribe();
+      this.ecoZoneChangedUnsubscribe = null;
     }
   }
 }

@@ -5088,3 +5088,86 @@ M4完成，SDK v2.0.0发布后进入M5里程碑。M5方向待管理策略文档�
 - 测试文件：59个
 - SDK版本：v2.0.0（M4完成），M5目标v2.1.0
 
+
+
+---
+
+## 2026-09-06 M5阶段3：生态事件感知集成（第66轮迭代）
+
+### 本轮完成
+
+#### 1. 上轮推送确认
+- cbef02e（EcosystemSystem）已在GitHub，0待推送
+
+#### 2. SoulPerceptionSystem生态事件感知集成 (`src/entity/SoulPerceptionSystem.ts`)
+- 新增4个生态事件监听器（懒加载，首次tick设置）：
+  - `ecosystem.resource_spawned`：资源节点生成，low严重度，包含位置
+  - `ecosystem.resource_depleted`：资源节点枯竭，medium严重度，包含区域ID
+  - `ecosystem.resource_removed`：资源节点移除，medium严重度，包含区域ID
+  - `ecosystem.zone_changed`：区域肥力变化，严重度根据肥力：<0.2=high, <0.5=medium, 其他=low
+- 新增4个unsubscribe字段（ecoSpawn/ecoDepleted/ecoRemoved/ecoZoneChanged）
+- stop()中清理所有4个监听器
+- 导入ecosystem事件类（从EcosystemSystem.ts）
+
+#### 3. EcosystemSystem事件类修复 (`src/ecosystem/EcosystemSystem.ts`)
+- 4个事件类参数化payload类型（extends Event<SpecificPayload>），与WeatherEvent等现有事件模式一致
+- 移除public readonly属性（数据已在payload中，避免Event<T>不可赋值给子类的类型问题）
+- 修复：事件类必须遵循Event<T>模式才能被EventSystem.on()的类型化handler接受
+
+#### 4. 测试 (`tests/ecosystem-perception.test.ts`)
+- 6个新测试：
+  - 感知ecosystem.resource_spawned事件
+  - 感知ecosystem.resource_depleted事件（medium严重度）
+  - 感知ecosystem.resource_removed事件
+  - 感知ecosystem.zone_changed事件（高肥力=high严重度）
+  - 直接发射4种生态事件全部被感知
+  - stop()清理监听器后不崩溃
+
+### 架构设计
+
+**生态事件感知链路**：
+```
+EcosystemSystem（检测/生成/枯竭/移除）
+  → 发射生态事件（EventBus）
+    → SoulPerceptionSystem（监听并记录到感知帧）
+      → SoulArena（灵魂感知到环境变化，做出决策）
+```
+
+**事件类设计模式**：
+- 所有事件类必须extends Event<SpecificPayloadType>
+- 不在事件类上添加额外public属性（数据全部在payload中）
+- 这样Event<T>可赋值给事件子类类型，EventSystem.on()的类型化handler正常工作
+
+**严重度映射**：
+- 资源生成：low（环境变化，不紧急）
+- 资源枯竭：medium（影响采集，需关注）
+- 资源移除：medium（永久消失，需关注）
+- 区域肥力变化：根据肥力程度（低肥力=high，中=medium，高=low）
+
+### 验证结果
+
+- **单元测试**：738/738 全绿（732+6新，1次flaky随机测试已通过）
+- **构建**：0错误
+- **GitHub**：0待推送（上轮已同步）
+
+### M5里程碑进度：55%
+
+- ✅ 阶段1：世界规则引擎WorldRuleEngine
+- ✅ 阶段2：生态循环系统EcosystemSystem
+- ✅ 阶段3：生态事件感知集成（SoulPerceptionSystem）
+- ⬜ 阶段4：端到端验证+SDK v2.1.0发布
+
+### 下一轮计划
+
+1. M5阶段4：生态系统端到端演示（区域配置→节点生成→采集→枯竭→再生/移除→灵魂感知全链路）
+2. WorldRuleEngine与EcosystemSystem联动演示（生态事件触发规则）
+3. CHANGELOG更新v2.0.0→v2.1.0
+4. SDK v2.1.0发布准备（tag+文档）
+
+### 迭代统计
+
+- 总迭代轮数：66轮
+- 单元测试：738个（M4结束时705个，+33）
+- 测试文件：60个
+- SDK版本：v2.0.0（M4完成），M5目标v2.1.0
+
