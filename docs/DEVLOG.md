@@ -796,3 +796,78 @@ ActionRequest.action 联合类型扩展：`'move' | 'interact' | 'communicate' |
 5. **MovementController 系统**：物理模式下自动检测到达目标并停止（上一轮列入 backlog）
 6. **障碍物对声学传播的遮挡**：当前 AcousticPropagation 不考虑障碍物遮挡
 
+
+
+---
+
+## 2026-09-05 MovementController系统：物理移动模式的到达检测与自动停止（第18轮迭代）
+
+### 本轮目标
+
+上一轮实现了物理移动模式（move 动作施加速度由 PhysicsSystem 积分），但存在一个关键问题：灵魂施加速度后会因摩擦自然减速，**不会精确停在目标点**——可能冲过目标，也可能在目标附近"爬行"。本轮创建 MovementController 系统，每 tick 检测实体是否到达 moveTarget，到达后自动零化速度。
+
+### 实现方案
+
+**MovementController**（`src/physics/MovementController.ts`）是一个通用 WorldSystem：
+
+1. **遍历所有 GameObject**：通过 `world.bodies()` 获取所有物理实体
+2. **检查 moveTarget**：读取 `entity.state.get('moveTarget')`（由 SoulActionSystem 物理模式设置）
+3. **到达检测**：计算当前位置到目标的距离，小于 `arrivalThreshold`（默认 0.15m）则停止
+4. **早期停止**：如果速度低于 `minSpeed`（默认 0.05m/s）且未到达目标，也停止——避免摩擦导致的"爬行"
+5. **停止动作**：零化 velocity、删除 moveTarget、设置 `movementMode='stopped'` 和 `stopReason`
+6. **2D/3D 距离模式**：`distanceMode: '2d' | '3d'`（默认 '3d'）。2D 模式忽略 y 轴，适合俯视/平台游戏（y 是高度）
+7. **安全上限**：`maxEntitiesPerTick`（默认 1000），防止超大世界性能问题
+8. **统计计数**：entitiesChecked、arrivalsStopped、earlyStops，支持 resetStats()
+
+### 设计决策
+
+1. **为什么是独立系统而不是放在 SoulActionSystem？** SoulActionSystem 不是 WorldSystem（没有 tick 方法），只在动作被调用时执行一次。到达检测需要每 tick 运行，必须是独立的 WorldSystem。
+2. **为什么用 state 存储 moveTarget 而不是实体字段？** moveTarget 是灵魂移动的临时状态，不是实体的固有属性。用 state Map 存储更灵活，不污染 Entity 接口。
+3. **为什么需要 2D 模式？** 发现的关键 bug：PhysicsSystem 默认重力 9.8m/s²，实体在 y 方向下落，导致到目标的 3D 距离远超阈值。2D 模式忽略 y 轴，适合平面移动场景。这也体现了"底层逻辑抽象"的设计原则——距离计算方式可配置。
+4. **为什么不发射到达事件？** 保持简单。未来如果需要通知其他系统（如 SoulPerceptionSystem 记录"到达目标"），可以添加 EntityArrivedEvent。
+
+### 调试过程中的关键发现
+
+**重力 bug**：首次集成测试失败，实体在 2 秒内未被停止。调试发现 PhysicsSystem 默认重力 9.8m/s²，30 tick 后 y 方向下落 1.2m，导致到目标的 3D 距离 = sqrt(0.007² + 1.2²) ≈ 1.2m，远超 0.2m 阈值。解决方案：①测试中设置 gravity=0；②为 MovementController 添加 2D 距离模式。
+
+### 新增单元测试（14个）
+
+1. 初始化默认配置
+2. 接受自定义配置
+3. 到达阈值内自动停止（零化速度、清除 moveTarget、设置 stopReason）
+4. 远离目标时不停止
+5. 速度低于 minSpeed 时早期停止
+6. enableEarlyStop=false 时不早期停止
+7. 无 moveTarget 的实体被忽略
+8. 多实体独立处理（一个到达、一个未到达）
+9. 与 PhysicsSystem 集成：实体移动并在目标处停止（gravity=0）
+10. 统计计数正确（entitiesChecked/arrivalsStopped/earlyStops）
+11. resetStats 清除计数
+12. disabled 时不处理
+13. **2D 距离模式忽略 y 差异**（y=10 但 x 距离 0.1，判定到达）
+14. **3D 距离模式包含 y 差异**（同上场景，判定未到达）
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**302/302 全绿**（从 288 增至 302，+14）
+- 物理移动端到端验证：2m/s 初始速度，gravity=0，约 31 tick（0.52s）后到达 x=1.0 并自动停止
+- 2D/3D 模式对比验证：相同场景下 2D 判定到达、3D 判定未到达
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界搭建、物体定义与交互）：物理移动的到达检测与精确停止，增强物理真实感
+- 需求6（底层逻辑抽象、强支持扩展）：距离计算模式可配置（2D/3D），早期停止可配置，阈值可配置
+- 需求10（性能优化）：maxEntitiesPerTick 安全上限，O(n) 线性扫描
+- 需求11（向现实世界逼近）：摩擦减速后的精确停止，接近真实物理行为
+
+### 后续可扩展方向（列入 backlog）
+
+1. **EntityArrivedEvent**：到达目标时发射事件，通知 SoulPerceptionSystem 记录、SoulBridgeAdapter 反馈给 SoulArena
+2. **加速/减速曲线**：当前是瞬间设置速度，可改为逐步加速到目标速度、接近目标时逐步减速（更自然）
+3. **路径规划**：当前是直线移动，可扩展为 A* 寻路避障
+4. **多灵魂路径冲突**：多个灵魂同时移动时的路径避让
+5. **障碍物对声学传播的遮挡**：当前 AcousticPropagation 不考虑遮挡（已列入多轮 backlog）
+6. **动作结果队列**：从"只存最后一个"扩展为最近 N 个结果（上一轮列入 backlog）
+7. **SoulArena 适配物理模式**：从"move 瞬间完成"改为"施加速度→等待到达→确认"的异步模式
+
