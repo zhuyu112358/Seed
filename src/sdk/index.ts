@@ -145,6 +145,15 @@ export type {
 export { isSerializable } from '../persistence/WorldSerializer.js';
 export { WorldSaveManager } from '../persistence/WorldSaveManager.js';
 export type { SaveMetadata, SaveManagerConfig } from '../persistence/WorldSaveManager.js';
+
+// --- Generation (M4) ---
+export { SeededRandom } from '../generation/SeededRandom.js';
+export { WorldGenerator } from '../generation/WorldGenerator.js';
+export type {
+  GenerationContext,
+  GenerationPlugin,
+  WorldGeneratorConfig,
+} from '../generation/WorldGenerator.js';
 export { ConsumptionSystem } from '../resource/ConsumptionSystem.js';
 export type { ConsumptionSystemConfig } from '../resource/ConsumptionSystem.js';
 export { CraftingSystem } from '../resource/CraftingSystem.js';

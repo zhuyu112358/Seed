@@ -4656,3 +4656,97 @@ M3完成，SDK v1.2.0发布后进入M4里程碑。M4方向待管理策略文档�
 - 测试文件：54个
 - SDK版本：v1.2.0（M3完成），M4目标v2.0.0
 
+
+
+---
+
+## 2026-09-06 M4阶段3：种子系统+程序化世界生成器（第61轮迭代）
+
+### 本轮完成
+
+#### 1. SeededRandom (`src/generation/SeededRandom.ts`)
+- 基于种子的确定性伪随机数生成器（mulberry32算法）
+- 相同种子始终产生相同序列，支持可复现的世界生成
+- 支持number和string种子（string用FNV-1a哈希）
+- **API**：
+  - `next()`：[0, 1)随机数
+  - `nextInt(min, max)`：[min, max]整数（含端点）
+  - `nextFloat(min, max)`：[min, max)浮点数
+  - `chance(p)`：概率p返回true
+  - `pick(arr)`：从数组随机选一个
+  - `sample(arr, n)`：无放回采样n个
+  - `shuffle(arr)`：Fisher-Yates洗牌（返回新数组）
+  - `getState()/setState()`：状态序列化/恢复
+  - `fork()`：创建独立子生成器
+
+#### 2. WorldGenerator (`src/generation/WorldGenerator.ts`)
+- 程序化世界生成器框架，插件式设计
+- **GenerationContext**：world/rng/seed/data（插件间共享数据Map）
+- **GenerationPlugin**：name + generate(ctx)接口，按注册顺序执行
+- **WorldGeneratorConfig**：seed/worldName/tickRate
+- **API**：
+  - `addPlugin(plugin)`：注册生成插件（链式调用，重复名抛异常）
+  - `removePlugin(name)`：移除插件
+  - `getPluginNames()`：获取插件名列表（按顺序）
+  - `generate(world?)`：生成世界（可传入现有世界填充）
+  - `generateWithData(world?)`：生成世界并返回共享data Map
+- 插件可通过ctx.data传递数据（如地形高度图→资源放置）
+- 相同seed+相同插件=相同世界（确定性）
+
+#### 3. generation模块 (`src/generation/index.ts`)
+- SeededRandom + WorldGenerator + 类型导出
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- 新增generation模块导出：SeededRandom/WorldGenerator + GenerationContext/GenerationPlugin/WorldGeneratorConfig
+
+#### 5. 测试
+- **seeded-random.test.ts**：15个测试
+  - 相同种子相同序列、不同种子不同序列、string种子确定性
+  - next/nextInt/nextFloat范围验证、nextInt min=max
+  - chance概率分布、chance(0)/chance(1)
+  - pick/sample/shuffle、空数组异常、sample超长度异常
+  - getState/setState恢复序列、fork独立子生成器
+- **world-generator.test.ts**：15个测试
+  - 默认/自定义配置、插件执行顺序
+  - 插件添加实体、插件间数据共享
+  - 相同种子确定性生成、不同种子不同结果
+  - 重复插件名异常、removePlugin、getPluginNames
+  - 填充现有世界、generateWithData、context包含seed
+
+### 架构抽象原则（用户强调）
+
+生成系统严格遵循抽象原则：
+- **无硬编码世界内容**：WorldGenerator不包含任何具体世界生成逻辑，全部由插件提供
+- **插件式架构**：应用层（SoulGame）注册自己的生成插件，Seed只负责协调
+- **数据共享**：插件通过ctx.data传递中间数据（地形→资源→实体），不硬编码依赖
+- **确定性**：基于seed的PRNG确保相同种子产生相同世界
+- **可组合**：插件按顺序执行，可自由组合不同生成策略
+
+### 验证结果
+
+- **单元测试**：693/693 全绿（663+30）
+- **构建**：0错误（主项目+SDK）
+- **GitHub**：0待推送（上轮已同步）
+
+### M4里程碑进度：50%
+
+- ✅ 阶段1：世界序列化系统（WorldSerializer）
+- ✅ 阶段2：世界存档/读档系统（WorldSaveManager）
+- ✅ 阶段3：种子系统+程序化世界生成器（SeededRandom+WorldGenerator）
+- ⬜ 阶段4：核心系统ISerializable实现（Harvest/Crafting/Consumption/Growth状态可存档）
+- ⬜ 阶段5：端到端验证+SDK v2.0.0发布
+
+### 下一轮计划
+
+1. HarvestSystem/CraftingSystem/ConsumptionSystem/GrowthSystem实现ISerializable接口
+2. 系统状态存档/读档端到端验证
+3. 程序化生成示例（演示插件式生成）
+4. 继续M4里程碑开发，准备SDK v2.0.0发布
+
+### 迭代统计
+
+- 总迭代轮数：61轮
+- 单元测试：693个（M4启动时636个，+57）
+- 测试文件：56个
+- SDK版本：v1.2.0（M3完成），M4目标v2.0.0
+
