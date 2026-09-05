@@ -545,3 +545,104 @@ Verdict: PASS - perceive -> decide -> act loop is fully operational.
 4. **多灵魂集成测试**：两个灵魂在同一世界中交互
 5. **世界事件与灵魂感知集成**：触发台风等事件，观察灵魂反应
 
+
+
+---
+
+## 2026-09-05 SoulActionSystem增强：6种move格式 + AcousticPropagation语音传播集成（第15轮迭代）
+
+### 本轮目标
+
+端到端集成测试已通过（第14轮），但发现两个改进点：
+1. SoulArena 可能发送多种格式的 move 动作（direction-only、targetPosition、speed等），SoulActionSystem 只支持 `{x,y,z}` 和 `{direction,distance}` 两种
+2. communicate（speak）动作只是简单记录，没有通过 AcousticPropagation 进行实际的声学传播计算
+
+### SoulActionSystem.move 增强（6种输入格式）
+
+`doMove` 方法现在支持以下所有格式：
+
+| 格式 | 参数 | 说明 |
+|------|------|------|
+| 绝对位置 | `{x, y, z}` | 移动到指定坐标（原有） |
+| 目标位置对象 | `{targetPosition: {x,y,z}}` | 移动到目标位置对象 |
+| 增量移动 | `{dx, dy, dz}` | 相对于当前位置移动 |
+| 方向+距离 | `{direction, distance}` | 沿方向移动指定距离（原有） |
+| 方向+速度 | `{direction, speed}` | 距离 = speed × defaultMoveDistance |
+| 仅方向 | `{direction}` | 使用 defaultMoveDistance（默认1m） |
+
+新增配置：
+- `defaultMoveDistance`：仅方向时的默认移动距离（默认1m）
+
+其他改进：
+- 零距离移动返回 success（不再报错）
+- 所有移动结果包含 `mode` 字段标识使用的格式
+- 灵魂 state 记录 `lastMoveMode`
+
+### AcousticPropagation 集成到 communicate 动作
+
+当 SoulActionSystem 配置了 `acoustic` 参数时，communicate（speak）动作会：
+
+1. 创建 Message 对象（content、sourceId、position、intensity）
+2. 遍历世界中所有活跃实体，用 `AcousticPropagation.intensityAt()` 计算每个实体位置的接收声强
+3. 只有接收声强 > 0 的实体才被加入 `heardBy` 列表
+4. 对每个听到的实体，在 SoulPerceptionSystem 中记录通信（带 receivedIntensity 元数据）
+5. ActionResult.data 包含：
+   - `heardBy`：听到消息的实体列表（id、name、distance、intensity）
+   - `heardCount`：听到的实体数量
+   - `intensity`：声源强度
+
+未配置 acoustic 时保持原有行为（legacy fallback），heardBy 为空数组。
+
+**修复的关键 bug**：`world.entities` 是 `Map<string, Entity>`，直接 `for...of` 遍历得到的是 `[key, value]` 对而非 Entity 对象。必须使用 `world.entities.values()` 遍历。
+
+### 集成测试增强
+
+`examples/integration-test.ts` 新增：
+- 启用 AcousticPropagation（maxRadius=30, minAudible=0.02）
+- maxMoveDistance 提升到 10
+- 动作类型分布统计（从 actionSystem.getHistory() 提取）
+- 位置历史追踪（每5 tick 记录一次灵魂位置）
+- 报告中输出动作类型分布和位置历史
+
+**100 tick 集成测试结果（灵魂 Vex, wind）**：
+```
+Perceptions sent:  20 (0 failed)
+Actions received:  20
+Actions executed:  19 (0 failed)
+Action types:      custom × 19 (SoulArena生成expression/observe/gesture)
+Position:          (0,0,0) 全程未移动（平静环境下灵魂不移动是正常行为）
+Verdict: PASS
+```
+
+### 新增单元测试（7个）
+
+1. `moves with targetPosition parameter`
+2. `moves with direction only (default distance)`
+3. `moves with direction and speed`
+4. `moves with delta (dx, dy, dz)`
+5. `returns success with zero distance when target equals current`
+6. `communicate with acoustic propagation reports heardBy listeners`
+7. `communicate without acoustic config falls back to legacy behavior`
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**277/277 全绿**（从270增至277，+7）
+- 端到端集成测试：PASS（100 tick，20感知/20动作/19执行）
+- 声学传播：近距离实体（3m）能听到，远距离实体（40m）听不到
+
+### 需求覆盖
+
+- 需求5（物体定义与交互、对灵魂的影响和反馈）：语音通过声学传播影响附近灵魂的感知
+- 需求6（底层逻辑抽象、强支持扩展）：move 动作支持6种格式，communicate 支持可插拔的声学传播
+- 需求11（向现实世界逼近）：声学传播模拟真实世界的声音衰减
+
+### 后续可扩展方向（列入 backlog）
+
+1. **SoulActionSystem.move 物理集成**：当前是瞬间移动，应改为施加速度让 PhysicsSystem 处理平滑移动
+2. **多灵魂声学交互测试**：两个灵魂互相说话，验证语音传播和感知
+3. **障碍物对声学传播的影响**：当前 AcousticPropagation 只计算距离衰减，未考虑障碍物遮挡
+4. **网络通信介质**：除了 acoustic，还应支持 network（无视距离）和 resonance（基于世界反馈）介质
+5. **SoulArena 刺激测试**：给灵魂输入语音或威胁，观察是否触发 move/flee 动作
+6. **动作执行结果反馈给 SoulArena**：当前 SoulArena 不知道动作是否成功执行，应通过感知或回调反馈
+

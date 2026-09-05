@@ -22,6 +22,9 @@ import { Vector3 } from "../entity/Vector3.js";
 import type { GameObject } from "../entity/Entity.js";
 import type { ActionRequest, ActionResult } from "../types/index.js";
 import type { SoulPerceptionSystem } from "./SoulPerceptionSystem.js";
+import { AcousticPropagation } from "../communication/AcousticPropagation.js";
+import { Message } from "../communication/Message.js";
+import type { AcousticConfig } from "../communication/AcousticPropagation.js";
 
 export interface SoulActionConfig {
   /** Maximum move distance per action. Default 5. */
@@ -30,12 +33,18 @@ export interface SoulActionConfig {
   maxInteractDistance?: number;
   /** Maximum actions queued per soul. Default 10. */
   maxQueuePerSoul?: number;
+  /** Default move distance when only direction is given. Default 1. */
+  defaultMoveDistance?: number;
+  /** Acoustic propagation config for communicate (speak) actions. */
+  acoustic?: AcousticConfig;
 }
 
-const DEFAULT_CONFIG: Required<SoulActionConfig> = {
+const DEFAULT_CONFIG: Required<Omit<SoulActionConfig, 'acoustic'>> & { acoustic?: AcousticConfig } = {
   maxMoveDistance: 5,
   maxInteractDistance: 3,
   maxQueuePerSoul: 10,
+  defaultMoveDistance: 1,
+  acoustic: undefined,
 };
 
 export interface ActionHistoryEntry {
@@ -48,16 +57,20 @@ export class SoulActionSystem implements WorldSystem {
   readonly name = "soul-action";
   enabled = true;
 
-  private readonly config: Required<SoulActionConfig>;
+  private readonly config: Required<Omit<SoulActionConfig, 'acoustic'>> & { acoustic?: AcousticConfig };
   private readonly queue: ActionRequest[] = [];
   private readonly history: ActionHistoryEntry[] = [];
   private perception: SoulPerceptionSystem | null = null;
   private interaction: unknown = null;
+  private acoustic: AcousticPropagation | null = null;
   private actionsExecuted = 0;
   private actionsFailed = 0;
 
   constructor(config?: SoulActionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    if (this.config.acoustic) {
+      this.acoustic = new AcousticPropagation(this.config.acoustic);
+    }
   }
 
   /** Execute an action immediately (synchronous). */
@@ -146,31 +159,80 @@ export class SoulActionSystem implements WorldSystem {
     let targetX = soul.position.x;
     let targetY = soul.position.y;
     let targetZ = soul.position.z;
+    let mode = "unknown";
 
+    // Format 1: absolute {x, y, z}
     if (p.x !== undefined && p.y !== undefined) {
       targetX = Number(p.x);
       targetY = Number(p.y);
       if (p.z !== undefined) targetZ = Number(p.z);
-    } else if (p.direction && p.distance) {
+      mode = "absolute";
+    }
+    // Format 2: targetPosition: {x, y, z}
+    else if (p.targetPosition && typeof p.targetPosition === "object") {
+      const tp = p.targetPosition as { x?: number; y?: number; z?: number };
+      if (tp.x !== undefined) targetX = Number(tp.x);
+      if (tp.y !== undefined) targetY = Number(tp.y);
+      if (tp.z !== undefined) targetZ = Number(tp.z);
+      mode = "targetPosition";
+    }
+    // Format 3: delta {dx, dy, dz}
+    else if (p.dx !== undefined || p.dy !== undefined || p.dz !== undefined) {
+      targetX += Number(p.dx ?? 0);
+      targetY += Number(p.dy ?? 0);
+      targetZ += Number(p.dz ?? 0);
+      mode = "delta";
+    }
+    // Format 4: direction + distance
+    else if (p.direction && p.distance !== undefined) {
       const dir = p.direction as { x: number; y: number; z: number };
       const dist = Number(p.distance);
       targetX += dir.x * dist;
       targetY += dir.y * dist;
-      targetZ += dir.z * dist;
+      targetZ += (dir.z ?? 0) * dist;
+      mode = "direction+distance";
+    }
+    // Format 5: direction + speed (distance = speed * defaultMoveDistance)
+    else if (p.direction && p.speed !== undefined) {
+      const dir = p.direction as { x: number; y: number; z: number };
+      const speed = Number(p.speed);
+      const dist = speed * this.config.defaultMoveDistance;
+      targetX += dir.x * dist;
+      targetY += dir.y * dist;
+      targetZ += (dir.z ?? 0) * dist;
+      mode = "direction+speed";
+    }
+    // Format 6: direction only (use defaultMoveDistance)
+    else if (p.direction) {
+      const dir = p.direction as { x: number; y: number; z: number };
+      const dist = this.config.defaultMoveDistance;
+      targetX += dir.x * dist;
+      targetY += dir.y * dist;
+      targetZ += (dir.z ?? 0) * dist;
+      mode = "direction-only";
     } else {
-      return this.fail(request, "move requires {x,y,z} or {direction,distance}");
+      return this.fail(request, "move requires {x,y,z}, {targetPosition}, {dx,dy,dz}, or {direction[,distance|speed]}");
     }
 
     const dist = soul.position.distance({ x: targetX, y: targetY, z: targetZ });
     if (dist > this.config.maxMoveDistance) {
-      return this.fail(request, `move distance ${dist.toFixed(2)} exceeds max ${this.config.maxMoveDistance}`);
+      return this.fail(request, `move distance ${dist.toFixed(2)} exceeds max ${this.config.maxMoveDistance} (mode=${mode})`);
+    }
+    if (dist === 0) {
+      return this.success(request, "no movement (target equals current position)", {
+        position: { x: targetX, y: targetY, z: targetZ },
+        distance: 0,
+        mode,
+      });
     }
 
     soul.position = new Vector3(targetX, targetY, targetZ);
     soul.state.set("lastMoveAt", Date.now());
-    return this.success(request, `moved to (${targetX.toFixed(1)}, ${targetY.toFixed(1)}, ${targetZ.toFixed(1)})`, {
+    soul.state.set("lastMoveMode", mode);
+    return this.success(request, `moved to (${targetX.toFixed(1)}, ${targetY.toFixed(1)}, ${targetZ.toFixed(1)}) [${mode}]`, {
       position: { x: targetX, y: targetY, z: targetZ },
       distance: Math.round(dist * 100) / 100,
+      mode,
     });
   }
 
@@ -220,28 +282,78 @@ export class SoulActionSystem implements WorldSystem {
     });
   }
 
-  private doCommunicate(request: ActionRequest, soul: GameObject, _world: World): ActionResult {
+  private doCommunicate(request: ActionRequest, soul: GameObject, world: World): ActionResult {
     const content = String(request.parameters.content ?? "");
     if (!content) return this.fail(request, "communicate requires content");
     const medium = String(request.parameters.medium ?? "acoustic");
+    const intensity = Number(request.parameters.volume ?? request.parameters.intensity ?? 1);
 
-    // Record in perception system so nearby souls can hear it.
-    if (this.perception) {
-      this.perception.recordCommunication({
-        id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        senderId: request.soulId,
-        senderType: "soul",
-        medium: medium as never,
+    const heardBy: Array<{ id: string; name: string; distance: number; intensity: number }> = [];
+
+    // If acoustic propagation is configured and medium is acoustic, compute which
+    // entities actually hear the message with distance attenuation.
+    if (this.acoustic && medium === "acoustic") {
+      const message = new Message({
         content,
-        metadata: { soulName: soul.name },
-        position: { x: soul.position.x, y: soul.position.y, z: soul.position.z }, timestamp: Date.now(), priority: 0, ttl: 30000 });
+        sourceId: request.soulId,
+        position: { x: soul.position.x, y: soul.position.y, z: soul.position.z },
+        medium: "acoustic",
+        intensity,
+      });
+      for (const e of world.entities.values()) {
+        if (e.id === soul.id || !e.active) continue;
+        const d = soul.position.distance(e.position);
+        const receivedIntensity = this.acoustic.intensityAt(intensity, d);
+        if (receivedIntensity <= 0) continue;
+        heardBy.push({
+          id: e.id,
+          name: e.name,
+          distance: Math.round(d * 100) / 100,
+          intensity: Math.round(receivedIntensity * 1000) / 1000,
+        });
+        // Record in perception system so nearby souls can perceive it.
+        if (this.perception) {
+          this.perception.recordCommunication({
+            id: message.id,
+            senderId: request.soulId,
+            senderType: "soul",
+            medium: "acoustic" as never,
+            content,
+            metadata: { soulName: soul.name, receivedIntensity },
+            position: { x: e.position.x, y: e.position.y, z: e.position.z },
+            timestamp: Date.now(),
+            priority: 0,
+            ttl: 30000,
+          });
+        }
+      }
+    } else {
+      // Fallback: record without acoustic propagation (legacy behavior).
+      if (this.perception) {
+        this.perception.recordCommunication({
+          id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          senderId: request.soulId,
+          senderType: "soul",
+          medium: medium as never,
+          content,
+          metadata: { soulName: soul.name },
+          position: { x: soul.position.x, y: soul.position.y, z: soul.position.z },
+          timestamp: Date.now(),
+          priority: 0,
+          ttl: 30000,
+        });
+      }
     }
 
     soul.state.set("lastSpokeAt", Date.now());
+    soul.state.set("lastSpokeContent", content);
     return this.success(request, `${soul.name} says: ${content}`, {
       content,
       medium,
+      intensity,
       position: { x: soul.position.x, y: soul.position.y, z: soul.position.z },
+      heardBy,
+      heardCount: heardBy.length,
     });
   }
 

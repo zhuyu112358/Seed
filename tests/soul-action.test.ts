@@ -268,4 +268,115 @@ describe("SoulActionSystem", () => {
     action.executeAction({ soulId: "vex", action: "interact", targetId: "door1", parameters: {}, timestamp: Date.now() }, world);
     assert.equal(emitted.length, 1);
   });
+
+  // --- Enhanced move format tests ---
+
+  it("moves with targetPosition parameter", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { targetPosition: { x: 2, y: 0, z: 1 } }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal((result.data as { mode: string }).mode, "targetPosition");
+    const soul = world.getEntity("soul_vex")!;
+    assert.equal(soul.position.x, 2);
+    assert.equal(soul.position.z, 1);
+  });
+
+  it("moves with direction only (default distance)", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { direction: { x: 1, y: 0, z: 0 } }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal((result.data as { mode: string }).mode, "direction-only");
+    const soul = world.getEntity("soul_vex")!;
+    assert.equal(soul.position.x, 1); // defaultMoveDistance = 1
+  });
+
+  it("moves with direction and speed", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { direction: { x: 0, y: 0, z: 1 }, speed: 3 }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal((result.data as { mode: string }).mode, "direction+speed");
+    const soul = world.getEntity("soul_vex")!;
+    assert.equal(soul.position.z, 3); // speed * defaultMoveDistance = 3 * 1
+  });
+
+  it("moves with delta (dx, dy, dz)", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 1, 1, 1));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { dx: 2, dy: 0, dz: -1 }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal((result.data as { mode: string }).mode, "delta");
+    const soul = world.getEntity("soul_vex")!;
+    assert.equal(soul.position.x, 3); // 1 + 2
+    assert.equal(soul.position.z, 0); // 1 - 1
+  });
+
+  it("returns success with zero distance when target equals current", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 5, 0, 5));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 5, y: 0, z: 5 }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal((result.data as { distance: number }).distance, 0);
+  });
+
+  // --- Acoustic propagation communicate tests ---
+
+  it("communicate with acoustic propagation reports heardBy listeners", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const perception = new SoulPerceptionSystem();
+    const action = new SoulActionSystem({
+      acoustic: { maxRadius: 50, minAudible: 0.01 },
+    });
+    world.addSystem(perception);
+    world.addSystem(action);
+
+    world.addEntity(makeSoul("speaker", 0, 0, 0));
+    world.addEntity(makeSoul("listener1", 3, 0, 0)); // close, should hear
+    world.addEntity(makeSoul("listener2", 40, 0, 0)); // far, may not hear
+
+    const result = action.executeAction({
+      soulId: "speaker", action: "communicate",
+      parameters: { content: "Hello world", medium: "acoustic", volume: 1 },
+      timestamp: Date.now(),
+    }, world);
+
+    assert.equal(result.success, true);
+    const heardBy = (result.data as { heardBy: Array<{ id: string; name: string; distance: number; intensity: number }> }).heardBy;
+    assert.ok(Array.isArray(heardBy));
+    // listener1 at 3m should definitely hear.
+    const heardListener1 = heardBy.find(h => h.id === "soul_listener1");
+    assert.ok(heardListener1, "listener1 should hear the message");
+    assert.ok(heardListener1.intensity > 0);
+    assert.ok(heardListener1.distance > 0);
+  });
+
+  it("communicate without acoustic config falls back to legacy behavior", () => {
+    const { world, action, perception } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "communicate",
+      parameters: { content: "test message" }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal((result.data as { content: string }).content, "test message");
+    // heardBy should be empty array when acoustic not configured.
+    assert.deepEqual((result.data as { heardBy: unknown[] }).heardBy, []);
+  });
 });

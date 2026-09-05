@@ -70,7 +70,10 @@ async function main(): Promise<void> {
   const world = new World({ name: "integration-test", tickRate: 60 });
   const weather = new WeatherSimulator({ initialTemperature: 22, initialWindSpeed: 3 });
   const perception = new SoulPerceptionSystem({ viewDistance: 25, sensoryRange: 15 });
-  const actionSystem = new SoulActionSystem();
+  const actionSystem = new SoulActionSystem({
+    maxMoveDistance: 10,
+    acoustic: { maxRadius: 30, minAudible: 0.02 },
+  });
   const bridge = new SoulBridgeAdapter({
     soulArenaUrl: SOUL_ARENA_URL,
     perceiveIntervalTicks: 5,
@@ -133,10 +136,17 @@ async function main(): Promise<void> {
   let actionsReceived = 0;
   let actionsExecuted = 0;
   let actionsFailed = 0;
+  const actionTypeCounts = new Map<string, number>();
+  const positionHistory: Array<{ tick: number; x: number; y: number; z: number }> = [];
   const sampleFrames: Array<{ tick: number; visibleCount: number; temp: number; light: number }> = [];
 
   for (let i = 0; i < argTicks; i++) {
     world.step(dt);
+
+    // Track position every 5 ticks.
+    if (i % 5 === 0) {
+      positionHistory.push({ tick: i, x: soulEntity.position.x, y: soulEntity.position.y, z: soulEntity.position.z });
+    }
 
     // Sample perception every 10 ticks.
     if (i % 10 === 0) {
@@ -155,6 +165,12 @@ async function main(): Promise<void> {
     if (i % 5 === 0) {
       await new Promise((r) => setTimeout(r, 50));
     }
+  }
+
+  // Collect action type distribution from history.
+  for (const entry of actionSystem.getHistory(soul.id)) {
+    const type = entry.request.action;
+    actionTypeCounts.set(type, (actionTypeCounts.get(type) ?? 0) + 1);
   }
 
   // Wait a bit for any in-flight perceptions/actions.
@@ -199,6 +215,20 @@ async function main(): Promise<void> {
   console.log("\n--- Sampled Perception Frames ---");
   for (const s of sampleFrames) {
     console.log(`  Tick ${s.tick.toString().padStart(3)}: visible=${s.visibleCount}, temp=${s.temp.toFixed(1)}C, light=${(s.light * 100).toFixed(0)}%`);
+  }
+
+  console.log("\n--- Position History ---");
+  for (const p of positionHistory) {
+    console.log(`  Tick ${p.tick.toString().padStart(3)}: (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`);
+  }
+
+  console.log("\n--- Action Type Distribution ---");
+  if (actionTypeCounts.size === 0) {
+    console.log("  (no actions recorded)");
+  } else {
+    for (const [type, count] of actionTypeCounts) {
+      console.log(`  ${type.padEnd(15)}: ${count}`);
+    }
   }
 
   // 12. Verdict.
