@@ -167,4 +167,41 @@ describe("WorldEventSystem", () => {
     assert.ok(frame!.events.length >= 1);
     assert.ok(frame!.events.some(e => e.name === "Wind Gust"));
   });
+
+  it("emits world.event.start and world.event.end as Event instances with payload", () => {
+    const s = new WorldEventSystem();
+    const weather = new WeatherSimulator({ initialWindSpeed: 15 });
+    const clock = new WorldClock();
+    s.bindSystems(weather, clock);
+    // Short duration event so it ends within a few ticks.
+    const shortEvent = { ...WIND_GUST_EVENT, id: "short-gust", minDuration: 1, maxDuration: 1, cooldown: 1000 };
+    s.registerDefinition(shortEvent);
+    const world = new World({ name: "test", tickRate: 60 });
+    const events = new EventSystem();
+    const startEvents: unknown[] = [];
+    const endEvents: unknown[] = [];
+    events.on("world.event.start", (e) => { startEvents.push(e); });
+    events.on("world.event.end", (e) => { endEvents.push(e); });
+
+    // Trigger event.
+    s.tick(1, world, events);
+    assert.equal(s.getActiveEvents().length, 1);
+    assert.equal(startEvents.length, 1);
+    const startEvt = startEvents[0] as { type: string; payload: { eventId: string; name: string; severity: string; duration: number }; isCancelled: () => boolean };
+    assert.equal(startEvt.type, "world.event.start");
+    assert.ok(startEvt.payload.eventId.startsWith("short-gust-"));
+    assert.equal(startEvt.payload.name, "Wind Gust");
+    assert.equal(typeof startEvt.isCancelled, "function");
+
+    // Advance world time past event duration (endTime = 0 + 1 = 1).
+    world.worldTime = 5;
+    s.tick(1, world, events);
+    assert.equal(s.getActiveEvents().length, 0);
+    assert.equal(endEvents.length, 1);
+    const endEvt = endEvents[0] as { type: string; payload: { eventId: string; name: string; tickCount: number; effectsApplied: number }; isCancelled: () => boolean };
+    assert.equal(endEvt.type, "world.event.end");
+    assert.ok(endEvt.payload.eventId.startsWith("short-gust-"));
+    assert.equal(typeof endEvt.payload.tickCount, "number");
+    assert.equal(typeof endEvt.isCancelled, "function");
+  });
 });

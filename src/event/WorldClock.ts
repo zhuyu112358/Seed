@@ -1,6 +1,7 @@
 ﻿import type { WorldSystem } from "../engine/World.js";
 import type { EventSystem } from "../event/EventSystem.js";
 import type { World } from "../engine/World.js";
+import { Event } from "./Event.js";
 
 /** Configuration for the world clock / day-night cycle. */
 export interface ClockConfig {
@@ -60,12 +61,11 @@ export class WorldClock implements WorldSystem {
     const phase = this.getPhase();
     if (phase !== this.lastPhase) {
       this.lastPhase = phase;
-      events.emit({
-        id: "clock-phase-" + Date.now(),
+      events.emit(new Event({
         type: "clock.phaseChange",
-        timestamp: Date.now(),
-        data: { phase, timeOfDay: this.timeOfDay, lightLevel: this.getLightLevel() },
-      } as never);
+        payload: { phase, timeOfDay: this.timeOfDay, lightLevel: this.getLightLevel() },
+        sourceId: "clock",
+      }));
     }
   }
 

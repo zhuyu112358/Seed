@@ -65,4 +65,26 @@ describe("WorldClock", () => {
     c.tick(10, world, events);
     assert.equal(c.getTimeOfDay(), 0);
   });
+
+  it("emits clock.phaseChange as Event instance with payload on phase transition", () => {
+    // Start at night (0.0 = midnight), tick enough to cross into dawn (0.2)
+    const c = new WorldClock({ startTime: 0.19, dayLengthSeconds: 100 });
+    const world = new World({ name: "test", tickRate: 60 });
+    const events = new EventSystem();
+    const emitted: unknown[] = [];
+    events.on("clock.phaseChange", (e) => { emitted.push(e); });
+
+    assert.equal(c.getPhase(), "night");
+    // Tick 2 seconds -> timeOfDay advances by 2/100 = 0.02 -> 0.21 = dawn
+    c.tick(2, world, events);
+
+    assert.equal(emitted.length, 1);
+    const evt = emitted[0] as { type: string; payload: { phase: string; timeOfDay: number; lightLevel: number }; isCancelled: () => boolean };
+    assert.equal(evt.type, "clock.phaseChange");
+    assert.equal(evt.payload.phase, "dawn");
+    assert.ok(typeof evt.payload.timeOfDay === "number");
+    assert.ok(typeof evt.payload.lightLevel === "number");
+    // Verify it is a real Event instance (has isCancelled method)
+    assert.equal(typeof evt.isCancelled, "function");
+  });
 });

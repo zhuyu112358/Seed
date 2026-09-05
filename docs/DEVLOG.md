@@ -259,3 +259,37 @@
 
 **需求覆盖：** 需求5（虚拟物理世界，物体定义与互相交互，对灵魂的影响和反馈）——灵魂交互从"只记录计数"升级为"实际状态机转换+事件发射"，物体状态变化可被灵魂感知系统捕获。
 
+
+
+---
+
+## 2026-09-05 事件总线系统性 Bug 修复（第10轮迭代）
+
+**可靠性修复（需求7）：** 修复了事件总线上的系统性 bug——多个模块在 `events.emit()` 时传入普通对象而非 `Event` 类实例，导致 EventSystem 在有监听器时抛出 `event.isCancelled is not a function` 运行时错误。此 bug 之前不可见，因为没有测试为这些事件注册监听器。
+
+**修复的模块：**
+
+1. **WorldClock.ts**（src/event/WorldClock.ts）
+   - `clock.phaseChange` 事件：普通对象 `{ id, type, timestamp, data }` → `new Event({ type, payload, sourceId })`
+   - payload: `{ phase, timeOfDay, lightLevel }`
+
+2. **WorldEventSystem.ts**（src/event/WorldEventSystem.ts）——3 处
+   - `world.event.start`：payload `{ eventId, name, severity, duration }`
+   - `world.event.end`：payload `{ eventId, name, tickCount, effectsApplied }`
+   - `emitEvent` 效果：payload `{ sourceEvent, ...effect.parameters }`
+
+**已修复的同类问题（上一轮）：**
+- InteractionSystem.ts：`interaction.state-change` 和 `interaction.use` 事件
+
+**测试：**
+- world-clock.test.ts 新增 1 个测试：验证 phaseChange 事件为 Event 实例，含正确 payload 和 isCancelled 方法
+- world-event-system.test.ts 新增 1 个测试：验证 world.event.start/end 为 Event 实例，含正确 payload
+- 完整测试套件 207/207 通过（上一轮 205，新增 2）
+
+**影响评估：**
+- 修复前：任何为 `clock.phaseChange`、`world.event.start`、`world.event.end`、`world.effect` 注册监听器的代码都会在事件触发时崩溃
+- 修复后：事件总线完全正常工作，监听器可安全接收 Event 实例
+- 这是 SoulPerceptionSystem 集成世界事件的前置条件（感知系统需要监听世界事件）
+
+**需求覆盖：** 需求7（可靠性，log/异常恢复）——修复运行时崩溃 bug，提升系统稳定性。
+

@@ -4,6 +4,7 @@ import type { World } from "../engine/World.js";
 import type { WeatherState } from "../types/index.js";
 import type { WeatherSimulator } from "./WeatherSimulator.js";
 import type { WorldClock } from "./WorldClock.js";
+import { Event } from "./Event.js";
 
 /** Condition that must be met for an event to trigger. */
 export interface EventCondition {
@@ -163,12 +164,11 @@ export class WorldEventSystem implements WorldSystem {
     };
     this.activeEvents.set(def.id, active);
     this.eventsTriggered++;
-    events.emit({
-      id: "world-event-start-" + active.id,
+    events.emit(new Event({
       type: "world.event.start",
-      timestamp: Date.now(),
-      data: { eventId: active.id, name: def.name, severity: def.severity, duration },
-    } as never);
+      payload: { eventId: active.id, name: def.name, severity: def.severity, duration },
+      sourceId: active.id,
+    }));
 
     // Notify SoulPerceptionSystem so nearby souls perceive the event.
     for (const sys of world.systems) {
@@ -186,12 +186,11 @@ export class WorldEventSystem implements WorldSystem {
     const def = this.definitions.get(active.definitionId);
     if (def) this.cooldowns.set(active.definitionId, active.endTime + def.cooldown);
     this.activeEvents.delete(id);
-    events.emit({
-      id: "world-event-end-" + active.id,
+    events.emit(new Event({
       type: "world.event.end",
-      timestamp: Date.now(),
-      data: { eventId: active.id, name: active.name, tickCount: active.tickCount, effectsApplied: active.effectsApplied },
-    } as never);
+      payload: { eventId: active.id, name: active.name, tickCount: active.tickCount, effectsApplied: active.effectsApplied },
+      sourceId: active.id,
+    }));
   }
 
   private applyEventEffects(active: ActiveWorldEvent, world: World, events: EventSystem, dt: number): void {
@@ -210,12 +209,11 @@ export class WorldEventSystem implements WorldSystem {
         }
         active.effectsApplied++;
       } else if (effect.type === "emitEvent") {
-        events.emit({
-          id: "event-effect-" + Date.now() + "-" + Math.random(),
-          type: effect.parameters.eventType as string ?? "world.effect",
-          timestamp: Date.now(),
-          data: { sourceEvent: active.id, ...effect.parameters },
-        } as never);
+        events.emit(new Event({
+          type: (effect.parameters.eventType as string) ?? "world.effect",
+          payload: { sourceEvent: active.id, ...effect.parameters },
+          sourceId: active.id,
+        }));
         active.effectsApplied++;
       } else if (effect.type === "modifyProperty") {
         const propKey = effect.parameters.property as string;
