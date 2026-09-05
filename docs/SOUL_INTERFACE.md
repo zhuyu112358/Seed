@@ -261,3 +261,97 @@ src/event/WorldEventSystem.ts 实现基于条件的世界事件触发与大规�
 - `bindSystems(weather, clock)` 绑定天气和时钟系统
 - `getActiveEvents()` / `getEventsTriggered()` / `getDefinitions()`
 - `tick(dt, world, events)` 每帧检查条件、触发事件、应用效果、结束过期事件
+
+
+## 10. SoulBridgeAdapter 桥接适配器（perceive→decide→act 闭环）
+
+src/bridge/SoulBridgeAdapter.ts 是 Seed 与 SoulArena 之间的**唯一桥接组件**，负责格式转换和 API 编排，打通感知→决策→动作完整循环。
+
+### 架构约束
+
+- SoulBridgeAdapter 是**唯一允许**做格式转换和 SoulArena API 调用编排的模块
+- 其他模块（SoulPerceptionSystem/SoulActionSystem）只处理标准化格式（PerceptionFrame/ActionRequest），不得直接调用 SoulArena API
+- 不得在 Seed 内核中实现灵魂认知/决策逻辑，决策完全由 SoulArena 负责
+
+### 工作流程
+
+```
+SoulPerceptionSystem          SoulBridgeAdapter              SoulArena
+     │                              │                            │
+     │  PerceptionFrame             │                            │
+     │─────────────────────────────>│                            │
+     │                              │  格式转换（situation文本）  │
+     │                              │───────────────────────────>│
+     │                              │  POST /api/soul/:id/perceive
+     │                              │                            │  认知决策
+     │                              │<───────────────────────────│
+     │                              │  actions[] (speak/move/...)│
+     │                              │  格式转换                   │
+     │  ActionRequest               │                            │
+     │<─────────────────────────────│                            │
+     │  executeAction()             │                            │
+```
+
+### 感知格式转换
+
+支持两种模式（通过 `enableSituationMode` 配置，默认 true）：
+
+1. **简化模式（推荐）**：从 PerceptionFrame 生成人类可读的 situation 文本，包含位置、天气、可见物体、附近灵魂、听到的声音、世界事件。SoulArena 直接使用该文本作为情境。
+2. **结构化模式**：转换为 SoulArena 原生格式（perception.visual/auditory/proprioception + events + worldState）。
+
+### 动作格式转换
+
+SoulArena 动作 → Seed ActionRequest 映射：
+
+| SoulArena 动作 | Seed 动作 | 说明 |
+|---------------|----------|------|
+| speak | communicate | content → parameters.content, medium=acoustic |
+| expression | custom | expression/intensity 存入 parameters |
+| move | move | parameters 透传 |
+| attack | attack | targetId + parameters |
+| interact | interact | targetId + parameters |
+| use | use | targetId + parameters |
+| wait | wait | 总是成功 |
+| 其他 | custom | originalType 保留在 parameters |
+
+### 动作接收方式
+
+1. **API 返回**：perceive API 响应体中包含 `actions[]` 时自动解析并入队
+2. **Webhook 推送**：调用 `ingestAction(soulId, action)` 方法入队（供 HTTP 服务器接收 SoulArena 回调）
+3. 队列每 tick 处理，每灵魂上限 20 个（超出丢弃最旧）
+
+### API
+
+- `constructor(config?)`：配置 soulArenaUrl、perceiveIntervalTicks、enableSituationMode 等
+- `bindSystems(perception, actionSystem)`：手动绑定感知和动作系统
+- `tick(dt, world, events)`：WorldSystem 接口，自动按 name 懒加载感知/动作系统
+- `sendAllPerceptions()`：发送所有灵魂的感知到 SoulArena
+- `sendPerception(soulId, frame)`：发送单个灵魂感知
+- `ingestAction(soulId, action)`：接收 SoulArena 动作并入队
+- `getStats()`：获取统计（perceptionsSent/actionsReceived/actionsExecuted 等）
+- `clearQueue()`：清空动作队列
+
+### 使用示例
+
+```typescript
+import { SoulBridgeAdapter } from "./src/bridge/SoulBridgeAdapter.js";
+
+const bridge = new SoulBridgeAdapter({
+  soulArenaUrl: "http://localhost:3000",
+  perceiveIntervalTicks: 10,
+  enableSituationMode: true,
+});
+
+// 方式1：添加到 world，自动绑定感知和动作系统
+world.addSystem(bridge);
+
+// 方式2：手动绑定
+bridge.bindSystems(perceptionSystem, actionSystem);
+
+// Webhook 接收 SoulArena 动作回调
+app.post("/webhook/soul-action", (req, res) => {
+  bridge.ingestAction(req.body.soulId, req.body.action);
+  res.json({ status: "queued" });
+});
+```
+

@@ -157,3 +157,34 @@
 **文档：** ARCHITECTURE.md 新增 3.8 节「性能工具」，描述 ObjectPool 设计与适用场景。
 
 **需求覆盖：** 需求10（性能问题，参考大型游戏方案）——对象池是游戏引擎标准性能优化组件，可用于 Vector3 临时计算、粒子、投射物、临时实体等短生命周期对象。
+
+
+---
+
+## 2026-09-05 SoulBridgeAdapter 桥接适配器（第7轮迭代）
+
+**P0 核心瓶颈突破：** 创建 SoulBridgeAdapter，打通 perceive→decide→act 完整循环。
+
+**新增文件：**
+- `src/bridge/SoulBridgeAdapter.ts`：Seed 与 SoulArena 之间的唯一桥接组件
+
+**核心功能：**
+- 感知格式转换：支持简化模式（situation 文本，推荐）和结构化模式（SoulArena 原生格式）
+- 动作格式转换：speak→communicate、expression→custom、move/attack/interact/use/wait 映射，未知类型→custom（保留 originalType）
+- API 编排：定期（默认每10 tick）从 SoulPerceptionSystem 获取 PerceptionFrame，POST 到 SoulArena `/api/soul/:id/perceive`
+- 动作接收：支持 API 返回体中的 actions[] 自动解析，以及 `ingestAction()` 方法供 webhook 回调推送
+- 动作队列：每 tick 处理，每灵魂上限 20 个（超出丢弃最旧）
+- 懒加载绑定：作为 WorldSystem 添加到 world 后，自动按 name 查找 soul-perception 和 soul-action 系统
+- 完整统计：perceptionsSent/perceptionsFailed/actionsReceived/actionsExecuted/actionsFailed/actionsDropped/connectedSouls
+
+**架构约束遵守：**
+- SoulBridgeAdapter 是唯一允许做格式转换和 SoulArena API 调用的模块
+- SoulPerceptionSystem/SoulActionSystem 只处理标准化格式，不直接调用 SoulArena
+- 未在 Seed 内核中实现任何灵魂认知/决策逻辑
+
+**测试：** 新增 16 个单元测试（初始化、7种动作转换、统计追踪、队列溢出丢弃、situation文本生成、两种payload构建、clearQueue、懒加载绑定、无绑定安全），完整测试套件 177/177 通过。
+
+**文档：** SOUL_INTERFACE.md 新增第 10 节「SoulBridgeAdapter 桥接适配器」，包含架构约束、工作流程图、格式转换表、API 说明、使用示例。
+
+**需求覆盖：** 需求1（灵魂-世界接口约定）核心闭环打通——感知生成→SoulArena决策→动作执行完整链路。
+
