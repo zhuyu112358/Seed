@@ -4,6 +4,7 @@ import { SoulActionSystem } from "../src/entity/SoulActionSystem.js";
 import { SoulPerceptionSystem } from "../src/entity/SoulPerceptionSystem.js";
 import { InteractionSystem, createDoorDef, createToggleDef } from "../src/entity/InteractionSystem.js";
 import { WeatherSimulator } from "../src/event/WeatherSimulator.js";
+import { PhysicsSystem } from "../src/physics/PhysicsSystem.js";
 import { World } from "../src/engine/World.js";
 import { GameObject } from "../src/entity/Entity.js";
 
@@ -378,5 +379,128 @@ describe("SoulActionSystem", () => {
     assert.equal((result.data as { content: string }).content, "test message");
     // heardBy should be empty array when acoustic not configured.
     assert.deepEqual((result.data as { heardBy: unknown[] }).heardBy, []);
+  });
+
+  // --- Physics movement mode tests ---
+
+  it("physics movement mode sets velocity instead of teleporting", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const action = new SoulActionSystem({ movementMode: "physics", physicsMoveSpeed: 4 });
+    world.addSystem(action);
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 3, y: 0, z: 0 }, timestamp: Date.now(),
+    }, world);
+
+    assert.equal(result.success, true);
+    const soul = world.getEntity("soul_vex")!;
+    // Position should NOT have changed (physics mode applies velocity).
+    assert.equal(soul.position.x, 0);
+    // Velocity should be set toward +x at 4 m/s.
+    assert.equal(soul.velocity.x, 4);
+    assert.equal(soul.velocity.y, 0);
+    assert.equal(soul.velocity.z, 0);
+    assert.equal((result.data as { mode: string }).mode, "physics:absolute");
+    assert.equal((result.data as { speed: number }).speed, 4);
+  });
+
+  it("physics movement mode velocity direction is normalized", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const action = new SoulActionSystem({ movementMode: "physics", physicsMoveSpeed: 5 });
+    world.addSystem(action);
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+
+    action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 3, y: 4, z: 0 }, timestamp: Date.now(),
+    }, world);
+
+    const soul = world.getEntity("soul_vex")!;
+    // Direction (3,4,0) has length 5, normalized is (0.6, 0.8, 0).
+    // At speed 5, velocity should be (3, 4, 0).
+    assert.equal(Math.round(soul.velocity.x * 100) / 100, 3);
+    assert.equal(Math.round(soul.velocity.y * 100) / 100, 4);
+    assert.equal(soul.velocity.z, 0);
+  });
+
+  it("physics movement with PhysicsSystem actually moves soul over ticks", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const physics = new PhysicsSystem();
+    const action = new SoulActionSystem({ movementMode: "physics", physicsMoveSpeed: 6, maxMoveDistance: 20 });
+    world.addSystem(physics);
+    world.addSystem(action);
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+
+    // Apply velocity toward +x.
+    action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 10, y: 0, z: 0 }, timestamp: Date.now(),
+    }, world);
+
+    const soul = world.getEntity("soul_vex")!;
+    assert.equal(soul.velocity.x, 6);
+
+    // Step the world 30 ticks at 1/60 dt = 0.5 seconds.
+    // At 6 m/s, should move ~3m (minus friction).
+    for (let i = 0; i < 30; i++) {
+      world.step(1 / 60);
+    }
+
+    assert.ok(soul.position.x > 2, `soul should have moved >2m, got ${soul.position.x.toFixed(2)}m`);
+    assert.ok(soul.position.x < 4, `soul should not have moved >4m in 0.5s at 6m/s, got ${soul.position.x.toFixed(2)}m`);
+  });
+
+  it("stop action zeroes velocity", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const action = new SoulActionSystem({ movementMode: "physics", physicsMoveSpeed: 5 });
+    world.addSystem(action);
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+
+    // First apply velocity.
+    action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 5, y: 0, z: 0 }, timestamp: Date.now(),
+    }, world);
+    const soul = world.getEntity("soul_vex")!;
+    assert.equal(soul.velocity.x, 5);
+
+    // Then stop.
+    const result = action.executeAction({
+      soulId: "vex", action: "stop",
+      parameters: {}, timestamp: Date.now(),
+    }, world);
+
+    assert.equal(result.success, true);
+    assert.equal(soul.velocity.x, 0);
+    assert.equal(soul.velocity.y, 0);
+    assert.equal(soul.velocity.z, 0);
+    assert.equal((result.data as { previousSpeed: number }).previousSpeed, 5);
+  });
+
+  it("stop action when already stationary reports zero previous speed", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "stop",
+      parameters: {}, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal((result.data as { previousSpeed: number }).previousSpeed, 0);
+  });
+
+  it("instant movement mode remains default when config not specified", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 2, y: 0, z: 0 }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    const soul = world.getEntity("soul_vex")!;
+    // Default mode is instant: position changes immediately.
+    assert.equal(soul.position.x, 2);
+    assert.equal((result.data as { mode: string }).mode, "absolute");
   });
 });

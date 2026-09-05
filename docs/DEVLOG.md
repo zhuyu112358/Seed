@@ -646,3 +646,86 @@ Verdict: PASS
 5. **SoulArena 刺激测试**：给灵魂输入语音或威胁，观察是否触发 move/flee 动作
 6. **动作执行结果反馈给 SoulArena**：当前 SoulArena 不知道动作是否成功执行，应通过感知或回调反馈
 
+
+
+---
+
+## 2026-09-05 SoulActionSystem物理移动模式：瞬间传送→施加速度由PhysicsSystem平滑积分（第16轮迭代）
+
+### 本轮目标
+
+上一轮完成了 move 动作 6 种输入格式和 AcousticPropagation 语音传播集成。但灵魂移动仍然是**瞬间传送**（直接设置 position），这与"虚拟物理世界"的目标不符。本轮实现物理移动模式：move 动作不再瞬间传送，而是施加速度，由 PhysicsSystem 在后续 tick 中平滑积分移动（带摩擦和空气阻力衰减）。
+
+### 实现方案
+
+采用**向后兼容的双模式设计**，通过配置切换：
+
+```typescript
+interface SoulActionConfig {
+  movementMode?: "instant" | "physics";  // 默认 "instant"
+  physicsMoveSpeed?: number;                // 物理模式速度 m/s，默认 5
+}
+```
+
+**instant 模式（默认）**：保持原有行为，直接设置 position，瞬间传送到目标。
+
+**physics 模式**：
+1. 计算从当前位置到目标的方向向量（归一化）
+2. 设置 `soul.velocity = direction × physicsMoveSpeed`
+3. 不修改 position——实际移动由 PhysicsSystem 在后续 tick 中积分
+4. PhysicsSystem 的 SimplePhysics2D 后端每 tick 执行：
+   - 空气阻力：`vx *= (1 - airResistance × dt)`
+   - 地面摩擦：`vx *= (1 - friction × dt)`
+   - 位置更新：`position += velocity × dt`
+5. 灵魂 state 记录 `movementMode: "physics"` 和 `moveTarget` 目标坐标
+6. ActionResult.data 包含 velocity、speed、target、mode（`physics:xxx`）
+
+### 新增 stop 动作
+
+物理模式下灵魂会持续移动（直到摩擦衰减到零），需要一个停止动作：
+
+- `stop` 动作：零化 `soul.velocity`，清除 `moveTarget`，记录 `movementMode: "stopped"`
+- 返回 `previousSpeed` 字段，记录停止前的速度
+- 在 instant 模式下也可用（零化速度，虽然 instant 模式通常速度为零）
+
+ActionRequest.action 联合类型扩展：`'move' | 'interact' | 'communicate' | 'use' | 'attack' | 'wait' | 'stop' | 'custom'`
+
+### 设计决策
+
+1. **为什么不直接改成物理模式？** 向后兼容。现有集成测试和 SoulArena 期望 move 动作瞬间完成。物理模式作为 opt-in 配置，世界构建者可以选择。
+2. **为什么不在 SoulActionSystem 中做目标到达检测？** SoulActionSystem 不是 WorldSystem（没有 tick 方法），不应该每 tick 检查。目标到达可以由上层系统或 PhysicsSystem 扩展实现。
+3. **摩擦衰减会不会让灵魂到不了目标？** 会。默认 friction=0.1, airResistance=0.05，速度会指数衰减。对于近距离目标（<5m），5m/s 初始速度足够到达。远距离目标需要持续施加速度或提高 physicsMoveSpeed。这是真实物理的特性，不是 bug。
+
+### 新增单元测试（6个）
+
+1. `physics movement mode sets velocity instead of teleporting` — 验证物理模式不修改 position，只设置 velocity
+2. `physics movement mode velocity direction is normalized` — 验证方向向量归一化（(3,4,0)→(0.6,0.8,0)×speed）
+3. `physics movement with PhysicsSystem actually moves soul over ticks` — 端到端验证：施加速度后 step 30 tick，灵魂实际移动 2-4m
+4. `stop action zeroes velocity` — 验证 stop 零化速度并返回 previousSpeed
+5. `stop action when already stationary reports zero previous speed` — 静止时 stop 返回 previousSpeed=0
+6. `instant movement mode remains default when config not specified` — 验证默认仍是 instant 模式
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**283/283 全绿**（从 277 增至 283，+6）
+- 物理移动端到端验证：6m/s 初始速度，30 tick（0.5s）后移动 2-4m（摩擦衰减），符合预期
+- 向后兼容：所有原有测试通过，instant 模式行为不变
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界搭建、物体定义与交互）：灵魂移动从瞬间传送变为物理速度积分，更接近真实物理
+- 需求6（底层逻辑抽象、强支持扩展）：movementMode 双模式设计，可插拔切换
+- 需求10（性能优化，参考大型游戏方案）：物理模式避免了每 tick 重新计算目标位置，只设置一次速度，由 PhysicsSystem 统一积分
+- 需求11（向现实世界逼近）：摩擦、空气阻力、速度积分都是真实物理特性
+
+### 后续可扩展方向（列入 backlog）
+
+1. **目标到达自动停止**：新增 MovementController 系统，每 tick 检查灵魂是否到达 moveTarget，到达后自动零化速度
+2. **加速/减速曲线**：当前是瞬间设置速度，可改为逐步加速到目标速度（更自然）
+3. **碰撞响应**：物理模式下灵魂移动会与障碍物碰撞并反弹（SimplePhysics2D 已支持 AABB 碰撞），可测试验证
+4. **多灵魂物理交互**：多个灵魂同时物理移动，验证碰撞和分离
+5. **SoulArena 适配物理模式**：SoulArena 当前期望 move 瞬间完成，需要适配为"施加速度→等待到达→确认"的异步模式
+6. **动作执行结果反馈给 SoulArena**：SoulArena 不知道动作是否成功/失败，应通过感知或回调反馈（上一轮已列入 backlog，本轮仍未实现）
+7. **网络通信介质**：communicate 除了 acoustic，还应支持 network（无视距离）和 resonance 介质
+

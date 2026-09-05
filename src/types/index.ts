@@ -382,7 +382,7 @@ export interface PerceptionFrame {
 /** A soul's requested action. */
 export interface ActionRequest {
   soulId: string;
-  action: 'move' | 'interact' | 'communicate' | 'use' | 'attack' | 'wait' | 'custom';
+  action: 'move' | 'interact' | 'communicate' | 'use' | 'attack' | 'wait' | 'stop' | 'custom';
   targetId?: string;
   parameters: Record<string, unknown>;
   timestamp: number;

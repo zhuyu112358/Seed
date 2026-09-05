@@ -12,6 +12,7 @@
 //   use          - use a target entity (consume/activate)
 //   attack       - apply force/damage to a target
 //   wait         - no-op (soul chooses to wait)
+//   stop         - zero velocity (stops physics-based movement)
 //   custom       - extension point for world-specific actions
 //
 // Corresponds to SOUL_INTERFACE.md section 6.2 (ActionRequest / ActionResult).
@@ -37,6 +38,11 @@ export interface SoulActionConfig {
   defaultMoveDistance?: number;
   /** Acoustic propagation config for communicate (speak) actions. */
   acoustic?: AcousticConfig;
+  /** Movement mode: "instant" teleports immediately, "physics" applies velocity
+   *  and lets PhysicsSystem integrate smooth movement over ticks. Default "instant". */
+  movementMode?: "instant" | "physics";
+  /** Speed (m/s) applied to soul velocity in physics movement mode. Default 5. */
+  physicsMoveSpeed?: number;
 }
 
 const DEFAULT_CONFIG: Required<Omit<SoulActionConfig, 'acoustic'>> & { acoustic?: AcousticConfig } = {
@@ -45,6 +51,8 @@ const DEFAULT_CONFIG: Required<Omit<SoulActionConfig, 'acoustic'>> & { acoustic?
   maxQueuePerSoul: 10,
   defaultMoveDistance: 1,
   acoustic: undefined,
+  movementMode: "instant",
+  physicsMoveSpeed: 5,
 };
 
 export interface ActionHistoryEntry {
@@ -149,6 +157,7 @@ export class SoulActionSystem implements WorldSystem {
       case "use": return this.doUse(request, soul, world);
       case "attack": return this.doAttack(request, soul, world);
       case "wait": return this.success(request, "soul waits", {});
+      case "stop": return this.doStop(request, soul);
       case "custom": return this.doCustom(request, soul, world);
       default: return this.fail(request, `unknown action: ${request.action}`);
     }
@@ -226,13 +235,48 @@ export class SoulActionSystem implements WorldSystem {
       });
     }
 
-    soul.position = new Vector3(targetX, targetY, targetZ);
     soul.state.set("lastMoveAt", Date.now());
     soul.state.set("lastMoveMode", mode);
+
+    // Physics movement mode: apply velocity toward target instead of teleporting.
+    // PhysicsSystem integrates velocity over subsequent ticks with friction/damping.
+    if (this.config.movementMode === "physics") {
+      const dx = targetX - soul.position.x;
+      const dy = targetY - soul.position.y;
+      const dz = targetZ - soul.position.z;
+      const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+      const speed = this.config.physicsMoveSpeed;
+      soul.velocity = new Vector3((dx / len) * speed, (dy / len) * speed, (dz / len) * speed);
+      soul.state.set("movementMode", "physics");
+      soul.state.set("moveTarget", { x: targetX, y: targetY, z: targetZ });
+      return this.success(request, `velocity applied toward (${targetX.toFixed(1)}, ${targetY.toFixed(1)}, ${targetZ.toFixed(1)}) at ${speed}m/s [physics, ${mode}]`, {
+        position: { x: soul.position.x, y: soul.position.y, z: soul.position.z },
+        target: { x: targetX, y: targetY, z: targetZ },
+        velocity: { x: soul.velocity.x, y: soul.velocity.y, z: soul.velocity.z },
+        speed,
+        distance: Math.round(dist * 100) / 100,
+        mode: `physics:${mode}`,
+      });
+    }
+
+    // Instant movement mode (default): teleport directly to target.
+    soul.position = new Vector3(targetX, targetY, targetZ);
     return this.success(request, `moved to (${targetX.toFixed(1)}, ${targetY.toFixed(1)}, ${targetZ.toFixed(1)}) [${mode}]`, {
       position: { x: targetX, y: targetY, z: targetZ },
       distance: Math.round(dist * 100) / 100,
       mode,
+    });
+  }
+
+  /** Stop all movement by zeroing velocity. Useful in physics movement mode. */
+  private doStop(request: ActionRequest, soul: GameObject): ActionResult {
+    const prevSpeed = soul.velocity.length();
+    soul.velocity = new Vector3(0, 0, 0);
+    soul.state.set("movementMode", "stopped");
+    soul.state.delete("moveTarget");
+    return this.success(request, `stopped (previous speed ${prevSpeed.toFixed(2)}m/s)`, {
+      position: { x: soul.position.x, y: soul.position.y, z: soul.position.z },
+      previousSpeed: Math.round(prevSpeed * 100) / 100,
     });
   }
 
