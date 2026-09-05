@@ -28,6 +28,7 @@ export type { WorldSystem, WorldConfig } from '../engine/World.js';
 
 // --- Entity ---
 export { GameObject } from '../entity/Entity.js';
+export { CollisionLayer } from '../entity/Entity.js';
 export type { Entity } from '../entity/Entity.js';
 export { EntityFactory } from '../entity/EntityFactory.js';
 export { Vector3 } from '../entity/Vector3.js';

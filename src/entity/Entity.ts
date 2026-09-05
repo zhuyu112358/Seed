@@ -58,8 +58,8 @@ export class Entity {
     if (this.parent) {
       const idx = this.parent.children.indexOf(this);
       if (idx >= 0) this.parent.children.splice(idx, 1);
-      this.parent = null;
     }
+    this.parent = null;
   }
 
   /** BFS over the whole subtree rooted at this entity. */
@@ -91,6 +91,10 @@ export class GameObject extends Entity {
   public halfExtents: Vector3;
   public interactable: boolean;
   public hittable: boolean;
+  /** Bitmask of collision layers this entity belongs to. Default 0xFFFF (all layers). */
+  public collisionLayer: number;
+  /** Bitmask of collision layers this entity can collide with. Default 0xFFFF (everything). */
+  public collisionMask: number;
 
   constructor(opts: {
     id?: string;
@@ -103,6 +107,8 @@ export class GameObject extends Entity {
     halfExtents?: IVector3;
     interactable?: boolean;
     hittable?: boolean;
+    collisionLayer?: number;
+    collisionMask?: number;
   }) {
     super({
       ...opts,
@@ -111,6 +117,8 @@ export class GameObject extends Entity {
     this.halfExtents = Vector3.from(opts.halfExtents ?? { x: 0.5, y: 0.5, z: 0.5 });
     this.interactable = opts.interactable ?? false;
     this.hittable = opts.hittable ?? true;
+    this.collisionLayer = opts.collisionLayer ?? 0xFFFF;
+    this.collisionMask = opts.collisionMask ?? 0xFFFF;
   }
 
   /** Axis-aligned bounding box (min corner). */
@@ -122,4 +130,42 @@ export class GameObject extends Entity {
   aabbMax(): Vector3 {
     return this.position.add(this.halfExtents);
   }
+
+  /**
+   * Check if this entity can collide with another entity based on collision layers/masks.
+   * Two entities collide if each one's layer overlaps the other's mask.
+   * Returns true if (this.collisionLayer & other.collisionMask) and
+   * (other.collisionLayer & this.collisionMask) are both non-zero.
+   */
+  canCollideWith(other: GameObject): boolean {
+    return (this.collisionLayer & other.collisionMask) !== 0 &&
+           (other.collisionLayer & this.collisionMask) !== 0;
+  }
 }
+
+/**
+ * Standard collision layer constants for convenience.
+ * Use bitwise OR to combine layers: collisionLayer = Layer.PLAYER | Layer.ENEMY.
+ */
+export const CollisionLayer = {
+  /** Layer 0: default for all entities. */
+  DEFAULT: 1 << 0,
+  /** Layer 1: player characters / souls. */
+  PLAYER: 1 << 1,
+  /** Layer 2: enemy / hostile entities. */
+  ENEMY: 1 << 2,
+  /** Layer 3: static world geometry (walls, floors). */
+  WORLD: 1 << 3,
+  /** Layer 4: interactive objects (doors, switches, items). */
+  INTERACTABLE: 1 << 4,
+  /** Layer 5: projectiles / ranged attacks. */
+  PROJECTILE: 1 << 5,
+  /** Layer 6: trigger volumes (no physical response, only detection). */
+  TRIGGER: 1 << 6,
+  /** Layer 7: environmental hazards (fire, water, lava). */
+  HAZARD: 1 << 7,
+  /** All layers (0xFFFF). */
+  ALL: 0xFFFF,
+  /** No layers (0). */
+  NONE: 0,
+} as const;

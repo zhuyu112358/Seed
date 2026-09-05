@@ -160,6 +160,10 @@ export class CollisionSystem implements WorldSystem {
    * Returns true if a collision was detected and resolved.
    */
   private checkAndResolve(a: GameObject, b: GameObject, events: EventSystem): boolean {
+    // Collision layer/mask filter: skip if layers don't overlap.
+    // Default both to 0xFFFF so existing behavior is unchanged.
+    if (!a.canCollideWith(b)) return false;
+
     const aMin = a.aabbMin();
     const aMax = a.aabbMax();
     const bMin = b.aabbMin();

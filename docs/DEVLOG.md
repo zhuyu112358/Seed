@@ -2306,3 +2306,125 @@ SDK 专用构建配置：
 7. **碰撞层/掩码**
 8. **集成测试增加灵魂间通信触发场景**（主动注入说话刺激，验证跨灵魂感知）
 
+
+
+---
+
+## 2026-09-05 碰撞层/掩码系统（第37轮迭代）
+
+### 本轮目标
+
+实现碰撞层/掩码（Collision Layers/Masks）系统，提供比当前仅按 entity type 过滤更精细的碰撞控制。支持标准游戏引擎的层/掩码模式（如 Unity/Godot）。
+
+### 实现
+
+**1. GameObject 碰撞层属性（src/entity/Entity.ts）**
+
+- 新增 `collisionLayer: number` — 位掩码，表示实体属于哪些碰撞层（默认 0xFFFF，所有层）
+- 新增 `collisionMask: number` — 位掩码，表示实体能与哪些层碰撞（默认 0xFFFF，一切）
+- 构造函数新增 `collisionLayer` 和 `collisionMask` 可选参数
+- 新增 `canCollideWith(other: GameObject): boolean` 方法：双向检查层/掩码重叠
+  - 碰撞条件：`(this.collisionLayer & other.collisionMask) !== 0 && (other.collisionLayer & this.collisionMask) !== 0`
+  - 双向检查确保碰撞是相互的（A能看到B 且 B能看到A）
+
+**2. CollisionLayer 常量（src/entity/Entity.ts）**
+
+预定义标准碰撞层常量，方便使用：
+- `DEFAULT` (1<<0), `PLAYER` (1<<1), `ENEMY` (1<<2), `WORLD` (1<<3)
+- `INTERACTABLE` (1<<4), `PROJECTILE` (1<<5), `TRIGGER` (1<<6), `HAZARD` (1<<7)
+- `ALL` (0xFFFF), `NONE` (0)
+- 支持位运算组合：`collisionLayer = CollisionLayer.PLAYER | CollisionLayer.ENEMY`
+
+**3. CollisionSystem 集成（src/physics/CollisionSystem.ts）**
+
+- `checkAndResolve()` 方法开头增加碰撞层/掩码检查
+- 如果 `!a.canCollideWith(b)`，直接返回 false（跳过 AABB 检测和物理响应）
+- 层检查在 AABB 检测之前，性能开销极小（仅两次位运算）
+- 默认值 0xFFFF 确保向后兼容（现有实体行为不变）
+- 同时支持暴力和空间哈希两种宽相模式
+
+**4. SDK 导出（src/sdk/index.ts）**
+
+- 新增 `CollisionLayer` 导出
+
+### 测试
+
+**tests/collision-layers.test.ts（17 个新测试）**：
+
+- CollisionLayer 常量：8个标准层为不同位、可位运算组合
+- GameObject 默认值：collisionLayer/collisionMask 默认 0xFFFF
+- GameObject 自定义：接受自定义层/掩码
+- canCollideWith：
+  - 默认实体互相碰撞
+  - 层重叠双向时碰撞
+  - 单向掩码不匹配时不碰撞（A看不到B）
+  - 完全不同层时不碰撞
+  - 触发器检测玩家（单向检测场景）
+  - NONE 掩码时不碰撞
+- CollisionSystem 集成：
+  - 层不重叠时不解析碰撞（位置不变）
+  - 层重叠时正常解析碰撞（实体分离）
+  - 向后兼容：默认实体仍正常碰撞
+  - 投射物穿过玩家（玩家掩码不含投射物层）
+  - 空间哈希宽相 + 层过滤
+  - 三实体不同层交互（玩家-玩家不碰撞，玩家-敌人碰撞）
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- 单元测试：**461/461 全绿**（从 444 提升 17 个）
+  - 碰撞层测试：17/17
+  - 原有碰撞系统测试：19/19（无回归）
+  - 所有其他测试：无回归
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 使用示例
+
+```typescript
+// Player collides with enemies and world, but not other players.
+const player = new GameObject({
+  id: 'p1', name: 'Player', type: 'soul',
+  collisionLayer: CollisionLayer.PLAYER,
+  collisionMask: CollisionLayer.ENEMY | CollisionLayer.WORLD,
+});
+
+// Enemy collides with players and world, but not other enemies.
+const enemy = new GameObject({
+  id: 'e1', name: 'Enemy', type: 'dynamic',
+  collisionLayer: CollisionLayer.ENEMY,
+  collisionMask: CollisionLayer.PLAYER | CollisionLayer.WORLD,
+});
+
+// Projectile collides with enemies only.
+const projectile = new GameObject({
+  id: 'proj1', name: 'Fireball', type: 'dynamic',
+  collisionLayer: CollisionLayer.PROJECTILE,
+  collisionMask: CollisionLayer.ENEMY,
+});
+
+// Trigger volume detects players but has no physical response.
+const trigger = new GameObject({
+  id: 'trigger1', name: 'SpawnZone', type: 'trigger',
+  collisionLayer: CollisionLayer.TRIGGER,
+  collisionMask: CollisionLayer.PLAYER,
+});
+```
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界）：碰撞系统完善，支持精细的碰撞过滤
+- 需求6（底层逻辑抽象）：碰撞层/掩码是通用抽象，支持各类扩展（触发器、投射物、危险区域等）
+- 需求11（向现实逼近）：更真实的碰撞交互（玩家不互相碰撞、投射物只击中敌人等）
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**（配置 .npmignore，npm publish）
+2. **空间哈希性能基准测试**
+3. **动态障碍局部重规划**
+4. **声音衍射（绕射）**
+5. **连续碰撞检测（CCD）**
+6. **碰撞回调系统**（onCollisionEnter/onCollisionStay/onCollisionExit）
+7. **物理材质**（不同材质的摩擦/弹性系数）
+8. **集成测试增加灵魂间通信触发场景**
+
