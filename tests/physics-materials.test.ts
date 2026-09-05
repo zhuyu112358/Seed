@@ -146,7 +146,7 @@ describe('Physics materials', () => {
       assert.ok(a.velocity.x < 5, 'a should lose some speed due to bounce');
     });
 
-    it('frictionless material with restitution 0 applies no velocity response', () => {
+    it('frictionless material with restitution 0 has inelastic collision (no bounce, no friction)', () => {
       const world = new World({ tickRate: 60 });
       const collision = new CollisionSystem({ restitution: 0 });
       world.addSystem(collision);
@@ -157,10 +157,16 @@ describe('Physics materials', () => {
       world.addEntity(b);
       world.step(1 / 60);
 
-      // With restitution=0, velocity response is skipped entirely (by design).
-      // Positional correction still separates entities, but velocities are unchanged.
-      assert.equal(a.velocity.x, 5, 'a velocity should be unchanged with restitution 0');
-      assert.equal(b.velocity.x, 0, 'b velocity should be unchanged with restitution 0');
+      // With restitution=0: perfectly inelastic collision, normal impulse = relVel/2 = 2.5.
+      // a velocity = 5 - 2.5 = 2.5 (momentum transfer, no bounce).
+      // b velocity = 0 + 2.5 = 2.5.
+      // With friction=0: no tangential friction impulse.
+      assert.ok(Math.abs(a.velocity.x - 2.5) < 0.1,
+        `a should have inelastic collision velocity ~2.5, got ${a.velocity.x.toFixed(3)}`);
+      assert.ok(Math.abs(b.velocity.x - 2.5) < 0.1,
+        `b should receive momentum ~2.5, got ${b.velocity.x.toFixed(3)}`);
+      // No bounce: both move in same direction (a doesn't reverse).
+      assert.ok(a.velocity.x > 0, 'a should not bounce back with restitution 0');
     });
 
     it('default material behavior matches config when both are default', () => {

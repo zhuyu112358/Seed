@@ -2935,3 +2935,127 @@ const iceFloor = new GameObject({
 7. **物理材质密度/体积属性**（影响质量计算）
 8. **材质组合策略可配置**（当前固定取平均，可支持取最小/最大/乘积）
 
+
+
+---
+
+## 2026-09-05 碰撞摩擦冲量（Collision Friction Impulse）（第42轮迭代）
+
+### 本轮目标
+
+实现碰撞响应中的切向摩擦冲量（Tangential Friction Impulse）。上一轮定义了 PhysicsMaterial.friction 字段但未在碰撞响应中使用。本轮实现库仑摩擦模型，使不同材质的摩擦系数实际影响碰撞行为——高摩擦材质（如橡胶）在斜碰时显著减少切向滑动，低摩擦材质（如冰）几乎不影响切向速度。
+
+### 实现
+
+**1. CollisionSystem 速度响应重构（src/physics/CollisionSystem.ts）**
+
+**重要行为变更**：移除了 `if (combinedRestitution > 0)` 守卫。此前 restitution=0 时整个速度响应被跳过（无动量交换），这在物理上不正确。现在 restitution=0 表示完全非弹性碰撞——仍有法向冲量（动量交换），只是无反弹。法向冲量公式 `(1 + restitution) * relVelNormal / 2` 在 restitution=0 时为 `relVelNormal / 2`（非弹性碰撞动量传递）。
+
+**切向摩擦冲量（库仑摩擦模型）**：
+- 在法向冲量应用后，计算切向方向（法线在 x-z 平面的垂直方向）
+  - 法线 = (normalX, normalZ)，切线 = (-normalZ, normalX)
+- 计算应用法向冲量后的相对切向速度
+- 仅当存在相对切向运动时（|relVelTangent| > 1e-8）才应用摩擦
+- 摩擦冲量大小：`combinedFriction * |normalImpulse|`（库仑摩擦：摩擦力正比于正压力）
+- 摩擦冲量上限：不超过相对切向速度（防止摩擦反向）
+- 摩擦方向：与相对切向速度相反
+- 等量反向应用到两实体
+
+**组合材质**：使用 `combineMaterials(a, b)` 同时获取 restitution 和 friction，两材质取平均值。
+
+**2. 物理材质测试更新（tests/physics-materials.test.ts）**
+
+- "frictionless material with restitution 0" 测试更新：从"无速度响应"改为"非弹性碰撞（无反弹无摩擦）"
+  - restitution=0：法向冲量 = relVel/2 = 2.5，a.vx = 5-2.5 = 2.5，b.vx = 0+2.5 = 2.5
+  - friction=0：无切向摩擦冲量
+  - 两实体同向运动（a 不反向）
+
+**3. 新增碰撞摩擦测试（tests/collision-friction.test.ts，7 个测试）**：
+
+- 切向摩擦：
+  - 高摩擦比低摩擦更显著减少切向速度
+  - friction=0 时切向速度不变（法向速度仍因碰撞变化）
+  - 摩擦方向与相对切向运动相反
+  - 摩擦不反向切向方向（有上限）
+- 组合摩擦：
+  - 混合材质使用平均摩擦
+- 摩擦 vs 法向响应：
+  - 正碰无切向摩擦（无相对切向速度）
+  - 摩擦只影响切向分量，不影响法向反弹
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- 单元测试：**515/515 全绿**（从 508 提升 7 个）
+  - 碰撞摩擦测试：7/7
+  - 物理材质测试：14/14（1个测试更新以匹配新行为）
+  - 原有碰撞系统测试：19/19（无回归）
+  - 碰撞层测试：17/17（无回归）
+  - 碰撞回调测试：10/10（无回归）
+  - 触发器体积测试：12/12（无回归）
+  - 所有其他测试：无回归
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 行为变更说明
+
+**restitution=0 行为变更**：
+- 旧行为：restitution=0 时完全跳过速度响应（速度不变）
+- 新行为：restitution=0 时进行非弹性碰撞（动量交换，无反弹）
+- 影响：使用 restitution=0 的测试或配置，碰撞后速度会变化
+- 物理正确性：新行为符合物理定律（完全非弹性碰撞仍有动量交换）
+- 向后兼容：默认材质 restitution=0.2 不受影响；仅显式使用 restitution=0 的场景受影响
+
+### 使用示例
+
+```typescript
+import { PhysicsMaterials } from 'seed-system';
+
+// Create a world with collision system.
+const world = new World({ tickRate: 60 });
+world.addSystem(new CollisionSystem());
+
+// A rubber ball sliding diagonally into a rubber wall.
+const ball = new GameObject({
+  id: 'ball', name: 'Rubber Ball', type: 'dynamic',
+  position: { x: 0, y: 0, z: 0 },
+  halfExtents: { x: 0.3, y: 0.3, z: 0.3 },
+  mass: 1,
+  physicsMaterial: PhysicsMaterials.RUBBER, // high friction 0.8
+});
+ball.velocity = new Vector3(5, 0, 3); // diagonal motion
+
+const wall = new GameObject({
+  id: 'wall', name: 'Rubber Wall', type: 'static',
+  position: { x: 2, y: 0, z: 0 },
+  halfExtents: { x: 0.5, y: 2, z: 5 },
+  mass: 0,
+  physicsMaterial: PhysicsMaterials.RUBBER,
+});
+world.addEntity(ball);
+world.addEntity(wall);
+
+// On collision:
+// - Normal (x) response: ball bounces back (high restitution 0.9)
+// - Tangential (z) friction: ball's z velocity is significantly reduced
+//   (high friction 0.8 transfers tangential momentum to wall)
+world.step(1 / 60);
+```
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界）：物理系统完善，摩擦使碰撞行为更真实
+- 需求11（向现实世界逼近）：库仑摩擦模型接近真实物理
+- 灵魂交互：灵魂在不同材质地面上滑动/停止行为不同
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **空间哈希性能基准测试**
+3. **动态障碍局部重规划**
+4. **连续碰撞检测（CCD）**
+5. **SoulPerceptionSystem 集成碰撞/触发器生命周期事件**
+6. **滚动摩擦/旋转**（当前仅线速度，无角速度）
+7. **静摩擦 vs 动摩擦**（当前统一摩擦系数，可区分静/动）
+8. **各向异性摩擦**（不同方向摩擦系数不同，如传送带）
+

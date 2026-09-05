@@ -407,32 +407,77 @@ export class CollisionSystem implements WorldSystem {
       }
     }
 
-    // Apply velocity response (impulse-based reflection along collision normal).
+    // Apply velocity response (impulse-based reflection along collision normal
+    // plus tangential friction impulse).
     // Normal points from A to B. If A's relative velocity along normal > 0,
     // A is moving toward B and needs response.
-    // Use combined restitution from both entities' physics materials (averaged).
-    const combinedRestitution = combineMaterials(a.physicsMaterial, b.physicsMaterial).restitution;
-    if (combinedRestitution > 0) {
-      const relVelX = a.velocity.x - b.velocity.x;
-      const relVelZ = a.velocity.z - b.velocity.z;
-      const relVelAlongNormal = relVelX * normalX + relVelZ * normalZ;
+    // Use combined material properties from both entities (averaged).
+    const combinedMat = combineMaterials(a.physicsMaterial, b.physicsMaterial);
+    const relVelX = a.velocity.x - b.velocity.x;
+    const relVelZ = a.velocity.z - b.velocity.z;
+    const relVelAlongNormal = relVelX * normalX + relVelZ * normalZ;
 
-      // Only respond if A is moving toward B (relative velocity along normal > 0).
-      if (relVelAlongNormal > 0) {
-        const impulse = (1 + combinedRestitution) * relVelAlongNormal / 2;
-        if (a.type !== 'static' && a.mass > 0) {
-          a.velocity = new Vector3(
-            a.velocity.x - impulse * normalX,
-            a.velocity.y,
-            a.velocity.z - impulse * normalZ,
-          );
-        }
-        if (b.type !== 'static' && b.mass > 0) {
-          b.velocity = new Vector3(
-            b.velocity.x + impulse * normalX,
-            b.velocity.y,
-            b.velocity.z + impulse * normalZ,
-          );
+    // Only respond if A is moving toward B (relative velocity along normal > 0).
+    if (relVelAlongNormal > 0) {
+      // Normal impulse: (1 + restitution) * relative normal velocity / 2.
+      // With restitution=0 this is still non-zero (inelastic collision momentum transfer).
+      const normalImpulse = (1 + combinedMat.restitution) * relVelAlongNormal / 2;
+
+      // Apply normal impulse to both entities.
+      if (a.type !== 'static' && a.mass > 0) {
+        a.velocity = new Vector3(
+          a.velocity.x - normalImpulse * normalX,
+          a.velocity.y,
+          a.velocity.z - normalImpulse * normalZ,
+        );
+      }
+      if (b.type !== 'static' && b.mass > 0) {
+        b.velocity = new Vector3(
+          b.velocity.x + normalImpulse * normalX,
+          b.velocity.y,
+          b.velocity.z + normalImpulse * normalZ,
+        );
+      }
+
+      // Tangential friction impulse (Coulomb friction model).
+      // Friction opposes relative tangential motion, magnitude proportional to
+      // normal impulse and combined friction coefficient.
+      if (combinedMat.friction > 0) {
+        // Tangent direction is perpendicular to normal in the x-z plane.
+        const tangentX = -normalZ;
+        const tangentZ = normalX;
+
+        // Relative velocity along tangent (using post-normal-impulse velocities).
+        const postRelVelX = a.velocity.x - b.velocity.x;
+        const postRelVelZ = a.velocity.z - b.velocity.z;
+        const relVelAlongTangent = postRelVelX * tangentX + postRelVelZ * tangentZ;
+
+        // Only apply friction if there is relative tangential motion.
+        if (Math.abs(relVelAlongTangent) > 1e-8) {
+          // Coulomb friction: magnitude = friction_coefficient * |normal_impulse|.
+          // Cap at the tangential relative velocity so friction doesn't reverse direction.
+          const maxFrictionImpulse = combinedMat.friction * Math.abs(normalImpulse);
+          const frictionImpulse = Math.min(maxFrictionImpulse, Math.abs(relVelAlongTangent));
+
+          // Direction: opposite to relative tangential velocity.
+          const frictionDirX = -Math.sign(relVelAlongTangent) * tangentX;
+          const frictionDirZ = -Math.sign(relVelAlongTangent) * tangentZ;
+
+          // Apply friction impulse to both entities (equal and opposite).
+          if (a.type !== 'static' && a.mass > 0) {
+            a.velocity = new Vector3(
+              a.velocity.x + frictionImpulse * frictionDirX,
+              a.velocity.y,
+              a.velocity.z + frictionImpulse * frictionDirZ,
+            );
+          }
+          if (b.type !== 'static' && b.mass > 0) {
+            b.velocity = new Vector3(
+              b.velocity.x - frictionImpulse * frictionDirX,
+              b.velocity.y,
+              b.velocity.z - frictionImpulse * frictionDirZ,
+            );
+          }
         }
       }
     }
