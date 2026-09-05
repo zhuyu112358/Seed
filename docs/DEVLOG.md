@@ -2428,3 +2428,114 @@ const trigger = new GameObject({
 7. **物理材质**（不同材质的摩擦/弹性系数）
 8. **集成测试增加灵魂间通信触发场景**
 
+
+
+---
+
+## 2026-09-05 声音衍射（绕射）系统（第38轮迭代）
+
+### 本轮目标
+
+实现声音衍射（绕射）系统。当前 AcousticPropagation 只有简单的 AABB 遮挡（完全阻挡或通过），现实中声音会绕过障碍物边缘传播。这对灵魂间通信很重要——隔墙也能听到模糊的声音。
+
+### 实现
+
+**1. 配置扩展（src/communication/AcousticPropagation.ts）**
+
+AcousticConfig 新增三个可选参数：
+- `diffractionEnabled: boolean` — 是否启用衍射（默认 false，向后兼容）
+- `diffractionCoefficient: number` — 每弧度偏转的衍射损失系数（默认 0.3）
+- `maxDiffractionAngle: number` — 最大衍射角（弧度，超过则完全阻挡，默认 PI=180°）
+
+**2. 衍射路径计算（computeDiffraction 私有方法）**
+
+- 在俯视 x/z 平面计算障碍物 AABB 的四个角点
+- 对每个角点计算衍射路径长度 = dist(源, 角点) + dist(角点, 听者)
+- 选择最短路径的角点作为衍射点
+- 计算偏转角：deflectionAngle = PI - cornerAngle
+  - cornerAngle 是角点处 (源→角点) 和 (角点→听者) 两向量的夹角
+  - 源和听者在角点两侧（直线绕过）时 cornerAngle≈PI，deflection≈0
+  - 路径急转弯时 cornerAngle 减小，deflection 增大
+
+**3. 遮挡逻辑修改（intensityAtWithOcclusion）**
+
+当直接路径被遮挡时：
+- 衍射启用且偏转角 ≤ maxDiffractionAngle：
+  - 声音走衍射路径绕过角落，**不叠加穿墙衰减**
+  - 强度 *= (1 - diffractionLoss) * distanceFactor
+  - diffractionLoss = min(1, coefficient * deflectionAngle)
+  - distanceFactor = 1 / (1 + attenuation * extraDistance²)
+- 衍射禁用或偏转角过大：
+  - 标准遮挡衰减（声音穿墙泄漏）：强度 *= (1 - occlusionAttenuation)
+
+**4. 向后兼容**
+
+- diffractionEnabled 默认 false，现有行为完全不变
+- 所有新参数均可选，有默认值
+- 无遮挡时衍射无任何影响
+
+### 测试
+
+**tests/acoustic-diffraction.test.ts（11 个新测试）**：
+
+- 配置：默认禁用衍射（向后兼容）、接受衍射配置选项
+- 绕角传播：衍射启用时声音可绕过墙角到达听者、衍射衰减随偏转角增大、使用最近角点、超过最大衍射角时阻挡、高衍射系数更 muffled
+- 多遮挡物：衍射与多个遮挡物配合
+- 无遮挡：直接路径清晰时衍射无影响、遮挡物不阻挡直接路径时无影响
+- transmit 集成：衍射声音传递到墙角后的听者
+
+### 开发中发现的问题与修复
+
+1. **初始测试全部失败**：距离衰减 + 遮挡后强度低于 minAudible(0.05)，返回 0。修复：测试配置使用 minAudible=0.001、attenuation=0.01。
+2. **衍射后声音更弱**：初始模型同时应用遮挡衰减(0.85)和衍射损失，导致衍射总是比不衍射更差。修复：衍射路径绕过角落，不叠加穿墙衰减——衍射损失替代遮挡衰减。
+3. **偏转角计算错误**：初始用 cornerAngle（两向量夹角）作为偏转角，但绕角传播时 cornerAngle≈PI（180°），应是小偏转。修复：deflectionAngle = PI - cornerAngle。
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- 单元测试：**472/472 全绿**（从 461 提升 11 个）
+  - 衍射测试：11/11
+  - 原有声学测试：无回归
+  - 所有其他测试：无回归
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 使用示例
+
+```typescript
+// Enable diffraction — sound can bend around wall corners.
+const acoustic = new AcousticPropagation({
+  attenuation: 0.02,
+  absorption: 0.01,
+  maxRadius: 50,
+  minAudible: 0.05,
+  occlusionEnabled: true,
+  occlusionAttenuation: 0.85,
+  diffractionEnabled: true,        // Enable bending around corners
+  diffractionCoefficient: 0.3,     // Moderate muffling around corners
+  maxDiffractionAngle: Math.PI,    // Allow full 180-degree bending
+});
+
+// A soul behind a wall can still hear a faint, muffled voice
+// from around the corner, instead of complete silence.
+```
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界）：声学传播更真实，声音绕射
+- 需求6（底层逻辑抽象）：衍射是可插拔的通信策略扩展，通过配置启用
+- 需求11（向现实逼近）：声音衍射是现实世界物理现象，使虚拟世界更接近现实
+- 灵魂间通信：隔墙也能听到模糊声音，增强灵魂间交互的真实感
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **空间哈希性能基准测试**
+3. **动态障碍局部重规划**
+4. **连续碰撞检测（CCD）**
+5. **碰撞回调系统**（onCollisionEnter/Stay/Exit）
+6. **物理材质**（不同材质的摩擦/弹性系数）
+7. **声学频率相关衍射**（低频更容易绕射）
+8. **多次衍射**（声音绕过多个角落）
+9. **集成测试增加灵魂隔墙通信场景**
+

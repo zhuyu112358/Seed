@@ -34,6 +34,16 @@ export interface AcousticConfig {
    *  0 = no attenuation (sound passes through), 1 = full block (silence).
    *  Default 0.85 (sound is mostly blocked but a faint amount leaks through). */
   occlusionAttenuation?: number;
+  /** Enable diffraction (bending around occluder edges). When direct path is
+   *  blocked, sound can reach the listener via the nearest occluder corner with
+   *  additional attenuation. Default false (backward compatible). */
+  diffractionEnabled?: boolean;
+  /** Diffraction loss coefficient per radian of deflection angle.
+   *  Higher = more muffled sound around corners. Default 0.3. */
+  diffractionCoefficient?: number;
+  /** Maximum diffraction angle (radians) beyond which sound is fully blocked.
+   *  Default PI (180 degrees — sound can bend fully around). */
+  maxDiffractionAngle?: number;
 }
 
 export class AcousticPropagation implements CommunicationStrategy {
@@ -44,6 +54,9 @@ export class AcousticPropagation implements CommunicationStrategy {
   private readonly minAudible: number;
   private readonly occlusionEnabled: boolean;
   private readonly occlusionAttenuation: number;
+  private readonly diffractionEnabled: boolean;
+  private readonly diffractionCoefficient: number;
+  private readonly maxDiffractionAngle: number;
 
   constructor(cfg: AcousticConfig = {}) {
     this.attenuation = cfg.attenuation ?? 0.02;
@@ -52,6 +65,9 @@ export class AcousticPropagation implements CommunicationStrategy {
     this.minAudible = cfg.minAudible ?? 0.05;
     this.occlusionEnabled = cfg.occlusionEnabled ?? true;
     this.occlusionAttenuation = cfg.occlusionAttenuation ?? 0.85;
+    this.diffractionEnabled = cfg.diffractionEnabled ?? false;
+    this.diffractionCoefficient = cfg.diffractionCoefficient ?? 0.3;
+    this.maxDiffractionAngle = cfg.maxDiffractionAngle ?? Math.PI;
   }
 
   /** Public so tests can probe the attenuation curve without a world. */
@@ -98,13 +114,103 @@ export class AcousticPropagation implements CommunicationStrategy {
           distance,
           occluder,
         )) {
-          intensity *= (1 - this.occlusionAttenuation);
+          if (this.diffractionEnabled) {
+            // Direct path blocked — try diffraction around nearest corner.
+            const diff = this.computeDiffraction(source, listener, occluder);
+            if (diff && diff.deflectionAngle <= this.maxDiffractionAngle) {
+              // Diffraction path goes AROUND the occluder, not through it.
+              // Apply diffraction loss based on deflection angle + extra distance.
+              const diffractionLoss = Math.min(1, this.diffractionCoefficient * diff.deflectionAngle);
+              const extraDistance = diff.pathLength - distance;
+              const distanceFactor = 1 / (1 + this.attenuation * extraDistance * extraDistance);
+              intensity *= (1 - diffractionLoss) * distanceFactor;
+            } else {
+              // Diffraction not possible — sound leaks through the occluder.
+              intensity *= (1 - this.occlusionAttenuation);
+            }
+          } else {
+            // Diffraction disabled — standard occlusion (sound leaks through).
+            intensity *= (1 - this.occlusionAttenuation);
+          }
           if (intensity <= this.minAudible) return 0;
         }
       }
     }
 
     return intensity;
+  }
+
+  /**
+   * Compute the shortest diffraction path around an occluder's corners.
+   * Works in the top-down x/z plane (y is height, ignored for corner calculation).
+   *
+   * @param source Sound source position.
+   * @param listener Listener position.
+   * @param occluder The blocking entity.
+   * @returns Diffraction path info (corner, pathLength, deflectionAngle) or null.
+   */
+  private computeDiffraction(
+    source: { x: number; y: number; z: number },
+    listener: { x: number; y: number; z: number },
+    occluder: GameObject,
+  ): { cornerX: number; cornerZ: number; pathLength: number; deflectionAngle: number } | null {
+    const hx = occluder.halfExtents.x;
+    const hz = occluder.halfExtents.z;
+    const cx = occluder.position.x;
+    const cz = occluder.position.z;
+
+    // Four corners of the AABB in top-down x/z plane.
+    const corners = [
+      { x: cx - hx, z: cz - hz },
+      { x: cx + hx, z: cz - hz },
+      { x: cx - hx, z: cz + hz },
+      { x: cx + hx, z: cz + hz },
+    ];
+
+    let bestPath = Infinity;
+    let bestCorner = corners[0];
+
+    for (const corner of corners) {
+      const d1 = Math.sqrt(
+        (source.x - corner.x) ** 2 + (source.z - corner.z) ** 2
+      );
+      const d2 = Math.sqrt(
+        (listener.x - corner.x) ** 2 + (listener.z - corner.z) ** 2
+      );
+      const pathLength = d1 + d2;
+      if (pathLength < bestPath) {
+        bestPath = pathLength;
+        bestCorner = corner;
+      }
+    }
+
+    // Calculate deflection angle at the corner.
+    // v1 = source - corner (from corner to source), v2 = listener - corner (from corner to listener).
+    // When source and listener are on opposite sides (straight path around corner),
+    // v1 and v2 point in opposite directions (cornerAngle = PI), deflection = 0.
+    // When the path bends sharply, cornerAngle decreases, deflection increases.
+    const v1x = source.x - bestCorner.x;
+    const v1z = source.z - bestCorner.z;
+    const v2x = listener.x - bestCorner.x;
+    const v2z = listener.z - bestCorner.z;
+
+    const len1 = Math.sqrt(v1x * v1x + v1z * v1z);
+    const len2 = Math.sqrt(v2x * v2x + v2z * v2z);
+
+    if (len1 < 1e-6 || len2 < 1e-6) return null;
+
+    const dot = (v1x * v2x + v1z * v2z) / (len1 * len2);
+    const clampedDot = Math.max(-1, Math.min(1, dot));
+    const cornerAngle = Math.acos(clampedDot);
+    // Deflection = how much the path bends from a straight line through the corner.
+    const deflectionAngle = Math.PI - cornerAngle;
+
+    return {
+      cornerX: bestCorner.x,
+      cornerZ: bestCorner.z,
+      pathLength: bestPath,
+      deflectionAngle,
+    };
   }
 
   /**
