@@ -337,3 +337,50 @@
 - 光照对实体状态的影响（如植物生长、冰融化）
 - SoulPerceptionSystem 集成光照信息到 PerceptionFrame
 
+
+
+---
+
+## 2026-09-05 热传导/温度系统 ThermalSystem（第12轮迭代）
+
+**现实逼近（需求11）：** 新增热传导与温度模拟系统，支持热源辐射、牛顿冷却定律、实体间热传导、与 WeatherSimulator 环境温度集成、实体温度存储、温度阈值事件。与上一轮 LightSystem 形成互补（光照+温度都是环境物理）。
+
+**核心模块：** `src/event/ThermalSystem.ts`
+
+**HeatSource（热源）：**
+- 位置（Vector3）、强度（任意单位，距离0处的温度贡献）、衰减半径（米）、启用状态
+- `contributionAt(point)`：逆平方归一化衰减 `(1 - dist/radius)² × intensity`
+
+**ThermalSystem（温度系统）：**
+- 热源管理：addHeatSource/removeHeatSource/getHeatSource/getAllHeatSources，maxHeatSources 容量限制（默认 64），ID 去重
+- `getTemperatureAt(point)`：点温度 = 环境温度 + 所有热源贡献
+- `getAmbientTemperature()`：从 WeatherSimulator 读取（绑定后），否则用默认值
+- `getEntityTemperature(entity)` / `setEntityTemperature(entity, temp)`：实体温度存储在 `entity.state.temperature`
+- **牛顿冷却定律**：每 tick 更新实体温度 `dT/dt = -k × (T - T_env) / heatCapacity`，T_env 包含热源（实体位置处的局部环境温度）
+- **实体间热传导**：近距离实体间热交换，基于双方导热率、距离、热容，`enableConduction` 可开关
+- **材质属性**：从 `entity.properties` 读取 `thermalConductivity`（默认0.1，用于实体间传导）和 `heatCapacity`（默认1.0，影响温度变化速率）
+- **温度阈值事件**：`thermal.hot`（超过 hotThreshold，默认60°C）、`thermal.cold`（低于 coldThreshold，默认0°C）、`thermal.normalized`（回到正常范围），使用正确的 `new Event({ type, payload, sourceId })` 格式
+- 热源变更事件：`thermal.source-changed`（add/remove）
+- `getStats()`：完整统计
+- `bindWeather(weather)`：绑定 WeatherSimulator 获取环境温度
+
+**架构约束遵守：**
+- 通用引擎，不硬编码具体世界属性（所有参数通过配置传入）
+- 不实现灵魂认知/决策逻辑
+- 事件发射使用 Event 类实例
+- 实体温度存储在通用 state map 中，不绑定具体实体类型
+
+**测试：**
+- thermal-system.test.ts 新增 25 个测试：HeatSource（6个：默认值/自定义配置/全强度/超半径零/禁用零/距离衰减）、ThermalSystem（19个：初始化/自定义配置/添加获取/重复ID/容量限制/删除/环境温度/热源贡献/Weather绑定/无Weather默认/实体温度直接设置/实体加热模拟/实体冷却模拟/实体间传导/thermal.hot事件/thermal.cold事件/热源变更事件/World tick集成/材质导热率与热容影响）
+- 完整测试套件 256/256 通过（上一轮 231，新增 25）
+
+**需求覆盖：** 需求11（持续向现实世界逼近）——热传导是虚拟世界现实感的核心物理，影响实体状态（冰融化、水蒸发、植物生长）、灵魂感知（环境温度、热舒适度）、世界事件（火灾、寒潮触发条件）。
+
+**后续可扩展方向（列入 backlog）：**
+- 光照与热源集成（光源也是热源，LightSystem 点光源可作为 ThermalSystem 热源）
+- 温度对实体状态的影响（冰融化、水蒸发、金属膨胀）
+- 热辐射的障碍物遮挡
+- 对流（热空气上升）
+- SoulPerceptionSystem 集成温度信息到 PerceptionFrame
+- 世界事件系统集成温度条件（寒潮/热浪触发）
+
