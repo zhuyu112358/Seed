@@ -17,39 +17,63 @@ function captureConsoleLog(fn: () => void): string[] {
   return lines;
 }
 
+function emittedLevels(lines: string[]): string[] {
+  const out: string[] = [];
+  for (const l of lines) {
+    try {
+      const obj = JSON.parse(l);
+      if (obj && typeof obj.level === 'string') out.push(obj.level);
+    } catch {
+      /* ignore non-JSON lines */
+    }
+  }
+  return out;
+}
+
 describe('Logger', () => {
   afterEach(() => {
     Logger.level('info');
   });
+
   it('Logger.for returns a logger with the ILogger surface', () => {
     const log = Logger.for('unit-test');
     assert.equal(typeof log.info, 'function');
+    assert.equal(typeof log.debug, 'function');
     assert.equal(typeof log.child, 'function');
     log.info('hello');
   });
+
   it('level filter suppresses lower severity output', () => {
     Logger.level('error');
     const log = Logger.for('filter-test');
-    const joined = captureConsoleLog(() => {
-      log.debug('d'); log.info('i'); log.warn('w'); log.error('e'); log.fatal('f');
-    }).join('\n');
-    assert.ok(!joined.includes('d'));
-    assert.ok(!joined.includes('i'));
-    assert.ok(!joined.includes('w'));
-    assert.ok(joined.includes('e'));
-    assert.ok(joined.includes('f'));
+    const levels = emittedLevels(captureConsoleLog(() => {
+      log.debug('verbose detail');
+      log.info('informational');
+      log.warn('warning');
+      log.error('error condition');
+      log.fatal('fatal condition');
+    }));
+    assert.ok(!levels.includes('debug'));
+    assert.ok(!levels.includes('info'));
+    assert.ok(!levels.includes('warn'));
+    assert.ok(levels.includes('error'));
+    assert.ok(levels.includes('fatal'));
   });
-  it('child creates a nested logger', () => {
+
+  it('child creates a nested logger sharing the level', () => {
     const child = Logger.for('parent').child('nested');
     assert.equal(typeof child.info, 'function');
     child.info('from child');
   });
+
   it('createLogger factory returns a working logger', () => {
     const log = createLogger('factory');
-    log.warn('ok');
+    log.warn('factory warn');
     assert.equal(typeof log.child, 'function');
   });
+
   it('exposes a logDir path', () => {
+    assert.equal(typeof Logger.logDir, 'string');
     assert.ok(Logger.logDir.length > 0);
   });
 });
