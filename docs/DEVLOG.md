@@ -3361,3 +3361,95 @@ Verdict: PASS
 6. **感知事件优先级排序**：当前按时间排序，可按严重度+距离加权排序
 7. **感知注意力机制**：灵魂只能关注有限数量的事件，超出范围的被忽略
 
+
+
+---
+
+## 2026-09-05 动态障碍局部重规划（第46轮迭代）
+
+### 本轮目标
+
+实现 PathFollowerSystem 的动态障碍局部重规划：路径执行中遇到新出现的障碍物时，自动调用 PathfinderSystem 重新规划路径，绕过障碍到达目标。
+
+### 背景
+
+- 第29-32轮已实现 A*路径规划 + PathSmoother路径平滑 + PathFollowerSystem动态瞄准
+- PathFollowerSystem 之前只沿预计算路径前进，遇到新障碍时不会重新规划
+- 灵魂在动态世界中移动时，如果路径被新障碍阻挡，会卡在原地或穿过障碍
+
+### 实现
+
+**src/pathfinding/PathFollowerSystem.ts（重写）**：
+
+1. **新增配置选项**：
+   - `enableReplanning`（默认 false）：是否启用动态重规划
+   - `replanningCheckInterval`（默认 5 tick）：多久检查一次路径是否被阻挡
+   - `maxReplanningAttempts`（默认 5）：单个路径最多重规划次数，防止无限循环
+
+2. **懒加载 PathfinderSystem**：在 tick() 中从 world.systems 查找 name==="pathfinder" 的系统
+
+3. **障碍检测**（`isSegmentBlocked()`）：
+   - 使用 DDA 射线投射，从当前位置到下一个路径点采样
+   - 采样间隔为半个格子大小（cellSize * 0.5）
+   - 调用 `grid.isWalkable(px, pz)` 检查每个采样点是否可通行
+   - 任何点不可通行即认为路径被阻挡
+
+4. **重规划逻辑**（`checkAndReplanning()`）：
+   - 仅在 enableReplanning=true、PathfinderSystem存在、到达检查间隔时执行
+   - 检查当前位置到下一个路径点的线段是否被阻挡
+   - 如果被阻挡，检查重规划次数是否超过上限
+   - 调用 `pathfinder.findPath(currentX, currentZ, goalX, goalZ, world)` 重新规划
+   - 新路径替换 movePath，重置 movePathIndex=0，设置新的 moveTarget
+   - 重规划次数 +1，记录在 entity.state.replanningCount
+
+5. **路径完成清理**：路径完成时删除 movePath、movePathIndex、movementMode、replanningCount
+
+### 设计决策
+
+- **默认禁用**：enableReplanning 默认 false，完全向后兼容
+- **半格子采样**：障碍检测使用半格子间隔采样，平衡精度和性能
+- **重规划次数限制**：防止目标本身不可达时无限重规划
+- **从当前位置重规划**：不是从路径起点，而是从实体当前位置重新规划到最终目标
+- **检查间隔可配置**：replanningCheckInterval 避免每tick都做昂贵的网格检测
+
+### 测试
+
+**tests/dynamic-replanning.test.ts（新建，6个测试）**：
+
+1. replans when new obstacle blocks the path segment — 验证新障碍阻挡路径时触发重规划，新路径绕过障碍
+2. does not replan when enableReplanning is false — 验证禁用时不重规划（向后兼容）
+3. respects maxReplanningAttempts limit — 验证重规划次数不超过上限
+4. replanning produces a path that reaches the goal — 验证重规划后能到达目标
+5. no replanning when path segment is clear — 验证路径畅通时不重规划
+6. replanning clears replanningCount when path completes — 验证路径完成后清理重规划计数
+
+### 开发中遇到的问题
+
+1. **MovementController 导入路径错误**：MovementController 在 `src/physics/` 而非 `src/entity/`，首次测试报 ERR_MODULE_NOT_FOUND，修复导入后通过
+2. **PathfinderSystem 类型引用**：使用 `import type { PathfinderSystem }` 避免循环依赖，运行时通过 name==="pathfinder" 查找实例
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- 单元测试：**536/536 全绿**（从530提升6个）
+- 新增测试：6/6 通过
+- 无回归：原有530个测试全部通过
+- GitHub：所有 commit 已同步（0 待推送，上轮 fe6babe 已推送成功）
+
+### 需求覆盖
+
+- 路径规划：动态障碍局部重规划，支持动态世界中的路径自适应
+- 灵魂移动：灵魂在移动中遇到新障碍时能自动绕行，不会卡住
+- 可靠性：重规划次数限制防止无限循环，路径完成后清理状态
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **空间哈希性能基准测试**
+3. **集成测试自动清理 current_game_id**
+4. **重规划事件发射**：发射 movement.path_replanned 事件，供感知系统监听
+5. **局部重规划 vs 全局重规划**：当前是从当前位置到目标的全局重规划，可优化为仅重规划被阻挡的局部段
+6. **预测性重规划**：不仅检查当前到下一点的线段，还检查后续路径点是否被阻挡
+7. **SoulPerceptionSystem 集成风/天气事件**
+
