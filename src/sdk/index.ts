@@ -154,6 +154,16 @@ export type {
   GenerationPlugin,
   WorldGeneratorConfig,
 } from '../generation/WorldGenerator.js';
+
+// --- Rules (M5) ---
+export { WorldRuleEngine } from '../rules/WorldRuleEngine.js';
+export type {
+  RuleConfig,
+  RuleContext,
+  RuleCondition,
+  RuleAction,
+} from '../rules/WorldRuleEngine.js';
+
 export { ConsumptionSystem } from '../resource/ConsumptionSystem.js';
 export type { ConsumptionSystemConfig } from '../resource/ConsumptionSystem.js';
 export { CraftingSystem } from '../resource/CraftingSystem.js';

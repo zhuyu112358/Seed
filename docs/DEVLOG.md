@@ -4906,3 +4906,93 @@ M4完成，SDK v2.0.0发布后进入M5里程碑。M5方向待管理策略文档�
 - SDK版本：v2.0.0（M4完成）
 - Git tag：seed-sdk-v2.0.0（待打）
 
+
+
+---
+
+## 2026-09-06 M5阶段1：世界规则引擎WorldRuleEngine（第64轮迭代）
+
+### 本轮完成
+
+#### 1. 世界规则引擎 (`src/rules/WorldRuleEngine.ts`)
+- 通用可配置的条件→动作规则系统，世界层面的触发器（非灵魂认知决策）
+- **RuleConfig**：id/name/enabled/priority/cooldownTicks/maxFires/condition/action
+- **RuleContext**：world/entity/event/data（共享Map）
+- 核心功能：
+  - registerRule/unregisterRule（重复ID抛异常）
+  - enableRule/disableRule/isRuleEnabled
+  - getRuleIds/getRule/getFireCount/size
+  - evaluate(entity?, event?)：评估所有启用规则，按优先级降序执行
+  - 冷却机制（cooldownTicks）：最小触发间隔
+  - 最大触发次数（maxFires）：0=无限
+  - 规则错误隔离：单个规则异常不影响其他规则
+  - 共享数据：ctx.data在规则间传递信息
+- **ISerializable**：serialize()保存规则状态（enabled/fireCount/lastFireTick），deserialize()恢复（规则需先重新注册）
+- WorldSystem接口：name/enabled/tick(dt, world, events)/stop
+
+#### 2. 模块导出 (`src/rules/index.ts`)
+- WorldRuleEngine + RuleConfig/RuleContext/RuleCondition/RuleAction类型
+
+#### 3. SDK导出 (`src/sdk/index.ts`)
+- 新增rules模块导出（WorldRuleEngine + 4个类型）
+
+#### 4. 测试 (`tests/world-rule-engine.test.ts`)
+- 14个新测试：
+  - 注册/注销规则、重复ID异常
+  - 启用/禁用规则
+  - 条件满足时触发、条件不满足时不触发
+  - 冷却机制防止频繁触发
+  - 最大触发次数限制
+  - 高优先级规则先执行
+  - RuleContext提供world和共享数据
+  - 禁用规则不触发
+  - 规则错误不崩溃引擎
+  - getRuleIds返回所有ID
+  - serialize/deserialize保存恢复规则状态
+  - 实体上下文（事件驱动规则）
+
+#### 5. persistence-demo.ts修复
+- 修复register调用：传Config对象而非类实例（CraftingRecipe/ConsumptionRule/GrowthRule）
+- 修复ConsumptionRule缺name字段
+- 修复多余括号语法错误
+- 构建0错误，演示仍通过（7/7状态匹配）
+
+### 架构设计
+
+**世界规则引擎 vs 灵魂认知决策**：
+- WorldRuleEngine是世界层面的规则系统（类似游戏引擎触发器），条件→动作都是确定性的、可配置的
+- 灵魂认知/决策/心理/情绪/记忆完全由SoulArena负责，Seed不实现
+- 规则可以感知世界状态（实体属性、世界时间、事件），执行世界操作（修改实体、发射事件）
+- 这是抽象的、可配置的系统，无硬编码世界内容
+
+**配置与状态分离**（延续M4原则）：
+- 规则配置（condition/action函数）不序列化，由应用层在加载世界后重新注册
+- 规则状态（enabled/fireCount/lastFireTick）通过ISerializable序列化
+
+### 验证结果
+
+- **单元测试**：719/719 全绿（705+14新）
+- **构建**：0错误（主项目）
+- **持久化演示**：✅ 通过（7/7状态匹配）
+- **GitHub**：0待推送（上轮v2.0.0已推送）
+
+### M5里程碑进度：15%
+
+- 🔄 阶段1：世界规则引擎WorldRuleEngine ✅（基础完成，可后续扩展内置条件/动作类型）
+- ⬜ 阶段2：生态循环系统（资源再生/消耗循环、环境变化驱动）
+- ⬜ 阶段3：动态世界事件深化（更多事件类型、事件链）
+- ⬜ 阶段4：端到端验证+SDK v2.1.0发布
+
+### 下一轮计划
+
+1. M5阶段2：生态循环系统（EcosystemCycle）——基于规则引擎的资源再生/消耗循环
+2. 或扩展WorldRuleEngine内置条件/动作构建器（时间条件、实体属性条件、事件触发条件）
+3. 更新DEVLOG，commit并推送
+
+### 迭代统计
+
+- 总迭代轮数：64轮
+- 单元测试：719个（M4结束时705个，+14）
+- 测试文件：58个
+- SDK版本：v2.0.0（M4完成），M5目标v2.1.0
+

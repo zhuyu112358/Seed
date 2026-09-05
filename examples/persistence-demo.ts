@@ -45,29 +45,31 @@ const consumption = new ConsumptionSystem();
 const growth = new GrowthSystem();
 
 // Register recipes and rules (runtime configuration).
-crafting.recipes.register(new CraftingRecipe({
+crafting.recipes.register({
   id: "plank",
   name: "Wooden Planks",
   inputs: [{ resourceTypeId: "wood", amount: 2 }],
   outputResourceTypeId: "plank",
   outputAmount: 4,
   craftTime: 2,
-}));
+});
 
-consumption.rules.register(new ConsumptionRule({
+consumption.rules.register({
   id: "food",
+  name: "Food Consumption",
   resourceTypeId: "food",
   amount: 1,
   intervalTicks: 5,
-}));
+});
 
-growth.rules.register(new GrowthRule({
+growth.rules.register({
   id: "woodcutting",
+  name: "Woodcutting",
   triggerEventType: "resource.harvest.complete",
   soulIdField: "harvesterId",
   xpPerEvent: 25,
   baseXP: 50,
-}));
+});
 
 // Add systems to world.
 world.addSystem(harvest);
@@ -166,27 +168,29 @@ const consumption2 = new ConsumptionSystem();
 const growth2 = new GrowthSystem();
 
 // Re-register recipes and rules (configuration, not state).
-crafting2.recipes.register(new CraftingRecipe({
+crafting2.recipes.register({
   id: "plank",
   name: "Wooden Planks",
   inputs: [{ resourceTypeId: "wood", amount: 2 }],
   outputResourceTypeId: "plank",
   outputAmount: 4,
   craftTime: 2,
-}));
-consumption2.rules.register(new ConsumptionRule({
+});
+consumption2.rules.register({
   id: "food",
+  name: "Food Consumption",
   resourceTypeId: "food",
   amount: 1,
   intervalTicks: 5,
-}));
-growth2.rules.register(new GrowthRule({
+});
+growth2.rules.register({
   id: "woodcutting",
+  name: "Woodcutting",
   triggerEventType: "resource.harvest.complete",
   soulIdField: "harvesterId",
   xpPerEvent: 25,
   baseXP: 50,
-}));
+});
 
 world2.addSystem(harvest2);
 world2.addSystem(crafting2);
