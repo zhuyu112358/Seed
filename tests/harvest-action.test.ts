@@ -218,3 +218,80 @@ describe("SoulPerceptionSystem harvest events", () => {
     assert.ok(depletedEvents.length > 0, "should perceive resource depleted event");
   });
 });
+
+describe("SoulPerceptionSystem nearby resources", () => {
+  test("perception frame includes nearby resource nodes", () => {
+    const { world, perception, harvest } = makeWorld();
+    const soul = makeSoul("soul_1", 0, 0);
+    const { entity: tree, node } = makeTree("tree_1", 2, 0);
+    const { entity: rock, node: rockNode } = makeTree("rock_1", 5, 0);
+    world.addEntity(soul);
+    world.addEntity(tree);
+    world.addEntity(rock);
+    harvest.registerNode(tree, node);
+    harvest.registerNode(rock, rockNode);
+
+    // Step to build perception frame
+    world.step(1 / 60);
+
+    const frame = perception.getPerception("soul_1");
+    assert.ok(frame, "perception frame should exist");
+    assert.ok(frame!.nearbyResources, "nearbyResources should be defined");
+    assert.equal(frame!.nearbyResources!.length, 2);
+    assert.equal(frame!.nearbyResources![0].id, "tree_1"); // closer first
+    assert.equal(frame!.nearbyResources![0].resourceType, "wood");
+    assert.equal(frame!.nearbyResources![0].currentAmount, 10);
+    assert.equal(frame!.nearbyResources![0].isAvailable, true);
+  });
+
+  test("resource nodes beyond view distance are excluded", () => {
+    const { world, perception, harvest } = makeWorld();
+    const soul = makeSoul("soul_1", 0, 0);
+    const { entity: tree, node } = makeTree("tree_1", 2, 0);
+    const { entity: farTree, node: farNode } = makeTree("far_tree", 100, 0);
+    world.addEntity(soul);
+    world.addEntity(tree);
+    world.addEntity(farTree);
+    harvest.registerNode(tree, node);
+    harvest.registerNode(farTree, farNode);
+
+    world.step(1 / 60);
+
+    const frame = perception.getPerception("soul_1");
+    assert.ok(frame!.nearbyResources);
+    assert.equal(frame!.nearbyResources!.length, 1);
+    assert.equal(frame!.nearbyResources![0].id, "tree_1");
+  });
+
+  test("nearbyResources is undefined when HarvestSystem not available", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const perception = new SoulPerceptionSystem();
+    world.addSystem(perception);
+    const soul = makeSoul("soul_1", 0, 0);
+    world.addEntity(soul);
+
+    world.step(1 / 60);
+
+    const frame = perception.getPerception("soul_1");
+    assert.ok(frame);
+    assert.equal(frame!.nearbyResources, undefined);
+  });
+
+  test("depleted resource node shows isAvailable=false in perception", () => {
+    const { world, perception, harvest } = makeWorld();
+    const soul = makeSoul("soul_1", 0, 0);
+    const { entity: tree, node } = makeTree("tree_1", 1, 0);
+    node.currentAmount = 0;
+    world.addEntity(soul);
+    world.addEntity(tree);
+    harvest.registerNode(tree, node);
+
+    world.step(1 / 60);
+
+    const frame = perception.getPerception("soul_1");
+    assert.ok(frame!.nearbyResources);
+    assert.equal(frame!.nearbyResources!.length, 1);
+    assert.equal(frame!.nearbyResources![0].isAvailable, false);
+    assert.equal(frame!.nearbyResources![0].currentAmount, 0);
+  });
+});

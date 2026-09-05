@@ -361,3 +361,58 @@ export class ResourceRegeneratedEvent extends Event<{
     });
   }
 }
+
+/** Emitted when a soul starts crafting a recipe. */
+export class CraftStartEvent extends Event<{
+  soulId: string;
+  recipeId: string;
+  recipeName: string;
+  craftTime: number;
+}> {
+  constructor(soulId: string, recipeId: string, recipeName: string, craftTime: number) {
+    super({
+      type: 'crafting.start',
+      payload: { soulId, recipeId, recipeName, craftTime },
+      sourceId: soulId,
+    });
+  }
+}
+
+/** Emitted when a soul completes crafting a recipe. */
+export class CraftCompleteEvent extends Event<{
+  soulId: string;
+  recipeId: string;
+  recipeName: string;
+  outputResourceTypeId: string;
+  outputAmount: number;
+}> {
+  constructor(
+    soulId: string,
+    recipeId: string,
+    recipeName: string,
+    outputResourceTypeId: string,
+    outputAmount: number,
+  ) {
+    super({
+      type: 'crafting.complete',
+      payload: { soulId, recipeId, recipeName, outputResourceTypeId, outputAmount },
+      sourceId: soulId,
+    });
+  }
+}
+
+/** Emitted when crafting fails (e.g., inventory full, no inventory). */
+export class CraftFailEvent extends Event<{
+  soulId: string;
+  recipeId: string;
+  recipeName: string;
+  reason: string;
+}> {
+  constructor(soulId: string, recipeId: string, recipeName: string, reason: string) {
+    super({
+      type: 'crafting.fail',
+      payload: { soulId, recipeId, recipeName, reason },
+      sourceId: soulId,
+    });
+  }
+}

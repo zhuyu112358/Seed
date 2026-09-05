@@ -348,6 +348,18 @@ export interface PerceptionFrame {
     visible: boolean;
   }>;
   nearbySouls: Array<{ id: string; name: string; element: string; position: IVector3; distance: number }>;
+  /** Nearby harvestable resource nodes within view distance. */
+  nearbyResources?: Array<{
+    id: string;
+    name: string;
+    resourceType: string;
+    currentAmount: number;
+    maxAmount: number;
+    position: IVector3;
+    distance: number;
+    isAvailable: boolean;
+    isBeingHarvested: boolean;
+  }>;
   environment: {
     /** Global ambient temperature from WeatherSimulator (Celsius). */
     temperature: number;

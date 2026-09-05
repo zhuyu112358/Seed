@@ -125,6 +125,10 @@ export { ResourceInventory } from '../resource/ResourceInventory.js';
 export type { ResourceInventoryConfig } from '../resource/ResourceInventory.js';
 export { HarvestSystem } from '../resource/HarvestSystem.js';
 export type { HarvestSystemConfig } from '../resource/HarvestSystem.js';
+export { CraftingRecipe, CraftingRecipeRegistry } from '../resource/CraftingRecipe.js';
+export type { CraftingRecipeConfig, RecipeInput } from '../resource/CraftingRecipe.js';
+export { CraftingSystem } from '../resource/CraftingSystem.js';
+export type { CraftingSystemConfig } from '../resource/CraftingSystem.js';
 
 // --- Resource Events ---
 export {
@@ -132,6 +136,9 @@ export {
   HarvestCompleteEvent,
   ResourceDepletedEvent,
   ResourceRegeneratedEvent,
+  CraftStartEvent,
+  CraftCompleteEvent,
+  CraftFailEvent,
 } from '../event/Event.js';
 
 // --- Core Types (PerceptionFrame, ActionRequest, ActionResult, etc.) ---

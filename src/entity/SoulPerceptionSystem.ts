@@ -15,6 +15,7 @@ import type { EventSystem } from "../event/EventSystem.js";
 import { WeatherSimulator } from "../event/WeatherSimulator.js";
 import { LightSystem } from "../event/LightSystem.js";
 import { ThermalSystem } from "../event/ThermalSystem.js";
+import type { HarvestSystem } from "../resource/HarvestSystem.js";
 import {
   EntityArrivedEvent,
   CollisionEvent,
@@ -83,6 +84,7 @@ export class SoulPerceptionSystem implements WorldSystem {
   private weather: WeatherSimulator | null = null;
   private light: LightSystem | null = null;
   private thermal: ThermalSystem | null = null;
+  private harvest: HarvestSystem | null = null;
   private readonly frames = new Map<string, PerceptionFrame>();
   private readonly eventBuffer: BufferedEvent[] = [];
   private readonly commBuffer: BufferedCommunication[] = [];
@@ -322,6 +324,10 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (!this.thermal || !world.systems.includes(this.thermal)) {
       this.thermal = world.systems.find(s => s instanceof ThermalSystem) as ThermalSystem | null ?? null;
     }
+    // Lazy-locate HarvestSystem for nearby resource nodes.
+    if (!this.harvest || !world.systems.includes(this.harvest as unknown as WorldSystem)) {
+      this.harvest = world.systems.find(s => s.name === 'harvest') as unknown as HarvestSystem | null ?? null;
+    }
 
     // Expire old buffers.
     this.expireBuffers();
@@ -414,6 +420,26 @@ export class SoulPerceptionSystem implements WorldSystem {
         distance: Math.round(x.dist * 100) / 100,
       }));
 
+    // Nearby harvestable resource nodes within view distance.
+    const nearbyResources = this.harvest
+      ? this.harvest.getAllNodes()
+          .map(({ entity, node }) => ({ entity, node, dist: pos.distance(entity.position) }))
+          .filter(x => x.dist <= this.config.viewDistance)
+          .sort((a, b) => a.dist - b.dist)
+          .slice(0, this.config.maxVisibleEntities)
+          .map(x => ({
+            id: x.entity.id,
+            name: x.entity.name,
+            resourceType: x.node.resourceTypeId,
+            currentAmount: Math.round(x.node.currentAmount * 100) / 100,
+            maxAmount: x.node.maxAmount,
+            position: { x: x.entity.position.x, y: x.entity.position.y, z: x.entity.position.z },
+            distance: Math.round(x.dist * 100) / 100,
+            isAvailable: x.node.isAvailable,
+            isBeingHarvested: x.node.isBeingHarvested,
+          }))
+      : undefined;
+
     // Recent events within range.
     const events = this.eventBuffer
       .map(e => ({ ...e, dist: pos.distance(e.position) }))
@@ -442,6 +468,7 @@ export class SoulPerceptionSystem implements WorldSystem {
       position: { x: pos.x, y: pos.y, z: pos.z },
       visibleEntities: visible,
       nearbySouls,
+      nearbyResources,
       environment: {
         ...env,
         localTemperature: localTemperature !== undefined ? Math.round(localTemperature * 10) / 10 : undefined,

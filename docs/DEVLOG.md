@@ -4081,3 +4081,83 @@ M3设计文档：`docs/M3_RESOURCE_SYSTEM_DESIGN.md`
 - 测试文件：48个
 - M3里程碑进度：25%（核心资源系统+动作集成完成，待感知增强+生产系统+集成测试）
 
+
+
+---
+
+## 2026-09-06 M3阶段3：资源点感知+生产系统（第54轮迭代）
+
+### 本轮完成
+
+#### 1. SoulPerceptionSystem资源点感知 (`src/entity/SoulPerceptionSystem.ts`)
+- 新增`harvest`属性（HarvestSystem | null），懒加载按名称查找
+- 感知帧新增`nearbyResources`字段：
+  - id、name、resourceType、currentAmount、maxAmount
+  - position、distance、isAvailable、isBeingHarvested
+- 视野范围内的资源节点按距离排序，受maxVisibleEntities限制
+- PerceptionFrame类型新增nearbyResources可选字段
+
+#### 2. 生产系统CraftingSystem (`src/resource/CraftingSystem.ts`)
+- CraftingRecipe：配方定义（inputs→output，craftTime，outputAmount）
+- CraftingRecipeRegistry：运行时注册配方，不硬编码
+- CraftingSystem：WorldSystem实现
+  - registerInventory()：注册灵魂库存
+  - canCraft()：检查资源+并发限制，返回失败原因
+  - startCraft()：立即消耗输入资源，启动craft倒计时
+  - tick()：处理所有活跃craft，完成时添加输出到库存
+  - 库存满时部分添加（能装多少装多少）
+  - maxConcurrentPerSoul配置（默认1）
+- 3个新事件：CraftStartEvent、CraftCompleteEvent、CraftFailEvent
+
+#### 3. 类型扩展 (`src/types/index.ts`)
+- PerceptionFrame新增nearbyResources字段
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- 新增CraftingRecipe/CraftingRecipeRegistry/CraftingSystem导出
+- 新增CraftStartEvent/CraftCompleteEvent/CraftFailEvent导出
+
+#### 5. 测试
+- `tests/harvest-action.test.ts`：新增4个资源点感知测试（共14个）
+  - 感知帧包含附近资源节点
+  - 超出视野距离的资源节点被排除
+  - 无HarvestSystem时nearbyResources为undefined
+  - 耗尽的资源节点显示isAvailable=false
+- `tests/crafting-system.test.ts`：13个新测试
+  - CraftingRecipe：3个（默认值/canCraft/）
+  - CraftingRecipeRegistry：3个（注册/获取全部/删除清空）
+  - CraftingSystem：7个（正常生产/资源不足/配方不存在/无库存/并发限制/canCraft原因/事件发射/部分添加）
+
+### 验证结果
+
+- **单元测试**：601/601 全绿（588+13）
+- **构建**：0错误（主项目+SDK）
+- **架构约束**：
+  - ✅ 无硬编码世界资源/配方
+  - ✅ 无认知决策逻辑
+  - ✅ SoulBridgeAdapter未修改
+  - ✅ 代码注释英语
+
+### M3里程碑进度：40%
+
+- ✅ 阶段1：核心资源系统（ResourceType/Node/Inventory/HarvestSystem）
+- ✅ 阶段2：采集动作集成+事件感知
+- ✅ 阶段3：资源点感知+生产系统CraftingSystem
+- ⬜ 阶段4：craft动作集成到SoulActionSystem
+- ⬜ 阶段5：消耗规则+成长规则
+- ⬜ 阶段6：集成测试验证+SDK发布
+
+### 下一轮计划
+
+1. SoulActionSystem集成craft动作
+2. SoulPerceptionSystem集成craft事件感知
+3. 消耗规则（ConsumptionRule）设计
+4. 集成测试添加采集+生产场景
+5. git commit并推送
+
+### 迭代统计
+
+- 总迭代轮数：54轮
+- 单元测试：601个（M3启动时550个，+51）
+- 测试文件：49个
+- GitHub：0待推送（上轮已同步）
+
