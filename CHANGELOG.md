@@ -5,6 +5,80 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-09-06
+
+### Milestone M7: Multiplayer Interaction & Social Relationships & Trading & Party
+
+#### Added
+- **Social Graph System** (`src/social/`): Social relationship management between entities
+  - SocialRelationType: friend/neutral/enemy/rival/ally/family (6 types)
+  - SocialRelation with trust (0-100), familiarity (0-100), interactionCount, lastInteractionTick
+  - Undirected graph storage with sorted keys (entityA|entityB)
+  - SocialGraph (WorldSystem): setRelation/getRelation/removeRelation, getFriends/getEnemies/getAllies
+  - modifyTrust/modifyFamiliarity (auto-clamp 0-100, auto-create neutral relation)
+  - recordInteraction (updates trust/familiarity/count, emits events)
+  - 3 event classes (RelationChanged/TrustChanged/Interaction)
+  - 29 unit tests
+- **Trading System** (`src/trade/`): Trade offers between entities with item transfer
+  - TradeStatus: pending/accepted/rejected/cancelled/completed/expired
+  - TradeItem: itemId/name/quantity/metadata (application-defined items)
+  - TradeOffer with offerItems/requestItems/expiresTick
+  - TradingSystem (WorldSystem): createOffer/acceptOffer/rejectOffer/cancelOffer
+  - transferValidator/transferHandler callbacks (application layer manages inventory)
+  - Auto-expiration on tick, duplicate pending offer prevention
+  - 6 event classes (Offered/Accepted/Rejected/Cancelled/Completed/Expired)
+  - 27 unit tests
+- **Party System** (`src/party/`): Party management with membership and leadership
+  - Party with id/name/leaderId/memberIds/maxSize (default 4)
+  - PartySystem (WorldSystem): createParty/disbandParty/joinParty/leaveParty
+  - kickMember (leader-only), transferLeadership (leader-only)
+  - Auto leadership transfer when leader leaves, auto-disband when last member leaves
+  - Dual lookup: parties (forward) + memberToParty (reverse) for O(1) queries
+  - experienceShareHandler/lootShareHandler callbacks for resource distribution
+  - 5 event classes (Created/Disbanded/MemberJoined/MemberLeft/LeaderChanged)
+  - 30 unit tests
+- **Social + Trade event perception** in SoulPerceptionSystem
+  - 9 new event listeners (lazy-loaded on first tick):
+    - `social.relation_changed`: low
+    - `social.trust_changed`: low
+    - `social.interaction`: low
+    - `trade.offered`: low
+    - `trade.accepted`: medium
+    - `trade.rejected`: low
+    - `trade.cancelled`: low
+    - `trade.completed`: medium
+    - `trade.expired`: low
+  - stop() cleanup for all 9 listeners
+  - 12 unit tests
+- **Party event perception** in SoulPerceptionSystem
+  - 5 new event listeners (lazy-loaded on first tick):
+    - `party.created`: low
+    - `party.disbanded`: medium
+    - `party.member_joined`: low
+    - `party.member_left`: low
+    - `party.leader_changed`: low
+  - stop() cleanup for all 5 listeners
+  - 6 unit tests
+- **M7 End-to-End Demo** (`examples/m7-demo.ts`): Full multiplayer interaction pipeline
+  - Phase 1: Social interactions (greetings, conversations, friendship formation)
+  - Phase 2: Trading (wood-for-gold trade with inventory simulation, rejected offer)
+  - Phase 3: Party formation (create, join, XP sharing, leadership transfer, leave)
+  - Phase 4: Perception summary (10 events: 1 social + 4 trade + 5 party)
+  - Validates all M7 systems working together
+
+#### Architecture
+- All multiplayer systems follow the Seed architecture pattern:
+  - Seed provides execution framework + state management + event emission
+  - All decisions (who to befriend, what to trade, party formation) by application layer/SoulArena
+  - No hardcoded relationships, items, or party configurations - fully configurable
+  - Inventory management via callbacks (transferValidator/transferHandler)
+  - Resource sharing via callbacks (experienceShareHandler/lootShareHandler)
+- SoulPerceptionSystem now listens to 43+ events across all subsystems
+
+#### Tests
+- Total: 946 unit tests (up from 842 in v2.2.0, +104)
+- M7 new tests: 29 (social) + 27 (trade) + 30 (party) + 12 (social-trade perception) + 6 (party perception) = 104
+
 ## [2.2.0] - 2026-09-06
 
 ### Milestone M6: NPC Behavior System & Dynamic Tasks & World Narrative

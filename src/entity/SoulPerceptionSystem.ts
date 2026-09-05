@@ -51,6 +51,13 @@ import {
   TradeExpiredEvent,
 } from "../trade/TradeEvents.js";
 import {
+  PartyCreatedEvent,
+  PartyDisbandedEvent,
+  PartyMemberJoinedEvent,
+  PartyMemberLeftEvent,
+  PartyLeaderChangedEvent,
+} from "../party/PartyEvents.js";
+import {
   EntityArrivedEvent,
   CollisionEvent,
   CollisionEnterEvent,
@@ -195,6 +202,16 @@ export class SoulPerceptionSystem implements WorldSystem {
   private tradeCompletedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for trade.expired event, set on first tick. */
   private tradeExpiredUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for party.created event, set on first tick. */
+  private partyCreatedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for party.disbanded event, set on first tick. */
+  private partyDisbandedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for party.member_joined event, set on first tick. */
+  private partyMemberJoinedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for party.member_left event, set on first tick. */
+  private partyMemberLeftUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for party.leader_changed event, set on first tick. */
+  private partyLeaderChangedUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -773,6 +790,81 @@ export class SoulPerceptionSystem implements WorldSystem {
       });
     }
 
+    // Listen for party created events.
+    if (!this.partyCreatedUnsubscribe) {
+      this.partyCreatedUnsubscribe = events.on("party.created", (evt: PartyCreatedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `party_created_${p.partyId}_${evt.timestamp}`,
+          "party.created",
+          `Party created: ${p.partyName} (leader: ${p.leaderId})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for party disbanded events.
+    if (!this.partyDisbandedUnsubscribe) {
+      this.partyDisbandedUnsubscribe = events.on("party.disbanded", (evt: PartyDisbandedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `party_disbanded_${p.partyId}_${evt.timestamp}`,
+          "party.disbanded",
+          `Party disbanded: ${p.partyName} (leader: ${p.leaderId})`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for party member joined events.
+    if (!this.partyMemberJoinedUnsubscribe) {
+      this.partyMemberJoinedUnsubscribe = events.on("party.member_joined", (evt: PartyMemberJoinedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `party_member_joined_${p.partyId}_${p.memberId}_${evt.timestamp}`,
+          "party.member_joined",
+          `Party member joined: ${p.memberId} → ${p.partyName}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for party member left events.
+    if (!this.partyMemberLeftUnsubscribe) {
+      this.partyMemberLeftUnsubscribe = events.on("party.member_left", (evt: PartyMemberLeftEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `party_member_left_${p.partyId}_${p.memberId}_${evt.timestamp}`,
+          "party.member_left",
+          `Party member left: ${p.memberId} ← ${p.partyName}${p.reason ? ` (${p.reason})` : ""}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for party leader changed events.
+    if (!this.partyLeaderChangedUnsubscribe) {
+      this.partyLeaderChangedUnsubscribe = events.on("party.leader_changed", (evt: PartyLeaderChangedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `party_leader_changed_${p.partyId}_${evt.timestamp}`,
+          "party.leader_changed",
+          `Party leader changed: ${p.partyName} (${p.oldLeaderId}→${p.newLeaderId})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
     // Lazy-locate WeatherSimulator.
     if (!this.weather || !world.systems.includes(this.weather)) {
       this.weather = world.systems.find(s => s instanceof WeatherSimulator) as WeatherSimulator | null ?? null;
@@ -1133,6 +1225,26 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.tradeExpiredUnsubscribe) {
       this.tradeExpiredUnsubscribe();
       this.tradeExpiredUnsubscribe = null;
+    }
+    if (this.partyCreatedUnsubscribe) {
+      this.partyCreatedUnsubscribe();
+      this.partyCreatedUnsubscribe = null;
+    }
+    if (this.partyDisbandedUnsubscribe) {
+      this.partyDisbandedUnsubscribe();
+      this.partyDisbandedUnsubscribe = null;
+    }
+    if (this.partyMemberJoinedUnsubscribe) {
+      this.partyMemberJoinedUnsubscribe();
+      this.partyMemberJoinedUnsubscribe = null;
+    }
+    if (this.partyMemberLeftUnsubscribe) {
+      this.partyMemberLeftUnsubscribe();
+      this.partyMemberLeftUnsubscribe = null;
+    }
+    if (this.partyLeaderChangedUnsubscribe) {
+      this.partyLeaderChangedUnsubscribe();
+      this.partyLeaderChangedUnsubscribe = null;
     }
   }
 }
