@@ -1,0 +1,12 @@
+// SDK barrel: the public surface of Seed. Worlds are built through here.
+
+export { WorldBuilder } from './WorldBuilder.js';
+export { EntityFactory } from '../entity/EntityFactory.js';
+export { PhysicsConfig, PhysicsConfigBuilder } from '../physics/PhysicsConfig.js';
+export { PhysicsSystem } from '../physics/PhysicsSystem.js';
+export { AcousticPropagation } from '../communication/AcousticPropagation.js';
+export { NetworkPacket } from '../communication/NetworkPacket.js';
+export { WorldResonance } from '../communication/WorldResonance.js';
+export { Message } from '../communication/Message.js';
+export type { ReceivedMessage } from '../communication/Message.js';
+export type { CommunicationStrategy, WorldView } from '../communication/CommunicationStrategy.js';
