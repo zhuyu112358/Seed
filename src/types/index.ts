@@ -419,7 +419,7 @@ export interface SoulFeedback {
 // Security
 // ============================================================================
 
-export type ServerRole = 'admin' | 'soul' | 'observer';
+export type ServerRole = 'admin' | 'moderator' | 'soul' | 'observer' | 'anonymous';
 
 export interface ValidationSchema {
   type: 'object' | 'string' | 'number' | 'boolean' | 'array';

@@ -1,308 +1,190 @@
 # 灵魂-世界接口约定（SOUL_INTERFACE）
 
-> 本文档是 Seed System 与 SoulArena（灵魂系统）之间的接口契约，**最重要**。
-> 所有内容严格基于 `src/` 真实源码：`src/bridge/SoulBridge.ts`、`src/api/soulClient.ts`、`src/api/server.ts`、`src/types/index.ts`。
-> 文档中文，代码注释英文。
+> 本文档基于 `src/api/server.ts`、`src/api/soulClient.ts` 与 `src/types/index.ts` 中的真实实现编写。
+> 它定义了一个外部「灵魂」（Soul，由 SoulArena 后端托管）如何进入 Seed 世界、感知世界、执行动作、被世界影响并回传反馈。
 
 ---
 
 ## 1. 概述
 
-Seed 与 SoulArena 是两个独立进程：
+Seed 是一个运行在 SoulArena **之下** 的虚拟物理世界引擎。灵魂本身并不生活在 Seed 进程里，而是由
+SoulArena（独立后端，默认 `http://localhost:3000`）托管其人格、记忆与情绪。Seed 通过两个面向外部的
+通道与灵魂交互：
 
-- **SoulArena**（默认 `http://localhost:3000`）负责“灵魂本身”：人格、情绪、价值系统、记忆。
-- **Seed System**（默认 `http://localhost:3100`）负责“世界”：物理、事件、通信、空间，以及灵魂在世界中的化身（soul-proxy / soul 实体）。
+1. **REST（HTTP/JSON）**——短请求-响应，用于查询世界状态、实体列表、灵魂名册、提交一次动作。
+2. **WebSocket（`/ws`）**——长连接，用于握手与实时消息往返。
 
-两者通过 **HTTP REST** 与 **WebSocket** 解耦。Seed 侧有两个对接组件：
+`SoulClient`（`src/api/soulClient.ts`）是 Seed 进程**主动**访问 SoulArena 的客户端；
+`createApp` / `startServer`（`src/api/server.ts`）是 Seed **暴露**给外部世界的服务端。两者方向相反，
+字段命名均采用与 SoulArena 确认过的 **snake_case** 契约。
 
-| 组件 | 文件 | 职责 |
+### 1.1 数据流总览
+
+```
+        SoulArena (灵魂托管, :3000)
+              ▲  GET /api/souls            ▲  GET /api/souls/:id
+              │  SoulClient.listSouls()    │  SoulClient.getSoul(id)
+              │                            │
+   ┌──────────┴─────────────────────────────┘
+   │  Seed 进程 (src/api/server.ts, 默认 :3100)
+   │
+   │   外部调用方 / 灵魂代理 ──HTTP/JSON──▶ REST 端点
+   │   外部调用方 / 灵魂代理 ──WebSocket──▶ /ws
+   ▼
+ WorldEngine → World.step → systems.tick（世界模拟主循环）
+```
+
+---
+
+## 2. 灵魂生命周期
+
+| 阶段 | 触发方 | 机制 | 世界内表现 |
+|------|--------|------|-----------|
+| 名册加载 | Seed 启动 | `SoulClient.listSouls()` 拉取 `/api/souls` | 不可达时回退内置 mock 灵魂 |
+| 进入世界 | 外部请求加入 | 在世界内创建一个 **soul-proxy** 实体（`EntityFactory.soulProxy`，id = `soul_<soulId>`） | proxy 占据物理位置，可被感知/交互 |
+| 感知输入 | 灵魂侧轮询/订阅 | 世界每个 tick 汇聚 `PerceptionFrame`（见 §6） | 可见实体、附近灵魂、环境、事件、通信 |
+| 动作执行 | 外部 POST | `POST /api/souls/:id/action` → 校验 → 查找 proxy → 执行 | 动作结果回传 `ActionResult` |
+| 世界影响 | 世界系统 | 碰撞/天气/区域等事件 → `WorldEffect` | 情绪/身体/社交状态变化 |
+| 反馈回传 | 灵魂侧 | `SoulFeedback` 描述对世界影响的反应 | 闭环 |
+| 离开世界 | 移除 proxy | `World.removeEntity('soul_<soulId>')` | proxy 销毁 |
+
+> 说明：进入/离开世界的**实体创建**当前由 SDK 完成（`POST /api/entities` 仅做校验并返回占位响应，
+> 见 `server.ts` 与 `docs/SDK.md`）。soul-proxy 的标准 id 为 `` `soul_${soulId}` ``。
+
+---
+
+## 3. REST 端点（服务端）
+
+所有端点挂在 Seed API 服务（默认端口由 `PORT` 决定，缺省 `3100`）。响应均为 `application/json`。
+
+### 3.1 世界状态
+
+`GET /api/world/status`
+
+```json
+{ "world": "test-world", "running": true, "tick": 120, "worldTime": 2.0, "entityCount": 8 }
+```
+
+| 字段 | 含义 |
+|------|------|
+| `world` | 当前世界名（`engine.currentWorld.config.name`） |
+| `running` | 引擎是否在跑（`engine.isRunning`） |
+| `tick` | 已推进的 tick 数 |
+| `worldTime` | 世界内累计秒数 |
+| `entityCount` | 实体总数 |
+
+### 3.2 实体
+
+- `GET /api/entities` → `{ entities: [...Entity.toJSON()] }`
+- `GET /api/entities/:id` → 命中 `{ entity }`，否则 `404 { error: "not_found" }`
+- `POST /api/entities`：要求 `name`(≤64)、`x`、`y`、`z`；校验失败 `400 validation_failed`；
+  当前**不真正创建**，返回 `201 { ok: true, note: "entity creation via SDK; see docs/SDK.md" }`。
+
+### 3.3 灵魂动作
+
+`POST /api/souls/:id/action`，请求体 `{ "action": "speak", "payload": { "text": "..." } }`。
+
+- `action` ∈ `move | speak | interact | attack | use`。
+- 先按 IP 限流 → `429 { error: "rate_limited", retryAfterMs }`。
+- 再校验请求体 → `400 validation_failed`。
+- 查找 `soul_<:id>` proxy，缺失 → `404 { error: "soul_not_in_world", soulId }`。
+- `speak` 对 `payload.text` 做 `sanitizeString` 后记日志。
+- 成功：`{ ok: true, action, soulId, tick }`。
+
+### 3.4 灵魂名册（代理 SoulArena）
+
+`GET /api/souls` → `{ souls: SoulInfo[], source: "soul-arena" | "mock" }`。
+
+---
+
+## 4. SoulClient（主动访问 SoulArena）
+
+`src/api/soulClient.ts`，`new SoulClient(baseUrl?)`，`baseUrl` 默认 `process.env.SOUL_URL ??
+'http://localhost:3000'`。
+
+| 方法 | 请求 | 成功 | 失败 |
+|------|------|------|------|
+| `listSouls()` | `GET {base}/api/souls`（1.5s 超时） | `{ souls, usedMock: false }` | 返回内置 mock，`usedMock: true` |
+| `getSoul(id)` | `GET {base}/api/souls/:id`（1.5s 超时） | `SoulInfo \| null` | 记 warn，返回 `null` |
+
+兼容数组与 `{ souls: [...] }` 两种响应。
+
+### 4.1 SoulInfo（snake_case 契约）
+
+```ts
+{
+  id, name, element, status,
+  current_game_id: string | null,
+  birth_time, total_existence_ms, last_active_at, created_at,
+  memoryStats: { episodic, semantic, core, links, reflections, total },
+  personality?: { bravery, aggression, sociability, curiosity, loyalty },
+  emotion?: { valence, arousal, dominance, trust, anticipation, fatigue },
+  valueSystem?: { beliefs: string[], priorities: Record<string, number>, moralAlignment: number }
+}
+```
+
+### 4.2 内置 mock
+
+SoulArena 不可达时返回两个 mock：`Vex`(wind)、`Nova`(fire)，`memoryStats` 全 0。
+
+---
+
+## 5. WebSocket 协议（`/ws`）
+
+挂载于同一 HTTP server 的 `path: '/ws'`。消息为 JSON 文本帧，信封
+`{ "type": "...", "payload": ..., "timestamp": <ms> }`。
+
+| 方向 | type | 说明 |
 |------|------|------|
-| `SoulClient` | `src/api/soulClient.ts` | Seed 主动拉取灵魂花名册 / 单个灵魂详情，失败回退 mock |
-| `SoulBridge` | `src/bridge/SoulBridge.ts` | 双向桥：灵魂加入/离开世界、推送感知帧、拉取并执行动作、回写世界反馈与灵魂反馈 |
+| 服务端→客户端 | `hello` | 连接即发：`{ protocol: "seed-soul", version: "0.1.0" }` |
+| 客户端→服务端 | 任意 | 服务端解析后回 ack |
+| 服务端→客户端 | `ack` | `{ echo: "<收到的 type>" }` |
+| 服务端→客户端 | `error` | 非法 JSON：`{ message: "invalid json" }` |
 
-数据字段命名遵循 **snake_case**（与 SoulArena 已确认契约一致），见 `SoulInfo`。
-
----
-
-## 2. 核心概念
-
-### 2.1 角色分工
-
-```
-SoulArena (soul brain)               Seed System (world body)
-┌────────────────────┐               ┌─────────────────────────┐
-│ 人格/情绪/价值/记忆 │  ──REST/WS──> │ 物理 / 事件 / 通信 / 空间 │
-│ 决策“做什么动作”    │ <──推送感知── │ 化身 soul-proxy 在世界中 │
-└────────────────────┘               └─────────────────────────┘
-```
-
-- 灵魂不直接持有世界状态，只通过 **感知帧（PerceptionFrame）** 看世界。
-- 灵魂通过 **动作请求（ActionRequest）** 表达意图，世界执行后回 **动作结果（ActionResult）**。
-- 世界通过 **世界影响（WorldEffect）** 作用于灵魂情绪/状态，灵魂通过 **灵魂反馈（SoulFeedback）** 回应。
-
-### 2.2 化身（Avatar）
-
-灵魂进入世界时，世界侧为其创建一个实体：
-
-- 在“核心模拟层”（`entity/`）由 `EntityFactory.soulProxy({soulId, name, element, position?})` 生成，`type = 'soul-proxy'`，id 固定为 `soul_<soulId>`，`material = soul:<element>`。
-- 在“运行时层”（`bridge/` 的 `SoulWorldAdapter`）由 `createSoulEntity(soulId, position)` 创建，id 同样为 `soul_<soulId>`。
+当前未按 `type` 分派业务，仅回显。`src/server/index.ts` 的 `SeedServer` 提供更完整的
+`subscribe/action/perception_request` → `subscribed/action_result/perception_frame`，但未接线。
 
 ---
 
-## 3. 类型契约（`src/types/index.ts`）
+## 6. 感知与反馈数据契约（types 层）
 
-### 3.1 `SoulInfo`（灵魂花名册，snake_case）
+### 6.1 PerceptionFrame
 
-```ts
-interface SoulInfo {
-  id: string;
-  name: string;
-  element: string;                 // e.g. 'wind' | 'fire'
-  status: string;
-  current_game_id: string | null;
-  birth_time: number;
-  total_existence_ms: number;
-  last_active_at: number;
-  created_at: number;
-  memoryStats: { episodic: number; semantic: number; core: number;
-                 links: number; reflections: number; total: number };
-  personality?: { bravery: number; aggression: number; sociability: number;
-                  curiosity: number; loyalty: number };
-  emotion?: { valence: number; arousal: number; dominance: number;
-              trust: number; anticipation: number; fatigue: number };
-  valueSystem?: { beliefs: string[]; priorities: Record<string, number>;
-                  moralAlignment: number };
-}
-```
+`{ soulId, timestamp, worldTime, position, visibleEntities[], nearbySouls[],
+environment{temperature,pressure,humidity,windSpeed,windDirection,lightLevel,weather,timeOfDay},
+events[], communications[] }`。
 
-### 3.2 `PerceptionFrame`（世界 → 灵魂）
+### 6.2 ActionRequest / ActionResult
 
-一个灵魂一帧看到的世界切片：
+`ActionRequest = { soulId, action: 'move'|'interact'|'communicate'|'use'|'attack'|'wait'|'custom',
+targetId?, parameters, timestamp }`；`ActionResult = { soulId, action, success, message, data?, timestamp }`。
 
-```ts
-interface PerceptionFrame {
-  soulId: string;
-  timestamp: number;
-  worldTime: number;
-  position: IVector3;
-  visibleEntities: Array<{ id: string; name: string; type: EntityType;
-                           position: IVector3; distance: number; visible: boolean }>;
-  nearbySouls: Array<{ id: string; name: string; element: string;
-                       position: IVector3; distance: number }>;
-  environment: {
-    temperature: number; pressure: number; humidity: number;
-    windSpeed: number; windDirection: IVector3; lightLevel: number;
-    weather: WeatherState; timeOfDay: number;
-  };
-  events: Array<{ id: string; type: string; name: string; severity: string;
-                  distance: number; affectsSoul: boolean }>;
-  communications: CommunicationMessage[];
-}
-```
+### 6.3 WorldEffect / SoulFeedback
 
-### 3.3 `ActionRequest` / `ActionResult`（灵魂 ↔ 世界）
+`WorldEffect`：世界对灵魂的情绪/身体/社交影响；`SoulFeedback`：灵魂对该影响的反应（闭环）。
 
-```ts
-interface ActionRequest {
-  soulId: string;
-  action: 'move' | 'interact' | 'communicate' | 'use' | 'attack' | 'wait' | 'custom';
-  targetId?: string;
-  parameters: Record<string, unknown>;
-  timestamp: number;
-}
-
-interface ActionResult {
-  soulId: string;
-  action: string;
-  success: boolean;
-  message: string;
-  data?: Record<string, unknown>;
-  timestamp: number;
-}
-```
-
-### 3.4 `WorldEffect` / `SoulFeedback`（世界 ↔ 灵魂情绪）
-
-```ts
-interface WorldEffect {
-  soulId: string;
-  source: string;
-  effectType: 'emotion' | 'physical' | 'mental' | 'social' | 'custom';
-  magnitude: number;
-  emotionDelta?: { valence?: number; arousal?: number; dominance?: number;
-                   trust?: number; anticipation?: number };
-  physicalDelta?: { health?: number; energy?: number; fatigue?: number };
-  description: string;
-  timestamp: number;
-}
-
-interface SoulFeedback {
-  soulId: string;
-  worldEffectId: string;
-  emotionalResponse: string;
-  actionTaken: string;
-  intensity: number;
-  timestamp: number;
-}
-```
+> 这些类型是**契约**，逐帧填充尚未实现（见已知问题）。
 
 ---
 
-## 4. SoulClient API（`src/api/soulClient.ts`）
+## 7. 错误码
 
-Seed 主动从 SoulArena 拉数据，失败回退内置 mock。
-
-```ts
-class SoulClient {
-  constructor(baseUrl?: string); // default: process.env.SOUL_URL ?? 'http://localhost:3000'
-  listSouls(): Promise<{ souls: SoulInfo[]; usedMock: boolean }>;
-  getSoul(id: string): Promise<SoulInfo | null>;
-}
-```
-
-- `listSouls()`：请求 `GET {baseUrl}/api/souls`，超时 1500ms；失败时 `usedMock = true` 并返回内置 Vex / Nova 两个 mock 灵魂。
-- `getSoul(id)`：请求 `GET {baseUrl}/api/souls/:id`；失败返回 `null`。
-
-```ts
-import { SoulClient } from './api/soulClient.js';
-
-const client = new SoulClient();
-// Try to fetch the roster; fall back to built-in mocks on failure.
-const { souls, usedMock } = await client.listSouls();
-```
+| HTTP | `error` | 含义 |
+|------|---------|------|
+| 400 | `validation_failed` | schema 校验失败 |
+| 401 | `unauthorized` | 缺/错 `X-API-Key`（SEED_AUTH=on） |
+| 404 | `not_found` / `soul_not_in_world` | 实体/灵魂 proxy 缺失 |
+| 429 | `rate_limited` | 限流，附 `retryAfterMs` |
+| 503 | `no_world` | 无活动世界 |
 
 ---
 
-## 5. SoulBridge API（`src/bridge/SoulBridge.ts`）
+## 8. 已知问题与限制
 
-双向桥，负责完整的“加入—感知—动作—反馈”循环。
-
-### 5.1 配置与构造
-
-```ts
-interface SoulBridgeConfig {
-  soulSystemUrl: string;
-  worldId: string;
-  logger?: ILogger;
-  validator?: BridgeValidator;          // optional action-payload validator
-  pollIntervalSec?: number;             // default 0.5s
-}
-type BridgeValidator = {
-  validateInline(schema: ValidationSchema, data: unknown):
-    { valid: boolean; errors: unknown[] };
-};
-```
-
-世界侧必须实现适配器才能真正执行动作：
-
-```ts
-interface SoulWorldAdapter {
-  createSoulEntity(soulId: string, position: IVector3): string;
-  removeSoulEntity(entityId: string): boolean;
-  getEntityPosition(entityId: string): IVector3 | undefined;
-  executeAction(request: ActionRequest): ActionResult;
-  buildPerceptionFrame(soulId: string): PerceptionFrame;
-}
-```
-
-### 5.2 方法签名
-
-```ts
-class SoulBridge {
-  constructor(config: SoulBridgeConfig);
-  attachWorld(world: SoulWorldAdapter): this;
-
-  on(event: SoulBridgeEvent, listener: SoulBridgeListener): this;
-  off(event: SoulBridgeEvent, listener: SoulBridgeListener): this;
-
-  connect(): Promise<boolean>;
-  disconnect(): void;
-
-  getSoulList(): Promise<SoulInfo[]>;
-  getSoulDetail(soulId: string): Promise<SoulInfo | null>;
-
-  joinWorld(soulId: string, spawnPosition: IVector3):
-    Promise<{ success: boolean; entityId: string }>;
-  leaveWorld(soulId: string): Promise<boolean>;
-
-  sendPerceptionFrame(soulId: string, frame: PerceptionFrame): Promise<boolean>;
-  requestAction(soulId: string): Promise<ActionRequest | null>;
-  executeAction(request: ActionRequest): Promise<ActionResult>;
-  applyWorldEffect(effect: WorldEffect): Promise<boolean>;
-  receiveSoulFeedback(soulId: string): Promise<SoulFeedback | null>;
-
-  getConnectedSouls(): string[];
-  update(deltaTime: number): void;      // call every tick; polls souls
-  get nextBackoffMs(): number;
-  get isConnected(): boolean;
-}
-```
-
-事件类型 `SoulBridgeEvent = 'soulJoined' | 'soulLeft' | 'actionReceived' |
-'effectApplied' | 'connectionLost' | 'connectionRestored'`。
-
-### 5.3 SoulArena 侧端点约定
-
-SoulBridge 假定 SoulArena 暴露以下 HTTP 端点（相对 `soulSystemUrl`）：
-
-| 方法 | 路径 | 用途 |
-|------|------|------|
-| GET | `/api/souls` | 灵魂花名册（`connect()` 探活、`getSoulList()`） |
-| GET | `/api/souls/:id` | 单个灵魂详情 |
-| POST | `/api/souls/:id/join` | 灵魂加入世界（body: `{worldId, position}`） |
-| POST | `/api/souls/:id/leave` | 灵魂离开世界（body: `{worldId}`） |
-| POST | `/api/souls/:id/perception` | 推送感知帧 |
-| GET | `/api/souls/:id/action` | 拉取待执行动作（返回 `ActionRequest` 或 `{action: null}`） |
-| POST | `/api/souls/:id/action/result` | 回写动作结果 `ActionResult` |
-| GET | `/api/souls/:id/feedback` | 拉取灵魂对世界影响的反馈 |
-| POST | `/api/effects` | 上报世界影响 `WorldEffect` |
-
-所有请求超时 2000ms；连接丢失时按指数退避（`500ms * 2^n`，上限 30s）。
-
-### 5.4 使用示例
-
-```ts
-import { SoulBridge } from './bridge/index.js';
-
-const bridge = new SoulBridge({
-  soulSystemUrl: 'http://localhost:3000',
-  worldId: 'seed-arena-01',
-  pollIntervalSec: 0.5,
-});
-
-// Attach the world adapter that actually executes actions / builds perception.
-bridge.attachWorld(myWorldAdapter);
-bridge.on('soulJoined', ({ soulId }) => console.log(`${soulId} joined`));
-
-await bridge.connect();
-await bridge.joinWorld('soul_mock_vex', { x: 0, y: 1, z: 0 });
-
-// Inside the world loop, once per tick:
-// bridge.update(deltaSeconds);
-```
-
----
-
-## 6. Seed 对外 API 一览（详见 API.md）
-
-Seed 进程暴露给外部（含 SoulArena / 监控）的 HTTP + WebSocket 接口：
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/world/status` | 世界运行状态 |
-| GET | `/api/entities` | 全部实体（toJSON） |
-| GET | `/api/entities/:id` | 单个实体 |
-| POST | `/api/entities` | 创建实体（校验 name/x/y/z） |
-| POST | `/api/souls/:id/action` | 灵魂动作入口（限流 + 校验 + 权限） |
-| GET | `/api/souls` | 转发 SoulClient 花名册 |
-| WS | `/ws` | 实时事件通道（`hello` / `ack` / `error`） |
-
----
-
-## 7. 已知问题 / 限制
-
-1. **`server.ts` 与 `WorldEngine` 未对接**：`createApp` 读取 `deps.engine.currentWorld`，但真实 `WorldEngine`（`src/engine/WorldEngine.ts`）**没有 `currentWorld` getter**，也没有 `entities` / `tick` / `worldTime` 字段。因此 REST 端点在运行时会因为 `w` 为 `undefined` 而返回降级结果，类型检查也无法通过。这是当前最主要的集成缺口，详见 `DEVLOG.md`。
-2. **`SoulBridge.validator` 与 `InputValidator` 接口不一致**：桥期望的 `BridgeValidator.validateInline(schema, data)` 对应 `types/ValidationSchema` 形状；而真实 `security/InputValidator` 的方法是 `validate(schema, input)`，schema 形状为 `Record<string, FieldRule>`，**没有 `validateInline`**。需要一个适配层。
-3. **动作白名单不一致**：`server.ts` 的 `POST /api/souls/:id/action` 只允许 `move/speak/interact/attack/use`，而 `types/ActionRequest.action` 允许 `move/interact/communicate/use/attack/wait/custom`。两处需要对齐。
-4. **感知帧尚未真正实现**：`PerceptionFrame` 类型已定义，但世界侧没有现成的 `buildPerceptionFrame` 实现（依赖 `World` 实体遍历与空间查询），接入时需自行补全 `SoulWorldAdapter`。
-5. **Mock 兜底**：SoulArena 不可达时 `SoulClient` 返回写死的 Vex（wind）/ Nova（fire），仅用于本地开发，不可用于真实联调。
+1. `POST /api/entities` 只校验不创建，建实体走 SDK。
+2. 动作枚举不一致：REST 用 `move/speak/interact/attack/use`，类型层 `ActionRequest` 用另一组。
+3. PerceptionFrame 逐帧汇聚未实现，`/ws` 仅回 echo。
+4. 两套服务端并存（`api/server.ts` 与 `server/index.ts`）。
+5. `permissions.ensure(...)` 在当前 PermissionSystem 中不存在（新实现用 `hasPermission/checkPermission`），
+   动作端点 RBAC 暂未生效。
+6. SoulClient 1.5s 超时硬编码；mock 回退单向。

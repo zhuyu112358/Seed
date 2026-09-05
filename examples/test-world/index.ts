@@ -106,7 +106,7 @@ async function main(): Promise<void> {
     medium: 'acoustic',
     intensity: 1,
   });
-  const received = acoustic.transmit(msg, vexProxy, { entities: world.bodies(), byId: (id) => world.getEntity(id) });
+  const received = acoustic.transmit(msg, vexProxy, { entities: world.bodies(), byId: (id) => world.getEntity(id) as GameObject | undefined });
   console.log('\n--- Acoustic demo ---');
   console.log(`Vex says: "${msg.content}" from ${vexProxy.position.toString()}`);
   for (const r of received) {
@@ -128,9 +128,16 @@ async function main(): Promise<void> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Ctor = WorldEvaluator as any;
+  // Construct defensively: the rich revision throws on a no-arg construction,
+  // which tells us we must use the {worldEngine} branch.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const probe: any = new Ctor();
-  if (typeof probe.recordTick === 'function') {
+  let probe: any = null;
+  try {
+    probe = new Ctor();
+  } catch {
+    probe = null;
+  }
+  if (probe && typeof probe.recordTick === 'function') {
     for (const ms of tickSamples) probe.recordTick(ms);
     probe.bump('collisions', collisionCount);
     probe.bump('events', collisionCount + zoneEvents);

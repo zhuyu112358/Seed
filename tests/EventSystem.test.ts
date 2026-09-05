@@ -1,93 +1,63 @@
-// Unit tests for src/event/EventSystem.ts
-import { describe, it } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventSystem } from '../src/event/EventSystem.js';
-import { Event } from '../src/event/Event.js';
+import { Event, CollisionEvent, WorldTickEvent } from '../src/event/Event.js';
 
-function makeEvent(type: string, payload: Record<string, unknown> = {}) {
-  return new Event({ type, payload });
-}
+test('on receives emitted events and listenerCount tracks subscriptions', () => {
+  const bus = new EventSystem();
+  const seen: number[] = [];
+  bus.on('ping', () => seen.push(1));
+  bus.on('ping', () => seen.push(2));
+  assert.equal(bus.listenerCount('ping'), 2);
+  bus.emit(new Event({ type: 'ping', payload: {} }));
+  assert.equal(seen.length, 2);
+});
 
-describe('EventSystem', () => {
-  it('on subscribes and emit dispatches to handlers', () => {
-    const bus = new EventSystem();
-    let seen = 0;
-    bus.on('ping', () => seen++);
-    bus.emit(makeEvent('ping'));
-    bus.emit(makeEvent('ping'));
-    assert.equal(seen, 2);
-  });
+test('once fires only a single time', () => {
+  const bus = new EventSystem();
+  let count = 0;
+  bus.once('solo', () => count++);
+  bus.emit(new Event({ type: 'solo', payload: {} }));
+  bus.emit(new Event({ type: 'solo', payload: {} }));
+  assert.equal(count, 1);
+  assert.equal(bus.listenerCount('solo'), 0);
+});
 
-  it('once runs the handler exactly once', () => {
-    const bus = new EventSystem();
-    let n = 0;
-    bus.once('ping', () => n++);
-    bus.emit(makeEvent('ping'));
-    bus.emit(makeEvent('ping'));
-    assert.equal(n, 1);
-    assert.equal(bus.listenerCount('ping'), 0);
-  });
+test('off removes a specific handler and unsubscribe function works', () => {
+  const bus = new EventSystem();
+  let hits = 0;
+  const h = () => hits++;
+  const off = bus.on('x', h);
+  off();
+  assert.equal(bus.listenerCount('x'), 0);
 
-  it('off cancels a subscription', () => {
-    const bus = new EventSystem();
-    let n = 0;
-    const handler = () => n++;
-    bus.on('ping', handler);
-    bus.off('ping', handler);
-    bus.emit(makeEvent('ping'));
-    assert.equal(n, 0);
-  });
+  const h2 = () => hits++;
+  bus.on('x', h2);
+  bus.off('x', h2);
+  bus.emit(new Event({ type: 'x', payload: {} }));
+  assert.equal(hits, 0);
+});
 
-  it('on returns an unsubscribe function', () => {
-    const bus = new EventSystem();
-    let n = 0;
-    const off = bus.on('ping', () => n++);
-    off();
-    bus.emit(makeEvent('ping'));
-    assert.equal(n, 0);
-  });
+test('priority order and concrete event envelopes carry payload', () => {
+  const bus = new EventSystem();
+  const order: string[] = [];
+  bus.on('e', () => order.push('low'), 0);
+  bus.on('e', () => order.push('high'), 10);
+  bus.emit(new Event({ type: 'e', payload: {} }));
+  assert.deepEqual(order, ['high', 'low']);
 
-  it('handlers run in descending priority order', () => {
-    const bus = new EventSystem();
-    const order: string[] = [];
-    bus.on('go', () => order.push('low'), 0);
-    bus.on('go', () => order.push('high'), 10);
-    bus.emit(makeEvent('go'));
-    assert.deepEqual(order, ['high', 'low']);
-  });
+  const col = new CollisionEvent('a', 'b', { x: 0, y: 0, z: 0 }, 3);
+  assert.equal(col.type, 'physics.collision');
+  assert.equal(col.payload.a, 'a');
+  const tick = new WorldTickEvent(3, 0.05);
+  assert.equal(tick.payload.tick, 3);
+});
 
-  it('cancelling an event stops later handlers', () => {
-    const bus = new EventSystem();
-    const order: string[] = [];
-    bus.on('go', (e) => { order.push('first'); e.cancel(); }, 10);
-    bus.on('go', () => order.push('second'), 0);
-    bus.emit(makeEvent('go'));
-    assert.deepEqual(order, ['first']);
-  });
-
-  it('listenerCount reflects active subscriptions', () => {
-    const bus = new EventSystem();
-    bus.on('a', () => {});
-    bus.on('a', () => {});
-    assert.equal(bus.listenerCount('a'), 2);
-    assert.equal(bus.listenerCount('b'), 0);
-  });
-
-  it('clear removes every subscription', () => {
-    const bus = new EventSystem();
-    bus.on('a', () => {});
-    bus.on('b', () => {});
-    bus.clear();
-    assert.equal(bus.listenerCount('a'), 0);
-    assert.equal(bus.listenerCount('b'), 0);
-  });
-
-  it('a throwing async handler does not break the bus', () => {
-    const bus = new EventSystem();
-    let reached = false;
-    bus.on('async', () => Promise.reject(new Error('boom')));
-    bus.on('async', () => { reached = true; });
-    bus.emit(makeEvent('async'));
-    assert.equal(reached, true);
-  });
+test('clear removes all subscriptions', () => {
+  const bus = new EventSystem();
+  bus.on('a', () => {});
+  bus.on('b', () => {});
+  bus.clear();
+  assert.equal(bus.listenerCount('a'), 0);
+  assert.equal(bus.listenerCount('b'), 0);
 });

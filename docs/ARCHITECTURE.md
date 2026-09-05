@@ -1,235 +1,268 @@
 # 架构文档（ARCHITECTURE）
 
-> 基于 `src/` 下真实模块与依赖关系整理。项目为 TypeScript ESM（`"type": "module"`，`moduleResolution: NodeNext`）。
+> 严格基于 `src/` 真实源码。TypeScript ESM（`NodeNext`，`strict`），源码约 50 个文件。
+> 文档中文，代码注释英文。
 
 ---
 
-## 1. 设计目标与分层
+## 1. 概述
 
-Seed 是一个运行在 SoulArena **之下** 的虚拟物理世界引擎，提供：可配置的世界容器、物理模拟、
-事件系统、可插拔通信媒介、灵魂交互桥接，以及可靠性与安全基础设施。整体分层自底向上：
+Seed System 是一个可配置的虚拟物理世界引擎：它本身不规定某个具体世界，而是提供世界容器、物理、事件、通信、可靠性、安全、评估与对外 API，并与 SoulArena 对接让灵魂进入世界。
+
+代码当前由**两条并行的实现栈**构成，二者通过 `src/types/index.ts` 的接口类型耦合，但尚未完全收敛：
+
+- **核心模拟层（core / layered）**：`engine/World.ts` + `entity/` + `physics/` + `event/` + `communication/`。干净、可单测，是 `WorldEvaluator` 与 `runEval` 围绕的对象。
+- **运行时 / SDK 层（runtime / types-driven）**：`engine/WorldEngine.ts` + `engine/{Entity,Vector3,PhysicsSystem,Quadtree,ObjectPool}` + `sdk/` + `api/` + `bridge/`。以 `types/index.ts` 接口为契约，是对外服务的主循环。
+
+> 这一“双栈并存”是当前最大的架构事实，也是大量已知问题的根源，详见 `DEVLOG.md`。
+
+---
+
+## 2. 目录与分层
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  api/            REST + WebSocket 服务端，SoulClient 桥接      │
-├──────────────────────────────────────────────────────────────┤
-│  sdk/            WorldBuilder 流畅组装世界（对外公共表面）       │
-├──────────────────────────────────────────────────────────────┤
-│  engine/         World（容器）+ WorldEngine（主循环/统计）      │
-├───────────┬───────────────┬──────────────┬───────────────────┤
-│ entity/   │ physics/      │ event/       │ communication/    │
-│ 实体层次  │ 可插拔物理后端│ 事件总线/传播│ 通信媒介策略       │
-├───────────┴───────────────┴──────────────┴───────────────────┤
-│  reliability/    Logger / Snapshot / Transaction / Exception   │
-│  security/       ApiKeyAuth / InputValidator / RateLimiter /   │
-│                  PermissionSystem / sanitize                  │
-├──────────────────────────────────────────────────────────────┤
-│  types/          跨模块共享类型契约（IVector3 / Perception…）  │
-└──────────────────────────────────────────────────────────────┘
+src/
+├── types/            全局类型契约（IVector3 / IEntity / WorldConfig / PhysicsConfig /
+│                     ICommunicationStrategy / PerceptionFrame / ActionRequest ...）
+├── engine/           主循环与运行时（WorldEngine / EntitySystem / engine/PhysicsSystem /
+│                     engine/Entity / engine/Vector3 / Quadtree / ObjectPool / World.ts）
+├── entity/           核心模拟层实体：Entity / GameObject / EntityFactory / Vector3
+├── physics/          核心模拟层物理：PhysicsConfig / IPhysicsBackend / SimplePhysics2D / PhysicsSystem
+├── event/            核心模拟层事件：Event / EventSystem / ConditionEngine / EventPropagation
+├── communication/    Message / CommunicationStrategy / AcousticPropagation / NetworkPacket / WorldResonance
+├── reliability/     Logger / SnapshotManager / WorldTransaction(Transaction.ts) / ExceptionHandler
+├── security/         InputValidator / PermissionSystem / RateLimiter / ApiKeyAuth / sanitize
+├── sdk/              WorldBuilder（链式建世界）+ 若干孤立辅助模块
+├── systems/          玩法事件定义系统（EventSystem / ConditionEngine / event-types）——与 event/ 重复
+├── evaluator/        WorldEvaluator + runEval 入口
+├── api/              Express REST + ws WebSocket + SoulClient
+└── bridge/           SoulBridge（与 SoulArena 的双向桥）
 ```
 
 ---
 
-## 2. 主循环流程
+## 3. 核心模拟层（core）
 
-主循环由 `WorldEngine` 驱动（`src/engine/WorldEngine.ts`）：
+### 3.1 `World` 容器（`src/engine/World.ts`）
 
-```
-WorldEngine.start()
-  └─ setInterval(1000 / tickRate)
-       └─ WorldEngine.tick(deltaTime)
-            ├─ world.step(deltaTime)
-            │    ├─ tick++; worldTime += dt
-            │    ├─ events.emit(new WorldTickEvent(...))   // 世界总线
-            │    └─ for system of world.systems:            // 按顺序
-            │          if system.enabled: system.tick(dt, world, events)
-            │                └─ PhysicsSystem.tick(...)     // 物理后端积分+碰撞
-            │                     ├─ backend.step(dt, bodies, config)
-            │                     ├─ events.emit(CollisionEvent)
-            │                     └─ 区域触发检测 → events.emit(EntityEnterZone)
-            ├─ 采样 tick 耗时（滑动窗口 120）
-            └─ emit('tick', {...})  → 引擎级监听
-```
-
-关键点：
-
-- `World` 是**世界无关的可配置容器**，`WorldEngine` 是驱动它的运行时；两者分离，方便用 SDK
-  组装具体世界后再交给引擎。
-- 每个 `WorldSystem` 实现 `{ readonly name; enabled; start?; stop?; tick(dt, world, events) }`。
-- `PhysicsSystem` 是当前唯一默认挂载的系统；碰撞与区域事件都通过 `world.events` 总线派发。
-- `WorldEngine` 自身也有一个小事件分发（`tick/entityCreated/entityRemoved/error`），监听异常被
-  try/catch 隔离，不会拖垮主循环。
-
----
-
-## 3. 实体模型（Entity → GameObject 层次）
-
-`src/entity/Entity.ts`：
-
-- **`Entity`（根类）**：`id / name / type / position: Vector3 / velocity / mass / material /
-  state: Map / properties: Map / active / createdAt / children[] / parent`。
-  提供 `attach(child)` / `detach()` / `walk(fn)`（子树 BFS）/ `toJSON()`。
-- **`GameObject extends Entity`**：物理/交互实体，增加 `halfExtents / interactable / hittable`，
-  以及 `aabbMin()` / `aabbMax()`（轴对齐包围盒角点）。
-
-实体分类（`types/index.ts` 的 `EntityType`）：`static | dynamic | interactive | soul | soul-proxy |
-npc | trigger | area | effect`。
-
-`EntityFactory`（`src/entity/EntityFactory.ts`，**注意它在 `src/entity/`，不在 `sdk/` 下**）以静态方法
-生产常用原型：
-
-| 方法 | 产出 |
-|------|------|
-| `staticBox(name, center, halfExtents)` | 不可动静态体（质量无穷大，stone） |
-| `dynamicBox({name, position, mass, material, velocity, halfExtents})` | 可动动态体 |
-| `zoneTrigger({name, center, halfExtents, onEnter})` | 非物理触发区域（type=`trigger`） |
-| `soulProxy({soulId, name, element, position})` | 灵魂在世界内的代理体，id=`soul_<soulId>` |
-| `distance(a, b)` | 两点距离工具 |
-
-`Vector3`（`src/entity/Vector3.ts`）是不可变三维向量，所有运算返回新向量；附带导出 `clamp()`。
-
----
-
-## 4. 事件流（EventSystem 总线 + 传播衰减）
-
-`src/event/`：
-
-- **`Event<T>`（`Event.ts`）**：事件信封，携带 `type / payload / timestamp / sourceId` 与
-  `propagation { origin, remainingRadius, intensity }`；`cancel()` / `isCancelled()` 支持短路。
-  预置事件工厂：`CollisionEvent`(`physics.collision`)、`EntityEnterZone`(`zone.enter`)、
-  `WorldTickEvent`(`world.tick`)、`WeatherEvent`(`world.weather`)。
-- **`EventSystem`（`EventSystem.ts`）**：进程内类型化事件总线。
-  - `on(type, handler, priority=0)` 返回退订函数；handler 按 priority 降序执行。
-  - `once(...)` / `off(...)` / `listenerCount(type)` / `clear()`。
-  - `emit(event)`：同步 handler 直接执行；异步 handler 以 fire-and-forget 运行，rejection 被吞掉；
-    handler 抛错被捕获记日志；`event.cancel()` 会中断后续 handler。
-- **`EventPropagation`（`EventPropagation.ts`）**：空间衰减辅助。
-  `intensityAt(event, target) = max(0, originIntensity - attenuationPerMetre × distance)`，
-  超过 `maxRadius` 返回 0；`filterByRadius(...)` 过滤可感知实体。
-- **`ConditionEngine`（`ConditionEngine.ts`）**：小型谓词语言（`entityProperty / worldTime /
-  and / or / not`），用于「实体 X 进入区域 Y 且 worldTime > T」这类玩法规则求值。
-
----
-
-## 5. 通信策略（可插拔媒介）
-
-项目里存在**两代**通信抽象（见 §11 已知问题）：
-
-### 5.1 主实现：`src/communication/`
+世界是实体集合 + 系统列表 + 事件总线的聚合根：
 
 ```ts
-interface WorldView { entities: Iterable<GameObject>; byId(id): GameObject | undefined; }
-interface CommunicationStrategy {
-  readonly medium: string;
-  transmit(message: Message, source: GameObject, world: WorldView): ReceivedMessage[];
+interface WorldSystem {
+  readonly name: string;
+  enabled: boolean;
+  start?(): void;
+  stop?(): void;
+  tick(dt: number, world: World, events: EventSystem): void;
+}
+
+class World {
+  constructor(config: { name: string; tickRate: number });
+  readonly config: { name: string; tickRate: number };
+  readonly entities: Map<string, Entity>;
+  readonly systems: WorldSystem[];
+  readonly events: EventSystem;
+  worldTime: number;
+  tick: number;
+  state: 'created' | 'running' | 'stopped' | 'error';
+
+  addEntity(entity: Entity): this;
+  removeEntity(id: string): boolean;
+  getEntity(id: string): Entity | undefined;
+  addSystem(system: WorldSystem): this;
+  bodies(): GameObject[];                 // only GameObject instances
+  queryByType(type: string): Entity[];
+  iterate(fn: (e: Entity) => void): void;
+  start(): void;                           // state='running', calls system.start?.()
+  stop(): void;                            // state='stopped', calls system.stop?.()
+  step(dt: number): void;                  // tick++, worldTime+=dt, emit WorldTickEvent, tick enabled systems
 }
 ```
 
-- **`Message`**：`{ id, content, sourceId, position, medium, intensity, timestamp }`。
-- **`ReceivedMessage`**：`{ original, receivedIntensity, distance }`。
-- **`AcousticPropagation`**：逆平方 + 介质吸收衰减
-  `intensity = sourceIntensity × 1/(1+atten·d²) × (1-absorb·d)`，超过 `maxRadius` 或低于
-  `minAudible` 不送达。可配 `attenuation/absorption/maxRadius/minAudible`。
-- **`NetworkPacket`**：分布式/网络媒介的**桩**，当前无距离衰减地广播给所有活跃实体。
-- **`WorldResonance`**：「世界低语」媒介的**桩**，当前只让 `soul-proxy` 实体以满强度「听到」。
+`tick(dt)` 的顺序：自增 tick → 累加 worldTime → 发 `world.tick` 事件 → 依次调用每个 `enabled` 系统的 `tick(dt, this, this.events)`。
 
-### 5.2 新一代：`src/systems/strategies/`
-
-实现了 `types/index.ts` 的 `ICommunicationStrategy` 完整契约：
+### 3.2 实体（`src/entity/Entity.ts`）
 
 ```ts
-interface ICommunicationStrategy {
-  readonly medium: CommunicationMedium;
-  readonly name: string;
-  initialize(config): void;
-  send(message: CommunicationMessage, worldEntities: IEntity[]): CommunicationResult;
-  canReach(sender, receiver, obstacles): { reachable; signalStrength };
-  getPropagationDelay(sender, receiver): number;
-  update(deltaTime): void;
+class Entity {
+  constructor(opts: { id?: string; name: string; type: EntityType;
+                      position?; velocity?; mass?; material? });
+  readonly id: string; name: string; readonly type: EntityType;
+  position: Vector3; velocity: Vector3; mass: number; material: string;
+  readonly state: Map<string, unknown>;
+  readonly properties: Map<string, unknown>;
+  active: boolean; readonly createdAt: number;
+  readonly children: Entity[]; parent: Entity | null;
+  attach(child: Entity): void;
+  detach(): void;
+  walk(fn: (e: Entity) => void): void;   // BFS over subtree
+  toJSON(): Record<string, unknown>;
+}
+
+class GameObject extends Entity {        // adds physical/interaction properties
+  halfExtents: Vector3; interactable: boolean; hittable: boolean;
+  aabbMin(): Vector3;
+  aabbMax(): Vector3;
+}
+```
+
+`EntityType` 见 `types/index.ts`：`static | dynamic | interactive | soul | soul-proxy | npc | trigger | area | effect`。
+
+### 3.3 向量数学（`src/entity/Vector3.ts`）
+
+不可变向量（所有运算返回新实例）。`static zero`、`static from(v)`；方法 `add/sub/mul/div(除零返回zero)/dot/cross/length/lengthSquared/normalize/distance/distanceSquared/lerp/clamp/distanceTo/clone/equals/toArray/toObject/toString`。另导出独立标量函数 `clamp(value, min, max)`（NaN 返回 min）。
+
+### 3.4 实体工厂（`src/entity/EntityFactory.ts`）
+
+全部为静态方法：
+
+| 方法 | 产物 |
+|------|------|
+| `staticBox(name, center, halfExtents)` | type `static`，质量无穷，材质 stone |
+| `dynamicBox(opts{name,position,mass?,material?,velocity?,halfExtents?})` | type `dynamic` |
+| `zoneTrigger(opts{name,center,halfExtents,onEnter?})` | type `trigger`，记录 `isZone` / `onEnter` |
+| `soulProxy(opts{soulId,name,element,position?})` | type `soul-proxy`，id=`soul_<id>` |
+| `distance(a,b)` | 点到点距离（便捷方法） |
+
+### 3.5 物理（`src/physics/`）
+
+- `PhysicsConfig`（类）：`constructor(opts?)`，`static defaults()`，`static builder()`。字段 `gravity=9.8`（标量，Y 轴）、`friction=0.1`、`airResistance=0.05`、`fixedDt=1/60`、`enabled=true`、`restitution=0.6`。`PhysicsConfigBuilder` 提供 fluent 链式 `gravity/friction/airResistance/fixedDt/enabled/restitution/build()`。
+- `IPhysicsBackend`（接口）：`{ name; step(dt, bodies, config): {collisions: CollisionPair[]}; applyImpulse(body, ix, iy, iz) }`，并导出 `aabbOverlap(...)`。
+- `SimplePhysics2D`（默认后端，`name='simple-2d'`）：确定性积分 + O(n²) AABB 碰撞；重力沿 -Y，摩擦/空气阻力衰减速度，静态体（无穷质量）不动。
+- `PhysicsSystem`（`name='physics'`）：生命周期系统，`tick(dt, world, events)` 从 `world.bodies()` 取体驱动后端，把碰撞封装为 `CollisionEvent`，并检测 trigger 区进出并发出 `EntityEnterZone`。字段 `config`、`backend`、`counters{collisions, moved}`；`applyImpulse(body, ix, iy, iz)`。
+
+> 注意：`physics/PhysicsConfig`（标量 gravity 的**类**）与 `types/index.ts` 的 `PhysicsConfig`（向量 gravity 的**接口**）是两套定义，见已知问题。
+
+### 3.6 事件（`src/event/`）
+
+- `Event`：事件信封 `{ type, payload, timestamp, sourceId, propagation{origin, remainingRadius, intensity} }`，`cancel()` / `isCancelled()`。
+- 具体事件：`CollisionEvent`（type `physics.collision`）、`EntityEnterZone`（`zone.enter`）、`WorldTickEvent`（`world.tick`）、`WeatherEvent`（`world.weather`）。
+- `EventSystem`：进程内事件总线。`on(type, handler, priority=0)` 返回取消订阅函数；`once/off/emit/listenerCount/clear`。handler 按 priority 降序执行；`cancel()` 后中断后续 handler；同步错误被捕获、异步错误 fire-and-forget，单 listener 异常不拖垮总线。
+- `ConditionEngine`：谓词可辨识联合 `entityProperty | worldTime | and | or | not`，`evaluate(pred, ctx{worldTime, entities})`。
+- `EventPropagation`：`{attenuationPerMetre, maxRadius}` 空间衰减，`distanceTo/intensityAt/filterByRadius`。
+
+### 3.7 通信（`src/communication/`）
+
+- `Message`：`{ id, content, sourceId, position, medium, intensity, timestamp }`，`medium = 'acoustic' | 'network' | 'resonance'`；另有 `ReceivedMessage{original, receivedIntensity, distance}`。
+- `CommunicationStrategy`（接口）：`{ medium; transmit(message, source, world: WorldView): ReceivedMessage[] }`；`WorldView = { entities: Iterable<GameObject>; byId(id) }`。
+- `AcousticPropagation`（`medium='acoustic'`）：距离衰减 `1/(1+att·d²)` 乘以介质吸收 `(1-abs·d)`，超过 `maxRadius` 或低于 `minAudible` 不送达。`intensityAt(sourceIntensity, distance)` 公开可测。
+- `NetworkPacket`（`medium='network'`，**stub**）：当前无衰减广播给所有 active 实体。
+- `WorldResonance`（`medium='resonance'`，**stub**）：当前只让 `soul-proxy` 实体以满强度接收。
+
+---
+
+## 4. 运行时 / SDK 层（runtime）
+
+### 4.1 `WorldEngine`（`src/engine/WorldEngine.ts`）
+
+对外服务的主循环。**构造签名与你可能预期的不同**：
+
+```ts
+class WorldEngine {
+  constructor(config: WorldConfig, logger?: ILogger);
+  // WorldConfig (types/index.ts) requires: id, name, bounds{min,max},
+  // physics (types/PhysicsConfig vector form), tickRate, ...
+  start(): void;                 // setInterval at 1000/tickRate, unref()
+  stop(): void;
+  get isRunning(): boolean;
+  tick(dt: number): void;        // run physics.step(dt), emit 'collision'/'tick'
+  getStats(): WorldStats;
+  createEntity(c: EntityConfig): IEntity;
+  removeEntity(id: string): boolean;
+  getEntity(id: string): IEntity | undefined;
+  applyForce(a: ForceApplication): void;
+  raycast(o: IVector3, d: IVector3, md: number): RaycastHit | null;
+  on(ev: WorldEngineEvent, cb: WorldEngineCallback): void;
+  off(ev: WorldEngineEvent, cb: WorldEngineCallback): void;
   destroy(): void;
 }
+type WorldEngineEvent = 'tick' | 'entityCreated' | 'entityRemoved' | 'collision' | 'error';
 ```
 
-三个实现：`AcousticPropagation`（声速 343m/s、材料遮挡 AABB 射线检测、频率响应）、
-`NetworkPacket`（带宽/跳数/丢包/延迟模型）、`WorldResonance`（谐振频率谐波增强、场强随时间衰减）。
+内部组合 `EntitySystem` + `engine/PhysicsSystem`（实现 `IPhysicsEngine`）+ `Quadtree`（空间索引）+ `ObjectPool<CollisionResult>`。
+
+> **重要事实**：`WorldEngine` **没有** `currentWorld` getter、**没有** `getAllEntities()`、**没有** `load()`、**没有** `runTicks()`。示例与 `server.ts` 中对这些成员的调用均为悬空调用，见已知问题。
+
+### 4.2 运行时子系统
+
+- `EntitySystem`：实体 CRUD + 四叉树索引 + 生命周期事件（`created/removed/destroyed`）。方法 `createEntity/removeEntity/getEntity/getAllEntities/getEntitiesByType/getEntitiesInArea/updateEntity/clear/count/on/off`。
+- `engine/PhysicsSystem`（实现 `IPhysicsEngine`）：`initialize(config)/step(dt): CollisionResult[]/addEntity/removeEntity/updateEntity/applyForce/raycast/getConfig/setConfig/destroy`；支持 AABB / Sphere / AABB-Sphere 碰撞、子步进、力与冲量、射线检测。
+- `Quadtree`（`engine/SpatialIndex.ts`，别名 `SpatialIndex`）：2D（XZ 平面）空间分区，`insert/remove/update/queryRange/queryNear/queryRay/clear/size`。
+- `ObjectPool<T>`：`acquire/release/preallocate/shrink/getStats/clear`。
+- `engine/Entity.ts`、`engine/Vector3.ts`：与 `entity/` 同名但不同实现（`Vector3` 可变、含 `addInPlace/mulInPlace`，`Entity` 实现 `IEntity` 全量字段）。
+
+### 4.3 SDK（`src/sdk/`）
+
+- `WorldBuilder`（实现 `IWorldBuilder`）：链式声明式构建世界。`createWorld(options)/addEntity(config)=>id/addEntities/setPhysicsConfig/addCommunicationStrategy/addEventListener/registerSoul/setTickRate/enableWeather/enableClock/enableEvents/build(): WorldConfig`，以及便捷的 `async buildAndStart(): Promise<RunningWorld>`。
+- `RunningWorld`：`buildAndStart()` 返回的轻量自运行世界，`addEntity/removeEntity/getEntity/getAllEntities/addStrategy/on/start/stop/isRunning/getStats/destroy`。
+- `sdk/PhysicsConfig.ts`：预设 `defaultPhysicsConfig/zeroGravityConfig/moonGravityConfig/waterPhysicsConfig`、`createPhysicsConfig(overrides)`、材质表 `materialDensity/materialFriction/materialRestitution`。
+- 桶文件 `sdk/index.ts` 导出：`WorldBuilder`、`EntityFactory`（来自 `entity/`）、`PhysicsConfig`+`PhysicsConfigBuilder`（来自 `physics/`）、`PhysicsSystem`（`physics/`）、`AcousticPropagation/NetworkPacket/WorldResonance/Message` 及相关类型。
+
+> `sdk/EntityFactory.ts`（实现 `IEntityFactory` 的声明式工厂）、`sdk/PhysicsConfig.ts`（预设/材质表）、`sdk/WorldEventListener.ts`（`createListener()`）**未被 `sdk/index.ts` 引用**，属于孤立文件。
 
 ---
 
-## 6. 物理子系统
+## 5. 可靠性与安全
 
-`src/physics/`：
-
-- **`IPhysicsBackend`**：可插拔后端契约 `{ name; step(dt, bodies, config) → {collisions};
-  applyImpulse(body, ix,iy,iz) }`，附带 `aabbOverlap(...)` 工具。
-- **`SimplePhysics2D`**：v0.1 参考实现——重力/阻尼/空气阻力积分 + O(n²) AABB 窄相碰撞，
-  沿最小穿透轴反射速度并按 `restitution` 缩放；静态体（质量无穷/0）不参与受力。
-- **`PhysicsConfig`（类，`physics/PhysicsConfig.ts`）**：标量配置
-  `gravity=9.8 / friction=0.1 / airResistance=0.05 / fixedDt=1/60 / enabled / restitution=0.6`，
-  配 `defaults()` 与 fluent `builder()`。
-- **`PhysicsSystem`**：实现 `WorldSystem` 接口，每 tick 拉取 `world.bodies()`、调用后端、派发
-  `CollisionEvent`、做区域进入检测（`EntityEnterZone`）、统计 `counters {collisions, moved}`。
+- **日志** `reliability/Logger.ts`：`Logger.for(module)` 取子 logger，`Logger.level(level)` 全局调级，`Logger.logDir`；`createLogger(module)` 返回严格 `ILogger`。`ILogger` 的 `debug/info/warn/error/fatal` 均有 `(message, meta?)` 与 `(bindings, message?)` 两个重载，并支持 `child(module)`。输出同时写控制台与 `logs/seed.log`。
+- **快照** `reliability/SnapshotManager.ts`：`constructor({dir?, keep?})`，`save({worldName, worldTime, tick, entities, version?})`、`load(file)`、`list()`、`rollback()`（取最新快照），自动只保留最新 `keep`（默认 20）份。
+- **事务** `reliability/Transaction.ts`：类名是 **`WorldTransaction`**（不是 `Transaction`）。`record(entity, before)`、`finalize(entities: Map)`、`commit()`、`rollback(entities): number`、`isCommitted()`、`size()`。v0.1 仅支持位置撤销日志。
+- **异常** `reliability/ExceptionHandler.ts`：`constructor(snapshotter?, emergencySnapshot?)`、`setExitOnFatal(v)`、`install()`（挂 `uncaughtException` / `unhandledRejection`，可触发紧急快照）。
+- **安全** `security/`：见 `SECURITY.md`。
 
 ---
 
-## 7. 可靠性（reliability/）
+## 6. 评估与对外服务
 
-| 模块 | 职责 |
-|------|------|
-| `Logger` | 零依赖结构化 JSON 日志；`Logger.for(module)` 子 logger，支持 `(msg, meta)` 与 `(bindings, msg)` 两种重载；控制台 + `logs/seed.log`；级别由 `SEED_LOG_LEVEL` 控制；另有 `createLogger()` 返回严格 `ILogger` |
-| `SnapshotManager` | 世界序列化为 `snapshots/*.json`（schema `seed/world-snapshot@1`）；`save/load/list/rollback`；`prune()` 只保留最新 N 份 |
-| `WorldTransaction` | 最小 undo-log：`record(entity, beforePos)` → `finalize(entities)` → `commit()/rollback(entities)`，当前仅支持位置/速度回滚 |
-| `ExceptionHandler` | 安装 `uncaughtException` / `unhandledRejection` 进程级处理器，记 fatal 日志并触发紧急快照；默认不退出，`setExitOnFatal(true)` 后严格模式退出 |
+- `evaluator/WorldEvaluator.ts`：**构造函数无参数**。`recordTick(ms)`、`bump(field: keyof EvalCounters, by=1)`、`buildReport(world: World)`、`flush(world): string`（写 `logs/eval-<ts>.json` 并打印摘要）。`EvalCounters = { events, collisions, messages, moved, soulActions, soulActionsSucceeded, perceivedEvents }`。注意它的 `buildReport/flush` 接收的是**核心模拟层 `engine/World.ts`** 的 `World`。
+- `api/server.ts`：`createApp(deps)` / `startServer(deps)`，REST + WebSocket，详见 `API.md`。
+- `api/soulClient.ts`：与 SoulArena 通信，见 `SOUL_INTERFACE.md`。
+- `bridge/SoulBridge.ts`：双向灵魂桥，见 `SOUL_INTERFACE.md`。
 
 ---
 
-## 8. 安全（security/）
+## 7. Tick 数据流
 
-详见 `docs/SECURITY.md`。此处仅列分层：
-
-- **`ApiKeyAuth`**：Express 中间件工厂，`X-API-Key` 校验，`SEED_AUTH=off` 时放行。
-- **`InputValidator`**：基于 **Ajv** 的 schema 校验，5 个内置 schema，`validate(name, data)` /
-  `validateInline(schema, data)`。
-- **`RateLimiter`**：令牌桶，按 `RateLimitConfig` 配置，`consume(key)` / `check(key)` / `getStats()`。
-- **`PermissionSystem`**：RBAC，5 个默认角色，`hasPermission` / `checkPermission`，带缓存。
-- **`sanitize`**：`sanitizeString`（去控制字符 + HTML 转义）、`looksInjective`（注入特征检测）。
-
----
-
-## 9. 评估（evaluator/）
-
-- **`WorldEvaluator`**：`recordTick(ms)` 采样、`bump(keyof EvalCounters)` 活动计数、
-  `buildReport(world)` 汇总 `EvalReport`（world / performance / subsystems / activity / soulInteraction）、
-  `flush(world)` 写 `logs/eval-<stamp>.json` 并打印。
-- **`runEval.ts`**：`npm run eval` 入口，用 SDK 搭一个小世界跑 N tick 并出报告。
-- **`index.ts`**：评估 barrel（当前导出与实现存在不一致，见 §11）。
-
----
-
-## 10. 入口与依赖关系
+### 7.1 核心模拟层
 
 ```
-api/server.ts ──▶ engine/WorldEngine ──▶ engine/World ──▶ entity/Entity, event/EventSystem
-                 ├─▶ security/{InputValidator,PermissionSystem,RateLimiter,ApiKeyAuth,sanitize}
-                 └─▶ api/soulClient ──(HTTP)──▶ SoulArena (:3000)
-sdk/WorldBuilder ──▶ engine/World, physics/PhysicsSystem, physics/PhysicsConfig, entity/Entity
-physics/PhysicsSystem ──▶ physics/{IPhysicsBackend,SimplePhysics2D,PhysicsConfig}, event/{Event,EventSystem}
-evaluator/runEval ──▶ sdk/index, communication/{Message,AcousticPropagation}, evaluator/WorldEvaluator
+World.step(dt)
+  └─ emit WorldTickEvent
+       └─ for each enabled system: system.tick(dt, world, events)
+            └─ PhysicsSystem.tick
+                 ├─ backend.step(dt, world.bodies(), config)  → 积分 + AABB 碰撞
+                 ├─ events.emit(CollisionEvent ...)           → 监听者（如 evaluator.bump）
+                 └─ zone 检测 → events.emit(EntityEnterZone ...)
+```
+
+### 7.2 运行时层
+
+```
+WorldEngine.start() → setInterval(1000/tickRate)
+  └─ tick(dt)
+       ├─ phys.step(dt)            // engine/PhysicsSystem, 含 Quadtree 广义相位
+       ├─ emit('collision', c)     // per collision
+       └─ emit('tick', { tick, deltaTime, collisions })
 ```
 
 ---
 
-## 11. 已知架构问题
+## 8. 扩展点
 
-1. **两套物理配置不兼容**：`physics/PhysicsConfig.ts` 是**类、标量 gravity**；`types/index.ts` 的
-   `PhysicsConfig` 是**接口、向量 gravity**（`{x,y,z}`）。`sdk/PhysicsConfig.ts` 的预设用后者，
-   而 `PhysicsSystem`/`SimplePhysics2D` 用前者，尚未统一。
-2. **两代通信策略接口并存**：`communication/CommunicationStrategy`（`medium + transmit`，操作
-   `Message/GameObject`）与 `types/index.ts` 的 `ICommunicationStrategy`（`medium + name +
-   initialize/send/canReach/getPropagationDelay/update/destroy`，操作 `CommunicationMessage/IEntity`）
-   互不兼容。
-3. **`src/systems/index.ts` barrel 断裂**：引用了 `./EventSystem.js`、`./CommunicationSystem.js`、
-   `./ClockSystem.js`、`./WeatherSystem.js`、`./event-types.js` 等当前不存在的模块。
-4. **两套服务端并存**：`api/server.ts`（主入口）与 `server/index.ts`（更完整但未接线）。
-5. **WorldEngine 两种形态**：早期版本依赖 `engine/` 下不存在的 `EntitySystem/SpatialIndex/ObjectPool`，
-   当前版本已收敛为直接持有 `World + PhysicsSystem`；旧引用应清理。
-6. 编译当前不通过（24 个 TS 错误），详见 `docs/DEVLOG.md`。
+| 扩展点 | 接口 / 基类 | 位置 |
+|--------|-------------|------|
+| 替换物理后端 | `IPhysicsBackend` | `physics/IPhysicsBackend.ts` |
+| 新增通信介质 | `CommunicationStrategy`（core）/ `ICommunicationStrategy`（types） | `communication/`、`types/` |
+| 新增世界系统 | `WorldSystem`（core `World.step`） | `engine/World.ts` |
+| 自定义事件条件 | `Predicate` 可辨识联合 | `event/ConditionEngine.ts` |
+| 接入灵魂系统 | `SoulWorldAdapter` | `bridge/SoulBridge.ts` |
+
+---
+
+## 9. 已知问题 / 限制（摘要，详见 DEVLOG）
+
+1. **双栈未收敛**：核心模拟层与运行时层类型不一致（`PhysicsConfig`、`CommunicationStrategy`、`Vector3`、`Entity` 各有两套）。
+2. **重复模块**：`engine/{Entity,Vector3,ObjectPool,SpatialIndex}.ts` 与 `entity/` 重复；`systems/{EventSystem,ConditionEngine}.ts` 与 `event/` 重复。
+3. **集成缺口**：`server.ts` 依赖 `WorldEngine.currentWorld` 等不存在的成员；`runEval.ts` / 示例使用了不存在的 `WorldBuilder` 方法与 `WorldEngine.load()/runTicks()`。
+4. **`npm run build` 当前失败**（约 14 个错误），错误清单见 `build_errors.txt` 与 `DEVLOG.md`。
+5. `evaluator/index.ts` 导出了 `WorldEvaluator` 中并不存在的 `EvaluatorConfig` / `EvalActivityCounters` 类型。

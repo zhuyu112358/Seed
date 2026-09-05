@@ -19,7 +19,7 @@ function main(): void {
   const vex = world.getEntity('soul_eval_vex')!;
   const nova = EntityFactory.soulProxy({ soulId: 'eval_nova', name: 'Nova', element: 'fire', position: { x: 5, y: 1, z: 0 } });
   world.addEntity(nova);
-  const received = acoustic.transmit(new Message({ content: 'hello from Vex', sourceId: vex.id, position: vex.position.toObject(), medium: 'acoustic', intensity: 1 }), vex as never, { entities: world.bodies() as never, byId: (id: string) => world.getEntity(id) as never });
+  const received = acoustic.transmit(new Message({ content: 'hello', sourceId: vex.id, position: vex.position.toObject(), medium: 'acoustic', intensity: 1 }), vex as never, { entities: world.bodies() as never, byId: (id: string) => world.getEntity(id) as never });
   evaluator.bump('messages', received.length);
   evaluator.flush(world);
   log.info({ received: received.length }, 'eval complete');

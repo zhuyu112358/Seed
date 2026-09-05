@@ -1,209 +1,205 @@
-# API 参考（API.md）
+# API 文档（REST + WebSocket）
 
-> 基于 `src/api/server.ts` 的真实路由编写（主入口：`npm run dev` → `tsx src/api/server.ts`）。
-> 另存在一套更完整但未接线的服务端 `src/server/index.ts`（`SeedServer` 类），见 §8。
->
-> **重要**：当前 `npm run build` 不通过，`server.ts` 与安全层之间存在实现/类型不一致（见 §7）。
-> 本文档描述端点的**预期行为**，并在 §7 标注已知实现 bug。
+> 严格基于 `src/api/server.ts`、`src/api/soulClient.ts`。文档中文，代码注释英文。
+> 默认端口 **3100**（可用 `PORT` 环境变量覆盖）。
 
 ---
 
-## 1. 概览
+## 1. 概述
 
-- 框架：Express 4 + `ws`。
-- JSON body 上限：`256kb`。
-- 认证：`apiKeyAuth` 中间件，仅当 `SEED_AUTH=on` 时启用；允许 key 来自 `SEED_API_KEYS`（逗号分隔，
-  默认 `dev-seed-key`）。
-- 端口：`startServer({ port }) ?? process.env.PORT ?? 3100`。
-- 依赖注入：`createApp({ engine, soulClient, port? })` / `startServer(...)`。
+Seed 进程用 Express 提供 REST，并在同一 HTTP server 上挂一个 WebSocket 端点 `/ws`。入口函数：
 
 ```ts
+// src/api/server.ts
 interface ServerDeps {
-  engine: WorldEngine;       // 提供 currentWorld / isRunning / getEntity(...)
-  soulClient: SoulClient;    // 代理 SoulArena 名册
+  engine: WorldEngine;
+  soulClient: SoulClient;
   port?: number;
 }
+
+function createApp(deps: ServerDeps): express.Express;
+function startServer(deps: ServerDeps): Promise<{ close: () => void }>;
 ```
 
----
+中间件：
 
-## 2. REST 端点一览
+- `express.json({ limit: '256kb' })`
+- API Key 鉴权（见下）。仅当 `SEED_AUTH=on` 时开启；开启后校验请求头 `x-api-key` 是否在 `SEED_API_KEYS`（逗号分隔）白名单内，默认 key 为 `dev-seed-key`。
 
-| 方法 | 路径 | 说明 |
+环境变量：
+
+| 变量 | 作用 | 默认 |
 |------|------|------|
-| GET  | `/api/world/status` | 世界运行状态 |
-| GET  | `/api/entities` | 全部实体（`toJSON()` 数组） |
-| GET  | `/api/entities/:id` | 单个实体 |
-| POST | `/api/entities` | 校验创建请求体（当前返回占位） |
-| POST | `/api/souls/:id/action` | 灵魂提交一次动作 |
-| GET  | `/api/souls` | 灵魂名册（代理 SoulArena，失败回退 mock） |
+| `PORT` | HTTP/WebSocket 端口 | `3100` |
+| `SEED_AUTH` | `on` 时强制 API Key | 关 |
+| `SEED_API_KEYS` | 允许的 key，逗号分隔 | `dev-seed-key` |
+| `SOUL_URL` | SoulArena 地址（透传给 SoulClient） | `http://localhost:3000` |
 
 ---
 
-## 3. 端点详情
+## 2. REST 端点
 
-### 3.1 GET /api/world/status
+### 2.1 `GET /api/world/status`
 
-**预期响应**
+世界运行状态。
+
+响应 `200`：
 
 ```json
 {
   "world": "test-world",
   "running": true,
-  "tick": 120,
-  "worldTime": 2.0,
-  "entityCount": 8
+  "tick": 123,
+  "worldTime": 2.05,
+  "entityCount": 12
 }
 ```
 
-字段取自 `engine.currentWorld.config.name`、`engine.isRunning`、`currentWorld.tick / worldTime /
-entities.size`。无活动世界时各字段应回退默认值（`world=null`、`tick=0` 等）。
+### 2.2 `GET /api/entities`
 
-### 3.2 GET /api/entities
-
-```json
-{ "entities": [ { "id": "...", "name": "...", "type": "dynamic", "...": "..." } ] }
-```
-
-每个元素为 `Entity.toJSON()` 的输出。无世界时预期返回 `{ "entities": [] }`。
-
-### 3.3 GET /api/entities/:id
-
-- 命中 → `200 { "entity": { ...toJSON() } }`
-- 未命中 → `404 { "error": "not_found" }`
-
-### 3.4 POST /api/entities
-
-**预期请求体**：
+全部实体（逐个 `toJSON()`）。
 
 ```json
-{ "name": "rock", "x": 1, "y": 0, "z": 2 }
+{ "entities": [ { "id": "...", "name": "...", "type": "...", "...": "..." } ] }
 ```
 
-- 经 schema 校验：`name`（string，≤64）、`x/y/z`（number）均必填。
-- 校验失败 → `400 { "error": "validation_failed", "errors": [...] }`。
-- 无活动世界 → `503 { "error": "no_world" }`。
-- **当前实现不真正创建实体**，成功返回：
-  `201 { "ok": true, "note": "entity creation via SDK; see docs/SDK.md" }`。
+> 若当前无世界，返回 `{ "entities": [] }`。
 
-### 3.5 POST /api/souls/:id/action
+### 2.3 `GET /api/entities/:id`
 
-**预期请求体**：
+单个实体。找到返回 `200`：
 
 ```json
-{ "action": "speak", "payload": { "text": "你好" } }
+{ "entity": { "id": "...", "...": "..." } }
 ```
 
-处理管线：
-
-1. 按 `req.ip` 做令牌桶限流；超限 → `429 { "error": "rate_limited", "retryAfterMs": <ms> }`。
-2. 校验 `action`（enum：`move | speak | interact | attack | use`）与可选 `payload`（object）。
-   失败 → `400 validation_failed`。
-3. 查找世界内代理体 `soul_<:id>`；不存在 → `404 { "error": "soul_not_in_world", "soulId": "..." }`。
-4. 做 RBAC 检查（`soul` 角色对 `entity` 的 `interact`）。
-5. `speak` 动作对 `payload.text` 执行 `sanitizeString` 后写日志。
-6. **预期成功响应**：
+未找到返回 `404`：
 
 ```json
-{ "ok": true, "action": "speak", "soulId": "<id>", "tick": 120 }
+{ "error": "not_found" }
 ```
 
-### 3.6 GET /api/souls
+### 2.4 `POST /api/entities`
 
-代理 `SoulClient.listSouls()`：
+创建实体。请求体会被 `InputValidator.validate` 按下表校验（见 `SECURITY.md`）：
 
-```json
-{ "souls": [ { "id": "soul_mock_vex", "name": "Vex", "element": "wind", "...": "..." } ],
-  "source": "mock" }
-```
-
-`source`：`"soul-arena"`（真实后端）或 `"mock"`（SoulArena 不可达，使用内置 mock）。
-
----
-
-## 4. WebSocket（`/ws`）
-
-挂载在同一 HTTP server 的 `path: '/ws'`。消息为 JSON 文本帧，信封
-`{ "type": "...", "payload": ..., "timestamp": <ms> }`。
-
-| 方向 | type | 说明 |
+| 字段 | 类型 | 要求 |
 |------|------|------|
-| 服务端→客户端 | `hello` | 连接建立立即发送：`{ protocol: "seed-soul", version: "0.1.0" }` |
-| 客户端→服务端 | 任意 | 服务端解析后回 ack |
-| 服务端→客户端 | `ack` | `{ echo: "<收到的 type>" }` |
-| 服务端→客户端 | `error` | 非法 JSON 时：`{ message: "invalid json" }` |
+| `name` | string | 必填，最长 64 |
+| `x` | number | 必填 |
+| `y` | number | 必填 |
+| `z` | number | 必填 |
 
-当前未按 `type` 分派业务（感知帧/订阅等），仅回显。
+校验失败返回 `400`：
+
+```json
+{ "error": "validation_failed", "errors": ["\"name\" is required", "..."] }
+```
+
+成功返回 `201`：
+
+```json
+{ "ok": true, "note": "entity creation via SDK; see docs/SDK.md" }
+```
+
+> 当前实现仅做校验并返回提示，真正的实体创建走 SDK/引擎，尚未在该端点内接线（见已知问题）。
+
+### 2.5 `POST /api/souls/:id/action`
+
+灵魂动作入口（最核心的写路径）。流程：
+
+1. 若当前无世界 → `503 { "error": "no_world" }`。
+2. 以 `req.ip`（无则 `anonymous`）做限流；超限 → `429 { "error": "rate_limited", "retryAfterMs": <ms> }`。
+3. 校验 body：`action`（string，必填，枚举 `move/speak/interact/attack/use`）、`payload`（object，可选）。失败 → `400 { "error": "validation_failed", "errors": [...] }`。
+4. 按 `soul_<id>` 查找世界中的化身；不存在 → `404 { "error": "soul_not_in_world", "soulId": "..." }`。
+5. 权限检查 `permissions.ensure('soul', 'entity', 'interact')`（无权限抛错）。
+6. `speak` 动作会对 `payload.text` 做 `sanitizeString` 并写日志。
+
+成功返回 `200`：
+
+```json
+{ "ok": true, "action": "speak", "soulId": "vex", "tick": 123 }
+```
+
+请求体示例：
+
+```json
+{ "action": "speak", "payload": { "text": "hello world" } }
+```
+
+### 2.6 `GET /api/souls`
+
+转发 `SoulClient.listSouls()`：
+
+```json
+{
+  "souls": [ { "id": "soul_mock_vex", "name": "Vex", "element": "wind", "...": "..." } ],
+  "source": "mock"
+}
+```
+
+`soruce` 为 `mock` 表示 SoulArena 不可达、使用内置 mock；为 `soul-arena` 表示来自真实后端。
 
 ---
 
-## 5. 错误响应约定
+## 3. WebSocket `/ws`
 
-| HTTP | body |
-|------|------|
-| 400 | `{ "error": "validation_failed", "errors": [...] }` |
-| 401 | `{ "error": "unauthorized", "message": "..." }`（SEED_AUTH 开启时） |
-| 404 | `{ "error": "not_found" }` / `{ "error": "soul_not_in_world", "soulId": "..." }` |
-| 429 | `{ "error": "rate_limited", "retryAfterMs": <ms> }` |
-| 503 | `{ "error": "no_world" }` |
+连接建立后，服务端立即下发握手帧：
+
+```json
+{ "type": "hello", "payload": { "protocol": "seed-soul", "version": "0.1.0" }, "timestamp": 1700000000000 }
+```
+
+客户端可发送 JSON：
+
+```json
+{ "type": "move", "payload": { "...": "..." }, "soulId": "vex" }
+```
+
+- 合法 JSON → 回一个 ack：`{ "type": "ack", "payload": { "echo": "<客户端 type>" }, "timestamp": ... }`。
+- 非法 JSON → 回 `{ "type": "error", "payload": { "message": "invalid json" }, "timestamp": ... }`。
+
+> 当前 `/ws` 仅做回显与日志，尚未把消息路由到世界/动作执行（见已知问题）。
 
 ---
 
-## 6. 快速调用示例
+## 4. 错误码约定
+
+| 状态码 | 含义 |
+|--------|------|
+| 200 | 成功 |
+| 201 | 已创建 |
+| 400 | 请求体校验失败 |
+| 401 | 缺失/非法 `X-API-Key` |
+| 404 | 实体 / 灵魂化身不存在 |
+| 429 | 触发限流 |
+| 503 | 尚无世界 |
+
+---
+
+## 5. 使用示例
 
 ```bash
-# 世界状态
+# Health / status
 curl http://localhost:3100/api/world/status
 
-# 灵魂说话
-curl -X POST http://localhost:3100/api/souls/eval_vex/action \
-  -H 'content-type: application/json' \
-  -d '{"action":"speak","payload":{"text":"hello world"}}'
+# List entities
+curl http://localhost:3100/api/entities
 
-# 灵魂名册
-curl http://localhost:3100/api/souls
+# A soul action (with API key when SEED_AUTH=on)
+curl -X POST http://localhost:3100/api/souls/vex/action \
+  -H "content-type: application/json" \
+  -H "x-api-key: dev-seed-key" \
+  -d '{"action":"speak","payload":{"text":"hi"}}'
 ```
 
-开启认证后需带请求头：`-H "X-API-Key: dev-seed-key"`。
-
 ---
 
-## 7. 已知实现问题（与安全层的 API 不一致）
+## 6. 已知问题 / 限制
 
-当前 `server.ts` 在调用安全层时，与这些类的**真实实现签名**存在不一致，是 `npm run build` 报错的主要来源
-（具体行号与数量见 `docs/DEVLOG.md`）：
-
-1. **`new RateLimiter(...)` 构造参数不匹配**：`RateLimiter` 构造函数要求一个 `RateLimitConfig`
-   对象（`{ enabled, maxRequests, windowMs, perSoul, perIP, burstMultiplier }`），而 `server.ts` 中
-   仍按「数字 QPS / 旧固定窗口」形态调用，类型不兼容。
-2. **`InputValidator` 调用方式不匹配**：真实 API 是
-   `validate(name, data)`（按已注册 schema 名校验）与 `validateInline(schema, data)`（内联 schema），
-   返回 `ValidationResult { valid, errors }`。`server.ts` 中存在把 schema 当 `name` 字符串传入、
-   以及读取 `result.ok` / `result.value` 的旧写法；真实结果上没有 `ok` / `value` 字段。
-3. **`RateLimiter.check()` 返回值**：真实 `check(key)` 只返回 `{ allowed, remaining }`，**没有
-   `retryAfterMs`**；需要带 `retryAfterMs` 应改用 `consume(key)`。`server.ts` 在 429 分支读取
-   `rl.retryAfterMs` 对不上。
-4. **`permissions.ensure(...)` 不存在**：新 `PermissionSystem` 提供的是 `hasPermission(entityId,
-   resource, action)` 与 `checkPermission(entityId, resource, action)`，没有 `ensure(role,...)`。
-   因此动作端点里的权限检查当前无法编译，RBAC 拦截实际未生效。
-5. **`POST /api/entities` 是占位实现**：只校验不创建，真正建实体要走 SDK。
-
-> 这些是「预期行为 vs 当前代码」的差距：本文档按端点**应当**如何工作来描述，修复方向见
-> `docs/ROADMAP.md`。
-
----
-
-## 8. 另一套服务端：`src/server/index.ts`（SeedServer）
-
-`SeedServer` 类实现了更完整的 REST 表面（当前未被 `startServer` 使用，需自行接线）：
-
-- `GET /api/health`、`GET /api/world`
-- `GET /api/entities?limit&offset`、`GET/POST/DELETE /api/entities/:id`
-- `GET /api/events`、`POST /api/events/trigger`
-- `GET /api/souls`、`POST /api/souls/:id/join`、`POST /api/souls/:id/action`
-- `GET /api/weather`、`GET /api/clock`、`GET /api/evaluation`、`POST /api/evaluation/run`
-- `/ws` 支持 `subscribe` / `action` / `perception_request` → `subscribed` /
-  `action_result` / `perception_frame`，以及 `broadcast(type, payload)`。
-
-它通过 `WorldHandle` 接口与世界解耦，默认端口 `3001`，并自带 per-IP 限流与基于 `x-soul-token` 的
-角色解析。两套服务端最终应合并为一套（见 ROADMAP）。
+1. **`currentWorld` 缺失（运行时崩溃级）**：`createApp` 各处理器读取 `deps.engine.currentWorld`，但真实 `WorldEngine` **没有该 getter**，也没有 `entities/tick/worldTime` 字段。因此在未桥接实现前，这些端点会走到“无世界”降级分支或运行时报错；TypeScript 也无法通过。需要为 `WorldEngine` 增加对当前 `World` 的暴露，或改造处理器改用 `EngineSystem` 查询。详见 `DEVLOG.md`。
+2. **动作端点仅为骨架**：除 `speak` 外，`move/interact/attack/use` 目前只回 `ok:true`，未真正驱动物理或化身。
+3. **动作枚举不一致**：本端点允许 `move/speak/interact/attack/use`，而 `types/ActionRequest` 允许 `move/interact/communicate/use/attack/wait/custom`。需统一。
+4. **`POST /api/entities` 不落库**：只校验、不创建实体。
+5. **`/ws` 仅回显**：未连接到事件总线或动作执行。
+6. **限流维度**：当前按 `req.ip` 固定窗口（构造为 `new RateLimiter(100)`，即 100 QPS/IP），未按灵魂 id 区分。

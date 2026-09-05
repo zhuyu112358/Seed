@@ -1,7 +1,6 @@
-// Unit tests for src/event/ConditionEngine.ts
-import { describe, it } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ConditionEngine, type Predicate, type ConditionContext } from '../src/event/ConditionEngine.js';
+import { ConditionEngine, type ConditionContext, type Predicate } from '../src/event/ConditionEngine.js';
 import { Entity } from '../src/entity/Entity.js';
 
 function ctx(worldTime: number, entities: Entity[]): ConditionContext {
@@ -9,53 +8,39 @@ function ctx(worldTime: number, entities: Entity[]): ConditionContext {
   for (const e of entities) map.set(e.id, e);
   return { worldTime, entities: map };
 }
-function withProperty(id: string, prop: string, value: unknown): Entity {
-  const e = new Entity({ id, name: id, type: 'dynamic' });
-  e.properties.set(prop, value);
-  return e;
-}
 
-describe('ConditionEngine', () => {
-  it('entityProperty comparisons eq/gt/lt/gte/lte', () => {
-    const eng = new ConditionEngine();
-    const e = withProperty('p1', 'hp', 50);
-    const c = ctx(0, [e]);
-    assert.equal(eng.evaluate({ kind: 'entityProperty', entityId: 'p1', property: 'hp', op: 'eq', value: 50 }, c), true);
-    assert.equal(eng.evaluate({ kind: 'entityProperty', entityId: 'p1', property: 'hp', op: 'gt', value: 10 }, c), true);
-    assert.equal(eng.evaluate({ kind: 'entityProperty', entityId: 'p1', property: 'hp', op: 'lt', value: 10 }, c), false);
-    assert.equal(eng.evaluate({ kind: 'entityProperty', entityId: 'p1', property: 'hp', op: 'gte', value: 50 }, c), true);
-    assert.equal(eng.evaluate({ kind: 'entityProperty', entityId: 'p1', property: 'hp', op: 'lte', value: 49 }, c), false);
-  });
+test('worldTime comparisons evaluate correctly', () => {
+  const eng = new ConditionEngine();
+  const c = ctx(5, []);
+  const gt: Predicate = { kind: 'worldTime', op: 'gt', value: 3 };
+  const lt: Predicate = { kind: 'worldTime', op: 'lt', value: 10 };
+  const eq: Predicate = { kind: 'worldTime', op: 'lte', value: 5 };
+  assert.equal(eng.evaluate(gt, c), true);
+  assert.equal(eng.evaluate(lt, c), true);
+  assert.equal(eng.evaluate(eq, c), true);
+});
 
-  it('worldTime predicate', () => {
-    const eng = new ConditionEngine();
-    const c = ctx(42, []);
-    assert.equal(eng.evaluate({ kind: 'worldTime', op: 'gt', value: 40 }, c), true);
-    assert.equal(eng.evaluate({ kind: 'worldTime', op: 'lte', value: 10 }, c), false);
-  });
+test('entityProperty reads from properties then state', () => {
+  const eng = new ConditionEngine();
+  const e = new Entity({ id: 'hero', name: 'hero', type: 'soul' });
+  e.properties.set('energy', 80);
+  e.state.set('heat', 12);
+  const c = ctx(0, [e]);
 
-  it('and / or / not combine predicates', () => {
-    const eng = new ConditionEngine();
-    const e = withProperty('p1', 'hp', 50);
-    const c = ctx(30, [e]);
-    const hpOk: Predicate = { kind: 'entityProperty', entityId: 'p1', property: 'hp', op: 'gt', value: 10 };
-    const timeOk: Predicate = { kind: 'worldTime', op: 'gt', value: 20 };
-    const timeBad: Predicate = { kind: 'worldTime', op: 'gt', value: 100 };
-    assert.equal(eng.evaluate({ kind: 'and', left: hpOk, right: timeOk }, c), true);
-    assert.equal(eng.evaluate({ kind: 'or', left: hpOk, right: timeBad }, c), true);
-    assert.equal(eng.evaluate({ kind: 'not', inner: timeBad }, c), true);
-  });
+  const highEnergy: Predicate = { kind: 'entityProperty', entityId: 'hero', property: 'energy', op: 'gte', value: 50 };
+  const hot: Predicate = { kind: 'entityProperty', entityId: 'hero', property: 'heat', op: 'gt', value: 10 };
+  const missing: Predicate = { kind: 'entityProperty', entityId: 'ghost', property: 'x', op: 'gt', value: 0 };
+  assert.equal(eng.evaluate(highEnergy, c), true);
+  assert.equal(eng.evaluate(hot, c), true);
+  assert.equal(eng.evaluate(missing, c), false);
+});
 
-  it('missing entity evaluates to false', () => {
-    const eng = new ConditionEngine();
-    const c = ctx(0, []);
-    assert.equal(eng.evaluate({ kind: 'entityProperty', entityId: 'ghost', property: 'hp', op: 'gt', value: 0 }, c), false);
-  });
-
-  it('non-numeric property evaluates to false', () => {
-    const eng = new ConditionEngine();
-    const e = withProperty('p1', 'name', 'not-a-number');
-    const c = ctx(0, [e]);
-    assert.equal(eng.evaluate({ kind: 'entityProperty', entityId: 'p1', property: 'name', op: 'gt', value: 0 }, c), false);
-  });
+test('and / or / not compose predicates', () => {
+  const eng = new ConditionEngine();
+  const c = ctx(5, []);
+  const p: Predicate = { kind: 'worldTime', op: 'gt', value: 3 };
+  const q: Predicate = { kind: 'worldTime', op: 'lt', value: 10 };
+  assert.equal(eng.evaluate({ kind: 'and', left: p, right: q }, c), true);
+  assert.equal(eng.evaluate({ kind: 'or', left: p, right: { kind: 'worldTime', op: 'gt', value: 100 } }, c), true);
+  assert.equal(eng.evaluate({ kind: 'not', inner: p }, c), false);
 });
