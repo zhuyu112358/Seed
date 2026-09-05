@@ -26,6 +26,7 @@ import type { SoulPerceptionSystem } from "./SoulPerceptionSystem.js";
 import { AcousticPropagation } from "../communication/AcousticPropagation.js";
 import { Message } from "../communication/Message.js";
 import type { AcousticConfig } from "../communication/AcousticPropagation.js";
+import type { PathfinderSystem } from "../pathfinding/PathfinderSystem.js";
 
 export interface SoulActionConfig {
   /** Maximum move distance per action. Default 5. */
@@ -43,6 +44,9 @@ export interface SoulActionConfig {
   movementMode?: "instant" | "physics";
   /** Speed (m/s) applied to soul velocity in physics movement mode. Default 5. */
   physicsMoveSpeed?: number;
+  /** If true, move actions use A* pathfinding to navigate around obstacles.
+   *  Requires a PathfinderSystem registered in the world. Default false. */
+  pathfindingEnabled?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<Omit<SoulActionConfig, 'acoustic'>> & { acoustic?: AcousticConfig } = {
@@ -53,6 +57,7 @@ const DEFAULT_CONFIG: Required<Omit<SoulActionConfig, 'acoustic'>> & { acoustic?
   acoustic: undefined,
   movementMode: "instant",
   physicsMoveSpeed: 5,
+  pathfindingEnabled: false,
 };
 
 export interface ActionHistoryEntry {
@@ -71,6 +76,7 @@ export class SoulActionSystem implements WorldSystem {
   private perception: SoulPerceptionSystem | null = null;
   private interaction: unknown = null;
   private acoustic: AcousticPropagation | null = null;
+  private pathfinder: PathfinderSystem | null = null;
   private actionsExecuted = 0;
   private actionsFailed = 0;
 
@@ -85,6 +91,7 @@ export class SoulActionSystem implements WorldSystem {
   executeAction(request: ActionRequest, world: World): ActionResult {
     this.ensurePerception(world);
     this.ensureInteraction(world);
+    this.ensurePathfinder(world);
     const result = this.dispatch(request, world);
     this.history.push({ request, result, tick: world.tick });
     if (this.history.length > 200) this.history.shift();
@@ -123,6 +130,15 @@ export class SoulActionSystem implements WorldSystem {
     }
   }
 
+  /** Lazy-locate PathfinderSystem by name. */
+  private ensurePathfinder(world: World): void {
+    if (this.pathfinder && world.systems.includes(this.pathfinder as unknown as WorldSystem)) return;
+    this.pathfinder = null;
+    for (const s of world.systems) {
+      if (s.name === 'pathfinder') { this.pathfinder = s as unknown as PathfinderSystem; break; }
+    }
+  }
+
   /** Lazy-locate InteractionSystem by name. */
   private ensureInteraction(world: World): void {
     if (this.interaction && world.systems.includes(this.interaction as unknown as WorldSystem)) return;
@@ -135,6 +151,7 @@ export class SoulActionSystem implements WorldSystem {
   tick(_dt: number, world: World, _events: EventSystem): void {
     this.ensurePerception(world);
     this.ensureInteraction(world);
+    this.ensurePathfinder(world);
 
     // Process queued actions.
     const pending = [...this.queue];
@@ -207,7 +224,7 @@ export class SoulActionSystem implements WorldSystem {
     return null;
   }
 
-  private doMove(request: ActionRequest, soul: GameObject, _world: World): ActionResult {
+  private doMove(request: ActionRequest, soul: GameObject, world: World): ActionResult {
     const p = request.parameters;
     let targetX = soul.position.x;
     let targetY = soul.position.y;
@@ -271,9 +288,6 @@ export class SoulActionSystem implements WorldSystem {
     }
 
     const dist = soul.position.distance({ x: targetX, y: targetY, z: targetZ });
-    if (dist > this.config.maxMoveDistance) {
-      return this.fail(request, `move distance ${dist.toFixed(2)} exceeds max ${this.config.maxMoveDistance} (mode=${mode})`);
-    }
     if (dist === 0) {
       return this.success(request, "no movement (target equals current position)", {
         position: { x: targetX, y: targetY, z: targetZ },
@@ -284,6 +298,43 @@ export class SoulActionSystem implements WorldSystem {
 
     soul.state.set("lastMoveAt", Date.now());
     soul.state.set("lastMoveMode", mode);
+
+    // Pathfinding mode: use A* to find a route around obstacles, then follow
+    // it point-by-point via physics movement + MovementController + PathFollowerSystem.
+    // Pathfinding bypasses maxMoveDistance because the route is broken into waypoints.
+    if (this.config.pathfindingEnabled && this.pathfinder) {
+      const path = this.pathfinder.findPath(
+        soul.position.x, soul.position.z,
+        targetX, targetZ, world,
+      );
+      if (!path || path.waypoints.length === 0) {
+        return this.fail(request, `no path found to (${targetX.toFixed(1)}, ${targetZ.toFixed(1)}) [pathfinding, ${mode}]`);
+      }
+      // Store full path for PathFollowerSystem to advance along.
+      soul.state.set("movePath", path.waypoints);
+      soul.state.set("movePathIndex", 0);
+      // Set first waypoint as immediate moveTarget.
+      const firstWp = path.waypoints[0];
+      const dx = firstWp.x - soul.position.x;
+      const dz = firstWp.z - soul.position.z;
+      const len = Math.sqrt(dx * dx + dz * dz) || 1;
+      const speed = this.config.physicsMoveSpeed;
+      soul.velocity = new Vector3((dx / len) * speed, 0, (dz / len) * speed);
+      soul.state.set("movementMode", "physics");
+      soul.state.set("moveTarget", { x: firstWp.x, y: soul.position.y, z: firstWp.z });
+      return this.success(request, `path found: ${path.waypoints.length} waypoints, length ${path.length.toFixed(1)}m [pathfinding, ${mode}]`, {
+        position: { x: soul.position.x, y: soul.position.y, z: soul.position.z },
+        target: { x: targetX, y: targetY, z: targetZ },
+        pathLength: Math.round(path.length * 100) / 100,
+        waypoints: path.waypoints.length,
+        mode: `pathfinding-${mode}`,
+      });
+    }
+
+    // Non-pathfinding moves are limited by maxMoveDistance.
+    if (dist > this.config.maxMoveDistance) {
+      return this.fail(request, `move distance ${dist.toFixed(2)} exceeds max ${this.config.maxMoveDistance} (mode=${mode})`);
+    }
 
     // Physics movement mode: apply velocity toward target instead of teleporting.
     // PhysicsSystem integrates velocity over subsequent ticks with friction/damping.

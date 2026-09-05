@@ -5,6 +5,9 @@ import { SoulPerceptionSystem } from "../src/entity/SoulPerceptionSystem.js";
 import { InteractionSystem, createDoorDef, createToggleDef } from "../src/entity/InteractionSystem.js";
 import { WeatherSimulator } from "../src/event/WeatherSimulator.js";
 import { PhysicsSystem } from "../src/physics/PhysicsSystem.js";
+import { MovementController } from "../src/physics/MovementController.js";
+import { PathfinderSystem } from "../src/pathfinding/PathfinderSystem.js";
+import { PathFollowerSystem } from "../src/pathfinding/PathFollowerSystem.js";
 import { World } from "../src/engine/World.js";
 import { GameObject } from "../src/entity/Entity.js";
 
@@ -587,5 +590,119 @@ describe("SoulActionSystem", () => {
     assert.ok(!isNaN(soul.position.y), "y should not be NaN");
     assert.ok(!isNaN(soul.position.z), "z should not be NaN");
     assert.equal(soul.position.z, 3.3); // 3 + 0.3 * 1
+  });
+
+  // --- Pathfinding mode tests ---
+
+  it("pathfinding mode finds path around obstacles", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinder = new PathfinderSystem({ width: 30, height: 30, cellSize: 1 });
+    const action = new SoulActionSystem({ pathfindingEnabled: true, movementMode: "physics" });
+    world.addSystem(pathfinder);
+    world.addSystem(action);
+
+    // Add a wall obstacle.
+    for (let i = 0; i < 6; i++) {
+      const wall = new GameObject({
+        id: `wall_${i}`, name: "Wall", type: "static",
+        position: { x: 10, y: 0, z: 5 + i }, mass: 100, material: "stone",
+      });
+      world.addEntity(wall);
+    }
+    world.addEntity(makeSoul("vex", 5, 0, 8));
+    world.step(1 / 60); // build grid
+
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 15, y: 0, z: 8 }, timestamp: Date.now(),
+    }, world);
+
+    assert.equal(result.success, true);
+    const data = result.data as { waypoints: number; pathLength: number };
+    assert.ok(data.waypoints > 1, `should have multiple waypoints to go around wall, got ${data.waypoints}`);
+    assert.ok(data.pathLength > 10, `path should detour around wall, length=${data.pathLength}`);
+
+    const soul = world.getEntity("soul_vex")!;
+    const movePath = soul.state.get("movePath") as Array<{ x: number; z: number }>;
+    assert.ok(movePath, "movePath should be set");
+    assert.ok(movePath.length > 1, "movePath should have multiple waypoints");
+  });
+
+  it("pathfinding mode returns failure when no path exists", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinder = new PathfinderSystem({ width: 20, height: 20, cellSize: 1 });
+    const action = new SoulActionSystem({ pathfindingEnabled: true });
+    world.addSystem(pathfinder);
+    world.addSystem(action);
+
+    // Surround goal with walls (box at 10-14, 10-14).
+    for (let x = 10; x <= 14; x++) {
+      for (let z = 10; z <= 14; z++) {
+        if (x === 10 || x === 14 || z === 10 || z === 14) {
+          const wall = new GameObject({
+            id: `wall_${x}_${z}`, name: "Wall", type: "static",
+            position: { x, y: 0, z }, mass: 100, material: "stone",
+          });
+          world.addEntity(wall);
+        }
+      }
+    }
+    world.addEntity(makeSoul("vex", 2, 0, 2));
+    world.step(1 / 60);
+
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 12, y: 0, z: 12 }, timestamp: Date.now(),
+    }, world);
+
+    assert.equal(result.success, false);
+    assert.ok(result.message.includes("no path found"));
+  });
+
+  it("full pathfinding follow cycle: move around wall and reach destination", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const physics = new PhysicsSystem({ gravity: 0 });
+    const pathfinder = new PathfinderSystem({ width: 30, height: 30, cellSize: 1 });
+    const action = new SoulActionSystem({ pathfindingEnabled: true, movementMode: "physics", physicsMoveSpeed: 8 });
+    const controller = new MovementController({ distanceMode: "2d", enableEarlyStop: false });
+    const follower = new PathFollowerSystem({ moveSpeed: 8 });
+    world.addSystem(physics);
+    world.addSystem(pathfinder);
+    world.addSystem(action);
+    world.addSystem(controller);
+    world.addSystem(follower);
+
+    // Wall obstacle at x=10, z=5-12.
+    for (let i = 5; i <= 12; i++) {
+      const wall = new GameObject({
+        id: `wall_${i}`, name: "Wall", type: "static",
+        position: { x: 10, y: 0, z: i }, mass: 100, material: "stone",
+      });
+      world.addEntity(wall);
+    }
+    world.addEntity(makeSoul("vex", 5, 0, 8));
+    world.step(1 / 60); // build grid
+
+    // Issue move to other side of wall.
+    action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 15, y: 0, z: 8 }, timestamp: Date.now(),
+    }, world);
+
+    // Run world until path completes or max ticks.
+    let completed = false;
+    for (let i = 0; i < 300; i++) {
+      world.step(1 / 60);
+      const soul = world.getEntity("soul_vex")!;
+      if (!soul.state.get("movePath")) {
+        completed = true;
+        break;
+      }
+    }
+
+    assert.ok(completed, "path should be completed within 300 ticks");
+    const soul = world.getEntity("soul_vex")!;
+    assert.ok(Math.abs(soul.position.x - 15) < 1.5, `should be near x=15, got ${soul.position.x.toFixed(2)}`);
+    assert.ok(Math.abs(soul.position.z - 8) < 1.5, `should be near z=8, got ${soul.position.z.toFixed(2)}`);
   });
 });

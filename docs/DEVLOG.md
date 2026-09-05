@@ -1245,3 +1245,104 @@ AcousticPropagation 此前只计算距离衰减（inverse-square + medium absorp
 7. **声音衍射（绕射）**：障碍物边缘声音绕射（多轮 backlog）
 8. **SDK 准备**：API 文档、类型定义、CHANGELOG、打 tag
 
+
+
+---
+
+## 2026-09-05 SoulActionSystem集成A*路径规划：自动避障寻路与路径跟随（第24轮迭代）
+
+### 本轮目标
+
+任务描述第二优先级第5项：**SoulActionSystem集成路径规划**。A*路径规划系统已在上一轮实现（GridMap + AStarPathfinder + PathfinderSystem），本轮将其集成到 SoulActionSystem 的 move 动作中，让灵魂可以自动避障寻路到目标。同时新增 PathFollowerSystem 实现逐点路径跟随。
+
+### 实现
+
+#### 1. SoulActionSystem 路径规划模式
+
+**新增配置** `pathfindingEnabled: boolean`（默认 false，保持向后兼容）。
+
+**doMove 重构**：路径规划块移到 maxMoveDistance 检查之前。因为路径规划将长距离拆分为多个路径点，不受单次 maxMoveDistance 限制。
+
+路径规划模式执行流程：
+1. 调用 `PathfinderSystem.findPath(startX, startZ, targetX, targetZ, world)` 获取路径
+2. 如果无路径，返回失败（"no path found"）
+3. 将完整路径存储到 `soul.state.movePath`（路径点数组）
+4. 设置 `movePathIndex = 0`
+5. 将第一个路径点设为 `moveTarget`，施加物理速度
+6. 返回成功，包含路径长度、路径点数等信息
+
+**executeAction 修复**：添加 `this.ensurePathfinder(world)` 调用。此前 executeAction 只调用 ensurePerception 和 ensureInteraction，不调用 ensurePathfinder，导致直接调用 executeAction 时 pathfinder 为 null，路径规划被跳过。
+
+#### 2. PathFollowerSystem（新增）
+
+`src/pathfinding/PathFollowerSystem.ts` — WorldSystem，负责沿预计算路径逐点推进。
+
+工作原理（与 MovementController 协作）：
+1. SoulActionSystem（路径规划模式）设置 `movePath` + `movePathIndex=0` + `moveTarget=wp[0]`
+2. MovementController 移动实体向 moveTarget，到达后清除 moveTarget，零化速度
+3. PathFollowerSystem 检测到 moveTarget 为 null 但 movePath 存在，推进 index，设置下一个路径点为 moveTarget，施加速度
+4. 重复直到路径耗尽，清除 movePath/movePathIndex/movementMode
+5. 可选发射 `movement.path_completed` 事件
+
+**配置**：`moveSpeed`（默认5m/s）、`emitCompletionEvent`（默认true）。
+
+#### 3. 完整寻路跟随链路
+
+```
+SoulActionSystem.doMove (pathfinding模式)
+  → PathfinderSystem.findPath (A*算法)
+  → 设置 movePath + moveTarget + velocity
+  → PhysicsSystem 积分速度
+  → MovementController 检测到达，清除 moveTarget
+  → PathFollowerSystem 推进到下一路径点
+  → 重复直到路径完成
+```
+
+### 调试中发现并修复的 bug
+
+1. **executeAction 不调用 ensurePathfinder**：直接调用 executeAction 时 pathfinder 为 null，路径规划被跳过，回退到普通移动。修复：添加 ensurePathfinder 调用。
+2. **maxMoveDistance 检查在路径规划块之前**：距离 10m > maxMoveDistance 5m，直接返回失败，根本没走到路径规划代码。修复：将路径规划块移到 maxMoveDistance 检查之前，路径规划不受单次移动距离限制。
+3. **PathFollowerSystem 测试缺少 PhysicsSystem**：速度不被积分，实体不移动，永远到不了目标。修复：测试中添加 PhysicsSystem（gravity=0）。
+4. **MovementController 早期停止干扰测试**：速度为 0 时早期停止会清除 moveTarget，导致 PathFollowerSystem 误判为到达。修复：测试中设置 enableEarlyStop=false。
+
+### 新增单元测试（9个）
+
+**PathFollowerSystem（7个）**：
+1. WorldSystem 注册
+2. 到达当前目标后推进到下一路径点
+3. 路径完成后清除 movePath
+4. moveTarget 仍存在时不推进
+5. 与 MovementController 集成的完整路径跟随
+6. 无 movePath 的实体正常处理（不崩溃）
+
+**SoulActionSystem 路径规划（3个）**：
+1. 路径规划模式绕墙寻路（验证 waypoints > 1, pathLength > 10）
+2. 完全包围目标时返回失败（"no path found"）
+3. 完整寻路跟随周期：从墙一侧移动到另一侧，验证到达目标位置
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**360/360 全绿**（从 351 增至 360，+9）
+- PathFollowerSystem 测试：7/7
+- SoulActionSystem 路径规划测试：3/3
+- 完整寻路跟随集成测试：灵魂从 (5,8) 绕墙到达 (15,8)，验证通过
+- 回归验证：所有现有测试通过
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界搭建、物体定义与交互）：灵魂可以在有障碍物的世界中自动寻路移动
+- 需求6（底层逻辑抽象、强支持扩展）：路径规划与移动执行解耦，PathFollowerSystem 可替换为其他路径跟随策略（如平滑路径、动态避障）
+- 需求10（性能优化）：A* 二叉堆、dirty 标记延迟重建，路径规划只在 move 动作时执行
+- 任务描述第二优先级：SoulActionSystem集成路径规划 ✅
+
+### 后续可扩展方向（列入 backlog）
+
+1. **路径平滑**：漏斗算法（Funnel Algorithm）平滑网格折线，当前路径是网格中心点折线
+2. **动态障碍局部重规划**：路径执行中遇到新障碍（如门关闭、其他灵魂挡路）时重新规划
+3. **多灵魂路径冲突协调**：多个灵魂寻路时的路径协调和让行
+4. **加速/减速曲线**：物理移动平滑加减速（多轮 backlog）
+5. **声音衍射（绕射）**：障碍物边缘声音绕射（多轮 backlog）
+6. **NavMesh 支持**：复杂地形的导航网格替代方案
+7. **SDK 准备**：API 文档、类型定义、CHANGELOG、打 tag
+
