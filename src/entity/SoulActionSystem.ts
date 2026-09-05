@@ -163,6 +163,50 @@ export class SoulActionSystem implements WorldSystem {
     }
   }
 
+  /** Convert a string direction (e.g. "north", "south", "east") to a normalized vector. */
+  private directionStringToVector(dir: string): { x: number; y: number; z: number } | null {
+    const d = dir.toLowerCase().trim();
+    const SQRT2 = Math.SQRT1_2; // 0.7071 for diagonal directions
+    switch (d) {
+      case "north": case "n": case "forward": case "f":
+        return { x: 0, y: 0, z: -1 };
+      case "south": case "s": case "backward": case "back": case "b":
+        return { x: 0, y: 0, z: 1 };
+      case "east": case "e": case "right": case "r":
+        return { x: 1, y: 0, z: 0 };
+      case "west": case "w": case "left": case "l":
+        return { x: -1, y: 0, z: 0 };
+      case "up": case "u":
+        return { x: 0, y: 1, z: 0 };
+      case "down": case "d":
+        return { x: 0, y: -1, z: 0 };
+      case "northeast": case "ne":
+        return { x: SQRT2, y: 0, z: -SQRT2 };
+      case "northwest": case "nw":
+        return { x: -SQRT2, y: 0, z: -SQRT2 };
+      case "southeast": case "se":
+        return { x: SQRT2, y: 0, z: SQRT2 };
+      case "southwest": case "sw":
+        return { x: -SQRT2, y: 0, z: SQRT2 };
+      default:
+        return null;
+    }
+  }
+
+  /** Resolve direction parameter: accepts vector object {x,y,z} or string "north"/"south"/etc. */
+  private resolveDirection(dir: unknown): { x: number; y: number; z: number } | null {
+    if (typeof dir === "string") {
+      return this.directionStringToVector(dir);
+    }
+    if (dir && typeof dir === "object") {
+      const v = dir as { x?: number; y?: number; z?: number };
+      if (v.x !== undefined || v.y !== undefined || v.z !== undefined) {
+        return { x: Number(v.x) || 0, y: Number(v.y) || 0, z: Number(v.z) || 0 };
+      }
+    }
+    return null;
+  }
+
   private doMove(request: ActionRequest, soul: GameObject, _world: World): ActionResult {
     const p = request.parameters;
     let targetX = soul.position.x;
@@ -194,30 +238,33 @@ export class SoulActionSystem implements WorldSystem {
     }
     // Format 4: direction + distance
     else if (p.direction && p.distance !== undefined) {
-      const dir = p.direction as { x: number; y: number; z: number };
+      const dir = this.resolveDirection(p.direction);
+      if (!dir) return this.fail(request, `invalid direction: ${String(p.direction)}`);
       const dist = Number(p.distance);
       targetX += dir.x * dist;
       targetY += dir.y * dist;
-      targetZ += (dir.z ?? 0) * dist;
+      targetZ += dir.z * dist;
       mode = "direction+distance";
     }
     // Format 5: direction + speed (distance = speed * defaultMoveDistance)
     else if (p.direction && p.speed !== undefined) {
-      const dir = p.direction as { x: number; y: number; z: number };
+      const dir = this.resolveDirection(p.direction);
+      if (!dir) return this.fail(request, `invalid direction: ${String(p.direction)}`);
       const speed = Number(p.speed);
       const dist = speed * this.config.defaultMoveDistance;
       targetX += dir.x * dist;
       targetY += dir.y * dist;
-      targetZ += (dir.z ?? 0) * dist;
+      targetZ += dir.z * dist;
       mode = "direction+speed";
     }
     // Format 6: direction only (use defaultMoveDistance)
     else if (p.direction) {
-      const dir = p.direction as { x: number; y: number; z: number };
+      const dir = this.resolveDirection(p.direction);
+      if (!dir) return this.fail(request, `invalid direction: ${String(p.direction)}`);
       const dist = this.config.defaultMoveDistance;
       targetX += dir.x * dist;
       targetY += dir.y * dist;
-      targetZ += (dir.z ?? 0) * dist;
+      targetZ += dir.z * dist;
       mode = "direction-only";
     } else {
       return this.fail(request, "move requires {x,y,z}, {targetPosition}, {dx,dy,dz}, or {direction[,distance|speed]}");

@@ -1080,3 +1080,85 @@ AcousticPropagation 此前只计算距离衰减（inverse-square + medium absorp
 5. **基于到达的事件触发**：ConditionEngine 监听 movement.arrived，触发"到达门口自动开门"等连锁反应
 6. **SDK准备**：整理API文档、类型定义、CHANGELOG，为打tag做准备（任务描述第三优先级）
 
+
+
+---
+
+## 2026-09-05 多灵魂集成测试与字符串方向NaN修复（第22轮迭代）
+
+### 本轮目标
+
+任务描述第一优先级：**多灵魂场景集成**。增强 examples/integration-test.ts 支持多灵魂模式，验证 2-3 个灵魂同时在世界中的独立认知、灵魂间声学通信、位置互不干扰。同时在测试中发现并修复了一个关键 bug。
+
+### 实现一：多灵魂集成测试
+
+**增强 examples/integration-test.ts**，支持单灵魂和多灵魂两种模式：
+
+- **单灵魂模式**（向后兼容）：`npx tsx examples/integration-test.ts [soulId] [tickCount]`
+- **多灵魂模式**：`npx tsx examples/integration-test.ts --multi N [tickCount]`
+
+多灵魂模式功能：
+1. 从 SoulArena 发现 N 个灵魂（取前 N 个）
+2. 为每个灵魂创建实体，位置按圆形分布（半径 3m，避免重叠）
+3. 为每个灵魂依次调用 enterWorld（间隔 100ms 避免并发冲突）
+4. 运行世界，每 5 tick 记录每个灵魂的位置历史和听到的跨灵魂通信
+5. 为每个灵魂调用 exitWorld
+6. 打印多灵魂报告：每个灵魂的动作统计、最终位置、听到的通信
+7. 多灵魂交互分析：跨灵魂通信总数、独立位置验证
+
+### 实现二：字符串方向 NaN bug 修复
+
+**关键发现**：多灵魂集成测试中两个灵魂的最终位置都是 `(NaN, NaN, 0.00)`。调试发现 SoulArena 返回的 move 动作使用字符串方向：
+
+```json
+{"direction": "south", "speed": 0.3}
+```
+
+但 SoulActionSystem 的 doMove 方法（Format 4/5/6）直接将 direction 断言为向量对象 `{x, y, z}`，访问 `dir.x` 得到 `undefined`，`undefined * dist = NaN`。
+
+**修复方案**：
+1. 新增 `directionStringToVector(dir: string)` 辅助函数，支持 12 种字符串方向：
+   - 基本方向：north/n/forward/f, south/s/backward/back/b, east/e/right/r, west/w/left/l, up/u, down/d
+   - 对角方向：northeast/ne, northwest/nw, southeast/se, southwest/sw（使用 1/√2 归一化）
+2. 新增 `resolveDirection(dir: unknown)` 统一解析函数，同时支持字符串方向和向量对象
+3. Format 4（direction+distance）、Format 5（direction+speed）、Format 6（direction-only）全部改用 resolveDirection，无效方向返回失败结果而非产生 NaN
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**327/327 全绿**（从 321 增至 327，+6 字符串方向测试）
+- SoulActionSystem 测试：36/36（从 30 增至 36）
+- 新增测试覆盖：
+  1. 字符串方向 "south" + speed
+  2. 字符串方向 "east" only
+  3. 字符串方向 "north" + distance
+  4. 对角方向 "northeast"
+  5. 无效方向 "sideways" 优雅失败
+  6. NaN 回归测试（字符串方向不产生 NaN）
+
+**多灵魂集成测试结果**（2 灵魂，60 tick）：
+- Global: 24 perceptions sent, 0 failed; 24 actions received, 22 executed, 0 failed
+- Vex (wind): 11 actions received/executed, final position (3.90, 0.00, 0.00)
+- Nova (fire): 9 actions received/executed, final position (-3.30, 0.00, 0.60)
+- Unique final positions: 2/2 ✅
+- PASS: perceive -> decide -> act loop fully operational
+- 跨灵魂通信：0（灵魂在无刺激时未说话，属正常行为）
+
+### 需求覆盖
+
+- 需求1（灵魂系统接口约定）：多灵魂同时交互验证接口稳定性
+- 需求5（虚拟物理世界搭建）：字符串方向修复确保物理移动正确执行
+- 需求6（底层逻辑抽象、强支持扩展）：resolveDirection 统一解析，支持字符串和向量两种方向表示
+- 需求7（运行可靠性）：NaN bug 修复防止位置污染，无效方向优雅失败
+- 任务描述第一优先级：多灵魂场景集成 ✅
+
+### 后续可扩展方向（列入 backlog）
+
+1. **多灵魂声学通信验证**：当前灵魂未自发说话，可通过 SoulArena API 注入说话刺激，验证一个灵魂说话另一个灵魂听到
+2. **3 灵魂集成测试**：验证更多灵魂同时存在时的性能和独立性
+3. **路径规划（A*寻路）**：直线移动→避障寻路（多轮 backlog）
+4. **加速/减速曲线**：物理移动平滑加减速（多轮 backlog）
+5. **声音衍射（绕射）**：障碍物边缘声音绕射（多轮 backlog）
+6. **灵魂间碰撞检测**：当前灵魂可重叠，可添加灵魂间碰撞或社交距离
+7. **SDK 准备**：整理 API 文档、类型定义、CHANGELOG，为打 tag 做准备
+

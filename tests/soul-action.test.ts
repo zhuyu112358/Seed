@@ -503,4 +503,89 @@ describe("SoulActionSystem", () => {
     assert.equal(soul.position.x, 2);
     assert.equal((result.data as { mode: string }).mode, "absolute");
   });
+
+  // --- String direction support tests ---
+
+  it("moves with string direction 'south' and speed", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { direction: "south", speed: 2 }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal((result.data as { mode: string }).mode, "direction+speed");
+    const soul = world.getEntity("soul_vex")!;
+    assert.equal(soul.position.z, 2); // south = +z, speed * defaultMoveDistance = 2 * 1
+    assert.equal(soul.position.x, 0);
+  });
+
+  it("moves with string direction 'east' only", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { direction: "east" }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal((result.data as { mode: string }).mode, "direction-only");
+    const soul = world.getEntity("soul_vex")!;
+    assert.equal(soul.position.x, 1); // east = +x, defaultMoveDistance = 1
+  });
+
+  it("moves with string direction 'north' and distance", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { direction: "north", distance: 5 }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal((result.data as { mode: string }).mode, "direction+distance");
+    const soul = world.getEntity("soul_vex")!;
+    assert.equal(soul.position.z, -5); // north = -z
+  });
+
+  it("supports diagonal string directions", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { direction: "northeast", distance: Math.SQRT2 }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    const soul = world.getEntity("soul_vex")!;
+    // northeast = (0.707, 0, -0.707) * sqrt(2) = (1, 0, -1)
+    assert.ok(Math.abs(soul.position.x - 1) < 0.01, `x should be ~1, got ${soul.position.x}`);
+    assert.ok(Math.abs(soul.position.z + 1) < 0.01, `z should be ~-1, got ${soul.position.z}`);
+  });
+
+  it("fails gracefully on invalid string direction", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 0, 0, 0));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { direction: "sideways", speed: 1 }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, false);
+    assert.ok(result.message.includes("invalid direction"));
+    const soul = world.getEntity("soul_vex")!;
+    assert.equal(soul.position.x, 0); // position unchanged
+    assert.equal(soul.position.z, 0);
+  });
+
+  it("does not produce NaN with string direction (regression test)", () => {
+    const { world, action } = makeWorld();
+    world.addEntity(makeSoul("vex", 5, 0, 3));
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { direction: "south", speed: 0.3 }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    const soul = world.getEntity("soul_vex")!;
+    assert.ok(!isNaN(soul.position.x), "x should not be NaN");
+    assert.ok(!isNaN(soul.position.y), "y should not be NaN");
+    assert.ok(!isNaN(soul.position.z), "z should not be NaN");
+    assert.equal(soul.position.z, 3.3); // 3 + 0.3 * 1
+  });
 });

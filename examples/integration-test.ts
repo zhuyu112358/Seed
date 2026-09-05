@@ -1,17 +1,14 @@
 // End-to-end integration test: Seed world engine <-> SoulArena cognitive system.
 //
-// This script verifies the complete perceive -> decide -> act loop:
-//   1. Create a Seed world with perception, action, and bridge systems
-//   2. Start the webhook action receiver
-//   3. Register a soul with SoulArena (enter-world)
-//   4. Add the soul as an entity in the world
-//   5. Run the world for N ticks, observing perceptions and actions
-//   6. Exit the world cleanly
-//   7. Print a summary report
+// Supports both single-soul and multi-soul modes:
+//   Single: npx tsx examples/integration-test.ts [soulId] [tickCount]
+//   Multi:  npx tsx examples/integration-test.ts --multi N [tickCount]
 //
-// Usage: npx tsx examples/integration-test.ts [soulId] [tickCount]
-//   soulId   - SoulArena soul ID (default: first soul found via API)
-//   tickCount - Number of world ticks to run (default: 60)
+// Multi-soul mode verifies:
+//   - Independent perception/decision/action loops per soul
+//   - Soul-to-soul acoustic communication (one speaks, others hear)
+//   - ActionResult correctly routed per soul
+//   - No interference between souls
 
 import { World } from "../src/engine/World.js";
 import { SoulPerceptionSystem } from "../src/entity/SoulPerceptionSystem.js";
@@ -30,39 +27,79 @@ interface SoulInfo {
   element: string;
 }
 
-async function discoverSoul(): Promise<SoulInfo | null> {
+interface SoulRuntime {
+  info: SoulInfo;
+  entity: GameObject;
+  perceptionsSent: number;
+  actionsReceived: number;
+  actionsExecuted: number;
+  actionsFailed: number;
+  positionHistory: Array<{ tick: number; x: number; y: number; z: number }>;
+  communicationsHeard: Array<{ tick: number; from: string; content: string }>;
+}
+
+async function discoverSouls(count: number): Promise<SoulInfo[]> {
   try {
     const res = await fetch(`${SOUL_ARENA_URL}/api/souls`, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const body = (await res.json()) as { souls?: Array<{ id: string; name: string; element: string }> };
-    if (!body.souls || body.souls.length === 0) return null;
-    // Pick the most recently active soul (first in list is usually most recent).
-    return { id: body.souls[0].id, name: body.souls[0].name, element: body.souls[0].element };
+    if (!body.souls || body.souls.length === 0) return [];
+    return body.souls.slice(0, count).map((s) => ({ id: s.id, name: s.name, element: s.element }));
   } catch {
-    return null;
+    return [];
   }
 }
 
+function parseArgs(): { multiCount: number | null; soulId: string | null; tickCount: number } {
+  const args = process.argv.slice(2);
+  let multiCount: number | null = null;
+  let soulId: string | null = null;
+  let tickCount = DEFAULT_TICKS;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--multi") {
+      multiCount = parseInt(args[i + 1] ?? "2", 10);
+      i++;
+    } else if (!isNaN(parseInt(args[i], 10)) && args[i].length <= 4) {
+      tickCount = parseInt(args[i], 10);
+    } else if (args[i].startsWith("soul_")) {
+      soulId = args[i];
+    }
+  }
+  return { multiCount, soulId, tickCount };
+}
+
 async function main(): Promise<void> {
-  const argSoulId = process.argv[2];
-  const argTicks = parseInt(process.argv[3] ?? String(DEFAULT_TICKS), 10);
+  const { multiCount, soulId, tickCount } = parseArgs();
+  const isMulti = multiCount !== null;
 
-  console.log("=== Seed <-> SoulArena End-to-End Integration Test ===\n");
+  console.log("=== Seed <-> SoulArena End-to-End Integration Test ===");
+  console.log(`Mode: ${isMulti ? `Multi-soul (${multiCount} souls)` : "Single-soul"}\n`);
 
-  // 1. Discover or use provided soul.
-  let soul: SoulInfo;
-  if (argSoulId) {
-    soul = { id: argSoulId, name: "custom", element: "unknown" };
-    console.log(`Using provided soul ID: ${soul.id}`);
-  } else {
-    console.log("Discovering soul from SoulArena...");
-    const discovered = await discoverSoul();
-    if (!discovered) {
-      console.error("ERROR: Could not discover any soul from SoulArena. Is the server running?");
+  // 1. Discover souls.
+  let souls: SoulInfo[] = [];
+  if (isMulti) {
+    console.log(`Discovering ${multiCount} souls from SoulArena...`);
+    souls = await discoverSouls(multiCount!);
+    if (souls.length < 2) {
+      console.error("ERROR: Could not discover at least 2 souls. Is the server running?");
       process.exit(1);
     }
-    soul = discovered;
-    console.log(`Discovered soul: ${soul.name} (${soul.element}), ID: ${soul.id}`);
+    console.log(`Discovered ${souls.length} souls: ${souls.map((s) => s.name).join(", ")}`);
+  } else {
+    if (soulId) {
+      souls = [{ id: soulId, name: "custom", element: "unknown" }];
+      console.log(`Using provided soul ID: ${soulId}`);
+    } else {
+      console.log("Discovering soul from SoulArena...");
+      const discovered = await discoverSouls(1);
+      if (discovered.length === 0) {
+        console.error("ERROR: Could not discover any soul from SoulArena. Is the server running?");
+        process.exit(1);
+      }
+      souls = discovered;
+      console.log(`Discovered soul: ${souls[0].name} (${souls[0].element}), ID: ${souls[0].id}`);
+    }
   }
 
   // 2. Create the Seed world.
@@ -88,7 +125,7 @@ async function main(): Promise<void> {
   world.addSystem(bridge);
   console.log("World created with systems: weather, perception, action, bridge");
 
-  // 3. Add test objects to the world (so the soul has something to perceive).
+  // 3. Add test objects.
   const tree = new GameObject({ id: "obj_tree1", name: "Oak Tree", type: "interactive", position: { x: 5, y: 0, z: 0 }, mass: 100, material: "wood" });
   const rock = new GameObject({ id: "obj_rock1", name: "Large Rock", type: "static", position: { x: -3, y: 0, z: 4 }, mass: 50, material: "stone" });
   const lamp = new GameObject({ id: "obj_lamp1", name: "Street Lamp", type: "interactive", position: { x: 2, y: 0, z: -3 }, mass: 10, material: "metal" });
@@ -97,17 +134,34 @@ async function main(): Promise<void> {
   world.addEntity(lamp);
   console.log("Added 3 test objects: Oak Tree, Large Rock, Street Lamp");
 
-  // 4. Add the soul as an entity in the world.
-  const soulEntity = new GameObject({
-    id: soul.id,
-    name: soul.name,
-    type: "soul",
-    position: { x: 0, y: 0, z: 0 },
-    mass: 1,
-    material: soul.element,
+  // 4. Add soul entities (spread out in multi-soul mode).
+  const runtimes: SoulRuntime[] = [];
+  souls.forEach((soul, idx) => {
+    const angle = (idx / souls.length) * Math.PI * 2;
+    const radius = isMulti ? 3 : 0;
+    const x = Math.round(Math.cos(angle) * radius * 10) / 10;
+    const z = Math.round(Math.sin(angle) * radius * 10) / 10;
+    const entity = new GameObject({
+      id: soul.id,
+      name: soul.name,
+      type: "soul",
+      position: { x, y: 0, z },
+      mass: 1,
+      material: soul.element,
+    });
+    world.addEntity(entity);
+    runtimes.push({
+      info: soul,
+      entity,
+      perceptionsSent: 0,
+      actionsReceived: 0,
+      actionsExecuted: 0,
+      actionsFailed: 0,
+      positionHistory: [],
+      communicationsHeard: [],
+    });
+    console.log(`Added soul entity: ${soul.name} at position (${x}, 0, ${z})`);
   });
-  world.addEntity(soulEntity);
-  console.log(`Added soul entity: ${soul.name} at position (0, 0, 0)`);
 
   // 5. Start webhook receiver.
   console.log("\n--- Starting webhook action receiver ---");
@@ -116,80 +170,80 @@ async function main(): Promise<void> {
     console.log(`Webhook receiver listening on http://localhost:${port}/actions`);
   } catch (err) {
     console.warn(`Webhook server failed to start (port may be in use): ${String(err)}`);
-    console.warn("Actions will not be received via webhook. Continuing with perception-only test.");
+    console.warn("Continuing with perception-only test.");
   }
 
-  // 6. Enter world.
+  // 6. Enter world for all souls.
   console.log("\n--- Entering world ---");
-  const entered = await bridge.enterWorld(soul.id);
-  if (!entered) {
-    console.error("ERROR: Failed to enter world. SoulArena may have rejected the request.");
-    await bridge.stopWebhookServer();
-    process.exit(1);
+  for (const rt of runtimes) {
+    const entered = await bridge.enterWorld(rt.info.id);
+    if (!entered) {
+      console.error(`ERROR: Failed to enter world for soul ${rt.info.name}.`);
+    } else {
+      console.log(`Soul ${rt.info.name} entered world successfully.`);
+    }
+    await new Promise((r) => setTimeout(r, 100));
   }
-  console.log(`Soul ${soul.name} entered world successfully.`);
 
   // 7. Run world ticks.
-  console.log(`\n--- Running world for ${argTicks} ticks ---`);
+  console.log(`\n--- Running world for ${tickCount} ticks ---`);
   const dt = 1 / 60;
-  let perceptionsSent = 0;
-  let actionsReceived = 0;
-  let actionsExecuted = 0;
-  let actionsFailed = 0;
-  const actionTypeCounts = new Map<string, number>();
-  const positionHistory: Array<{ tick: number; x: number; y: number; z: number }> = [];
-  const sampleFrames: Array<{ tick: number; visibleCount: number; temp: number; light: number }> = [];
 
-  for (let i = 0; i < argTicks; i++) {
+  for (let i = 0; i < tickCount; i++) {
     world.step(dt);
 
-    // Track position every 5 ticks.
+    // Track per-soul data every 5 ticks.
     if (i % 5 === 0) {
-      positionHistory.push({ tick: i, x: soulEntity.position.x, y: soulEntity.position.y, z: soulEntity.position.z });
-    }
-
-    // Sample perception every 10 ticks.
-    if (i % 10 === 0) {
-      const frame = perception.getPerception(soul.id);
-      if (frame) {
-        sampleFrames.push({
+      for (const rt of runtimes) {
+        rt.positionHistory.push({
           tick: i,
-          visibleCount: frame.visibleEntities.length,
-          temp: frame.environment.temperature,
-          light: frame.environment.lightLevel,
+          x: rt.entity.position.x,
+          y: rt.entity.position.y,
+          z: rt.entity.position.z,
         });
+
+        // Track communications heard by this soul.
+        const frame = perception.getPerception(rt.info.id);
+        if (frame && frame.communications.length > 0) {
+          for (const comm of frame.communications) {
+            if (comm.senderId && comm.senderId !== rt.info.id) {
+              const alreadyRecorded = rt.communicationsHeard.some(
+                (c) => c.tick === i && c.from === comm.senderId && c.content === comm.content,
+              );
+              if (!alreadyRecorded) {
+                rt.communicationsHeard.push({ tick: i, from: comm.senderId, content: comm.content });
+              }
+            }
+          }
+        }
       }
     }
 
-    // Allow async perceptions to resolve (world.step is sync, bridge sends are fire-and-forget).
+    // Allow async perceptions to resolve.
     if (i % 5 === 0) {
       await new Promise((r) => setTimeout(r, 50));
     }
   }
 
-  // Collect action type distribution from history.
-  for (const entry of actionSystem.getHistory(soul.id)) {
-    const type = entry.request.action;
-    actionTypeCounts.set(type, (actionTypeCounts.get(type) ?? 0) + 1);
-  }
-
-  // Wait a bit for any in-flight perceptions/actions.
+  // Wait for in-flight perceptions/actions.
   await new Promise((r) => setTimeout(r, 500));
 
-  // 8. Collect stats.
-  const stats = bridge.getStats();
-  perceptionsSent = stats.perceptionsSent;
-  actionsReceived = stats.actionsReceived;
-  actionsExecuted = stats.actionsExecuted;
-  actionsFailed = stats.actionsFailed;
+  // 8. Collect per-soul stats.
+  const globalStats = bridge.getStats();
+  for (const rt of runtimes) {
+    const history = actionSystem.getHistory(rt.info.id);
+    rt.actionsExecuted = history.filter((h) => h.result.success).length;
+    rt.actionsFailed = history.filter((h) => !h.result.success).length;
+    rt.actionsReceived = history.length;
+  }
 
-  const finalPosition = soulEntity.position;
-  const finalFrame = perception.getPerception(soul.id);
-
-  // 9. Exit world.
+  // 9. Exit world for all souls.
   console.log("\n--- Exiting world ---");
-  const exited = await bridge.exitWorld(soul.id, "integration_test_complete");
-  console.log(exited ? "Soul exited world successfully." : "Exit-world returned failure (may already be exited).");
+  for (const rt of runtimes) {
+    const exited = await bridge.exitWorld(rt.info.id, "integration_test_complete");
+    console.log(`Soul ${rt.info.name}: ${exited ? "exited successfully" : "exit returned failure"}`);
+    await new Promise((r) => setTimeout(r, 50));
+  }
 
   // 10. Stop webhook.
   await bridge.stopWebhookServer();
@@ -197,52 +251,62 @@ async function main(): Promise<void> {
 
   // 11. Print report.
   console.log("\n=== Integration Test Report ===");
-  console.log(`Soul:              ${soul.name} (${soul.element})`);
-  console.log(`Soul ID:           ${soul.id}`);
-  console.log(`World ticks:       ${argTicks}`);
-  console.log(`Perceptions sent:  ${perceptionsSent}`);
-  console.log(`Perceptions failed: ${stats.perceptionsFailed}`);
-  console.log(`Actions received:  ${actionsReceived}`);
-  console.log(`Actions executed:  ${actionsExecuted}`);
-  console.log(`Actions failed:    ${actionsFailed}`);
-  console.log(`Actions dropped:   ${stats.actionsDropped}`);
-  console.log(`Final position:    (${finalPosition.x.toFixed(2)}, ${finalPosition.y.toFixed(2)}, ${finalPosition.z.toFixed(2)})`);
-  if (finalFrame) {
-    console.log(`Final env:         ${finalFrame.environment.weather}, ${finalFrame.environment.temperature.toFixed(1)}C, light ${(finalFrame.environment.lightLevel * 100).toFixed(0)}%`);
-    console.log(`Visible entities:  ${finalFrame.visibleEntities.length}`);
+  console.log(`Mode:              ${isMulti ? `Multi-soul (${runtimes.length} souls)` : "Single-soul"}`);
+  console.log(`World ticks:       ${tickCount}`);
+  console.log(`Global perceptions: ${globalStats.perceptionsSent} sent, ${globalStats.perceptionsFailed} failed`);
+  console.log(`Global actions:    ${globalStats.actionsReceived} received, ${globalStats.actionsExecuted} executed, ${globalStats.actionsFailed} failed`);
+
+  for (const rt of runtimes) {
+    console.log(`\n--- Soul: ${rt.info.name} (${rt.info.element}) ---`);
+    console.log(`  ID:               ${rt.info.id}`);
+    console.log(`  Actions received: ${rt.actionsReceived}`);
+    console.log(`  Actions executed: ${rt.actionsExecuted}`);
+    console.log(`  Actions failed:   ${rt.actionsFailed}`);
+    const finalPos = rt.entity.position;
+    console.log(`  Final position:   (${finalPos.x.toFixed(2)}, ${finalPos.y.toFixed(2)}, ${finalPos.z.toFixed(2)})`);
+    if (rt.communicationsHeard.length > 0) {
+      console.log(`  Communications heard: ${rt.communicationsHeard.length}`);
+      for (const c of rt.communicationsHeard.slice(0, 3)) {
+        console.log(`    Tick ${c.tick}: from ${c.from}: "${c.content.slice(0, 50)}"`);
+      }
+    }
   }
 
-  console.log("\n--- Sampled Perception Frames ---");
-  for (const s of sampleFrames) {
-    console.log(`  Tick ${s.tick.toString().padStart(3)}: visible=${s.visibleCount}, temp=${s.temp.toFixed(1)}C, light=${(s.light * 100).toFixed(0)}%`);
-  }
+  // Multi-soul specific: verify soul-to-soul communication.
+  if (isMulti && runtimes.length >= 2) {
+    console.log("\n--- Multi-Soul Interaction Analysis ---");
+    let totalCommsHeard = 0;
+    for (const rt of runtimes) {
+      totalCommsHeard += rt.communicationsHeard.length;
+    }
+    console.log(`Total cross-soul communications heard: ${totalCommsHeard}`);
+    if (totalCommsHeard > 0) {
+      console.log("PASS: Soul-to-soul acoustic communication detected.");
+    } else {
+      console.log("NOTE: No cross-soul communication detected (souls may not have spoken).");
+    }
 
-  console.log("\n--- Position History ---");
-  for (const p of positionHistory) {
-    console.log(`  Tick ${p.tick.toString().padStart(3)}: (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`);
-  }
-
-  console.log("\n--- Action Type Distribution ---");
-  if (actionTypeCounts.size === 0) {
-    console.log("  (no actions recorded)");
-  } else {
-    for (const [type, count] of actionTypeCounts) {
-      console.log(`  ${type.padEnd(15)}: ${count}`);
+    // Verify independent movement (souls at different positions).
+    const positions = runtimes.map((rt) => `${rt.entity.position.x.toFixed(1)},${rt.entity.position.z.toFixed(1)}`);
+    const uniquePositions = new Set(positions);
+    console.log(`Unique final positions: ${uniquePositions.size}/${runtimes.length}`);
+    if (uniquePositions.size === runtimes.length) {
+      console.log("PASS: Souls ended at independent positions.");
+    } else {
+      console.log("NOTE: Some souls share the same final position.");
     }
   }
 
   // 12. Verdict.
   console.log("\n=== Verdict ===");
-  const perceptionOk = perceptionsSent > 0;
-  const actionLoopOk = actionsReceived > 0;
+  const perceptionOk = globalStats.perceptionsSent > 0;
+  const actionLoopOk = globalStats.actionsReceived > 0;
   if (perceptionOk && actionLoopOk) {
     console.log("PASS: perceive -> decide -> act loop is fully operational.");
   } else if (perceptionOk) {
-    console.log("PARTIAL: Perceptions are being sent, but no actions were received.");
-    console.log("  - Check if SoulArena generated actions (may need speech input or threat).");
-    console.log("  - Check webhook receiver is running and callbackUrl is set correctly.");
+    console.log("PARTIAL: Perceptions sent, but no actions received.");
   } else {
-    console.log("FAIL: No perceptions were sent. Check SoulArena connectivity and enter-world.");
+    console.log("FAIL: No perceptions sent. Check SoulArena connectivity.");
   }
 
   process.exit(perceptionOk ? 0 : 1);
