@@ -23,6 +23,14 @@ import {
   EcosystemZoneChangedEvent,
 } from "../ecosystem/EcosystemSystem.js";
 import {
+  TaskAvailableEvent,
+  TaskAcceptedEvent,
+  TaskProgressEvent,
+  TaskCompletedEvent,
+  TaskFailedEvent,
+  TaskStatusChangedEvent,
+} from "../task/TaskEvents.js";
+import {
   EntityArrivedEvent,
   CollisionEvent,
   CollisionEnterEvent,
@@ -127,6 +135,18 @@ export class SoulPerceptionSystem implements WorldSystem {
   private ecoRemovedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for ecosystem.zone_changed event, set on first tick. */
   private ecoZoneChangedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for task.available event, set on first tick. */
+  private taskAvailableUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for task.accepted event, set on first tick. */
+  private taskAcceptedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for task.progress event, set on first tick. */
+  private taskProgressUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for task.completed event, set on first tick. */
+  private taskCompletedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for task.failed event, set on first tick. */
+  private taskFailedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for task.status_changed event, set on first tick. */
+  private taskStatusChangedUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -405,6 +425,96 @@ export class SoulPerceptionSystem implements WorldSystem {
       });
     }
 
+    // Listen for task available events.
+    if (!this.taskAvailableUnsubscribe) {
+      this.taskAvailableUnsubscribe = events.on("task.available", (evt: TaskAvailableEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `task_available_${p.taskId}_${evt.timestamp}`,
+          "task.available",
+          `Task available: ${p.taskId}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for task accepted events.
+    if (!this.taskAcceptedUnsubscribe) {
+      this.taskAcceptedUnsubscribe = events.on("task.accepted", (evt: TaskAcceptedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `task_accepted_${p.taskId}_${evt.timestamp}`,
+          "task.accepted",
+          `Task accepted: ${p.taskId}`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for task progress events.
+    if (!this.taskProgressUnsubscribe) {
+      this.taskProgressUnsubscribe = events.on("task.progress", (evt: TaskProgressEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `task_progress_${p.taskId}_${p.objectiveId}_${evt.timestamp}`,
+          "task.progress",
+          `Task progress: ${p.taskId} objective ${p.objectiveId} (${p.currentAmount}/${p.requiredAmount})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for task completed events.
+    if (!this.taskCompletedUnsubscribe) {
+      this.taskCompletedUnsubscribe = events.on("task.completed", (evt: TaskCompletedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `task_completed_${p.taskId}_${evt.timestamp}`,
+          "task.completed",
+          `Task completed: ${p.taskId}`,
+          "high",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for task failed events.
+    if (!this.taskFailedUnsubscribe) {
+      this.taskFailedUnsubscribe = events.on("task.failed", (evt: TaskFailedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `task_failed_${p.taskId}_${evt.timestamp}`,
+          "task.failed",
+          `Task failed: ${p.taskId} (${p.reason})`,
+          "high",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for task status changed events.
+    if (!this.taskStatusChangedUnsubscribe) {
+      this.taskStatusChangedUnsubscribe = events.on("task.status_changed", (evt: TaskStatusChangedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `task_status_${p.taskId}_${evt.timestamp}`,
+          "task.status_changed",
+          `Task status: ${p.taskId} ${p.oldStatus} -> ${p.newStatus}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
     // Lazy-locate WeatherSimulator.
     if (!this.weather || !world.systems.includes(this.weather)) {
       this.weather = world.systems.find(s => s instanceof WeatherSimulator) as WeatherSimulator | null ?? null;
@@ -674,6 +784,36 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.ecoZoneChangedUnsubscribe) {
       this.ecoZoneChangedUnsubscribe();
       this.ecoZoneChangedUnsubscribe = null;
+    }
+
+    if (this.taskAvailableUnsubscribe) {
+      this.taskAvailableUnsubscribe();
+      this.taskAvailableUnsubscribe = null;
+    }
+
+    if (this.taskAcceptedUnsubscribe) {
+      this.taskAcceptedUnsubscribe();
+      this.taskAcceptedUnsubscribe = null;
+    }
+
+    if (this.taskProgressUnsubscribe) {
+      this.taskProgressUnsubscribe();
+      this.taskProgressUnsubscribe = null;
+    }
+
+    if (this.taskCompletedUnsubscribe) {
+      this.taskCompletedUnsubscribe();
+      this.taskCompletedUnsubscribe = null;
+    }
+
+    if (this.taskFailedUnsubscribe) {
+      this.taskFailedUnsubscribe();
+      this.taskFailedUnsubscribe = null;
+    }
+
+    if (this.taskStatusChangedUnsubscribe) {
+      this.taskStatusChangedUnsubscribe();
+      this.taskStatusChangedUnsubscribe = null;
     }
   }
 }

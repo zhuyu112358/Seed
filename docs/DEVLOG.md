@@ -5517,3 +5517,96 @@ TaskSystem（条件检查/进度更新/完成判断）
 - 测试文件：62个
 - SDK版本：v2.1.0（M5完成），M6目标v2.2.0
 
+
+
+---
+
+## 2026-09-06 M6阶段3：任务事件感知集成（第70轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- c26128a（M6阶段2任务系统）已在GitHub，0待推送
+- 807个单元测试全部通过
+
+#### 2. SoulPerceptionSystem任务事件集成 (`src/entity/SoulPerceptionSystem.ts`)
+
+新增6个任务事件监听器（懒加载，首次tick设置，stop()清理）：
+
+| 事件类型 | 严重度 | 感知内容 |
+|----------|--------|----------|
+| task.available | low | 任务变为可用 |
+| task.accepted | medium | 任务被接受 |
+| task.progress | low | 目标进度变化（含当前/目标数量） |
+| task.completed | high | 任务完成 |
+| task.failed | high | 任务失败（含原因） |
+| task.status_changed | low | 任务状态变化（old→new） |
+
+**实现细节**：
+- 6个unsubscribe字段（taskAvailableUnsubscribe等）
+- 6个懒加载事件监听器（与现有生态事件监听模式一致）
+- 6个stop()清理块
+- 事件记录使用recordEvent()统一接口，进入eventBuffer
+- 感知帧events字段包含所有任务事件
+
+#### 3. 测试 (`tests/task-perception.test.ts`)
+- 10个新测试，覆盖：
+  - task.accepted感知（medium严重度）
+  - task.progress感知（low严重度）
+  - task.completed感知（high严重度）
+  - task.failed感知（high严重度）
+  - task.status_changed感知（low严重度）
+  - 事件名称包含正确taskId
+  - 多个任务事件共存于感知帧
+  - stop()清理监听器（不抛异常）
+  - completeTask触发completed事件（high严重度）
+  - failed事件名称包含失败原因
+
+### 架构设计
+
+**任务感知闭环**：
+```
+TaskSystem（状态变化）
+  → 发射任务事件（EventBus）
+    → SoulPerceptionSystem（6个监听器捕获）
+      → recordEvent()进入eventBuffer
+        → PerceptionFrame.events（灵魂感知帧）
+          → SoulArena（灵魂感知到任务状态变化，做出决策）
+```
+
+**严重度映射策略**：
+- high：任务完成/失败（重大状态变化，灵魂应优先感知）
+- medium：任务接受（重要决策点）
+- low：任务可用/进度/状态变化（常规信息，不打断主要行为）
+
+### 验证结果
+
+- **单元测试**：817/817 全绿（807+10新）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M6里程碑进度：60%
+
+- ✅ 阶段1：行为树基础设施（43测试）
+- ✅ 阶段2：动态任务系统（26测试）
+- ✅ 阶段3：任务事件感知集成（10测试）
+- ⬜ 阶段4：世界叙事链（事件序列/条件触发/叙事状态机）
+- ⬜ 阶段5：玩家影响世界反馈+端到端验证+SDK v2.2.0发布
+
+### 下一轮计划
+
+1. M6阶段4：世界叙事链
+   - NarrativeNode（叙事节点：id/name/description/triggers/actions）
+   - NarrativeChain（叙事链：节点序列+条件转移）
+   - NarrativeSystem（WorldSystem，管理多条叙事链，事件驱动推进）
+   - 叙事事件：narrative.started/narrative.progress/narrative.completed/narrative.branch
+   - SoulPerceptionSystem集成叙事事件感知
+   - 15+测试
+
+### 迭代统计
+
+- 总迭代轮数：70轮
+- 单元测试：817个（M6阶段2结束807，+10）
+- 测试文件：63个
+- SDK版本：v2.1.0（M5完成），M6目标v2.2.0
+
