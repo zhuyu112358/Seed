@@ -3273,3 +3273,91 @@ Verdict: PASS
 5. **SoulPerceptionSystem 集成碰撞/触发器生命周期事件**
 6. **多灵魂集成测试稳定性**：确保 --multi 模式下不触发 SoulArena 限流
 
+
+
+---
+
+## 2026-09-05 SoulPerceptionSystem集成碰撞/触发器生命周期事件（第45轮迭代）
+
+### 本轮目标
+
+将碰撞生命周期事件（CollisionEnterEvent/CollisionExitEvent）和触发器事件（TriggerEnterEvent/TriggerExitEvent）集成到 SoulPerceptionSystem，让灵魂能感知到碰撞开始/结束和触发器进入/离开。
+
+### 背景
+
+- 第39轮已实现碰撞回调系统（CollisionEnterEvent/CollisionStayEvent/CollisionExitEvent）
+- 第40轮已实现触发器体积（TriggerEnterEvent/TriggerStayEvent/TriggerExitEvent）
+- SoulPerceptionSystem 之前只监听通用 CollisionEvent（physics.collision）和 EntityArrivedEvent（movement.arrived）
+- 灵魂无法感知到碰撞的开始/结束和触发器的进入/离开
+
+### 实现
+
+**src/entity/SoulPerceptionSystem.ts（修改）**：
+
+1. **新增导入**：CollisionEnterEvent、CollisionExitEvent、TriggerEnterEvent、TriggerExitEvent
+
+2. **新增 unsubscribe 字段**（4个）：
+   - collisionEnterUnsubscribe
+   - collisionExitUnsubscribe
+   - triggerEnterUnsubscribe
+   - triggerExitUnsubscribe
+
+3. **新增事件监听器**（在 tick() 中懒加载订阅）：
+   - `physics.collision.enter`：碰撞开始，严重度基于冲击速度（<1m/s=low, 1-2m/s=medium, >=2m/s=high），事件名 "Collision started: A hit B (X m/s)"
+   - `physics.collision.exit`：碰撞结束，严重度 low，事件名 "Collision ended: A separated from B (N ticks)"
+   - `physics.trigger.enter`：进入触发器，严重度 medium，事件名 "Entered zone: triggerId"
+   - `physics.trigger.exit`：离开触发器，严重度 low，事件名 "Exited zone: triggerId (N ticks)"
+
+4. **stop() 方法更新**：取消所有6个事件监听器的订阅（原有2个+新增4个）
+
+### 设计决策
+
+- **不监听 stay 事件**：CollisionStayEvent 和 TriggerStayEvent 每tick发射，过于嘈杂，不加入感知
+- **严重度分级**：碰撞进入的严重度基于冲击速度，让灵魂能区分轻碰和重击
+- **距离过滤**：所有事件在构建感知帧时按距离过滤（viewDistance * 2），远处事件不加入感知
+- **事件保留**：所有事件通过 eventBuffer 保留 eventRetentionTicks（默认600tick=10秒）
+
+### 测试
+
+**tests/perception-lifecycle-events.test.ts（新建，8个测试）**：
+
+1. records CollisionEnterEvent in event buffer — 验证碰撞进入事件被记录，严重度正确
+2. records CollisionExitEvent in event buffer — 验证碰撞结束事件被记录，包含持续时间
+3. collision enter severity scales with impact speed — 验证0.5/1.5/5.0 m/s对应low/medium/high
+4. records TriggerEnterEvent — 验证触发器进入事件被记录
+5. records TriggerExitEvent with duration — 验证触发器离开事件被记录，包含持续时间
+6. full collision lifecycle (enter + exit) appears in perception — 验证完整生命周期
+7. stop() unsubscribes all lifecycle event listeners — 验证stop后不再接收事件
+8. events are filtered by distance in perception frame — 验证远处事件被过滤
+
+### 开发中遇到的问题
+
+1. **Edit工具失败**：修改 SoulPerceptionSystem.ts 时 Edit 工具持续返回 "Native execution failed"，改用 Write 重写整个文件成功
+2. **字段名错误**：CollisionEnterEvent/CollisionExitEvent 的 payload 用 `a`/`b` 而非 `aId`/`bId`，首次构建报4个 TS2339 错误，修复后通过
+3. **事件构造函数参数**：事件类使用位置参数（如 `new CollisionEnterEvent(a, b, point, relativeSpeed, normal, penetration)`）而非对象参数，首次测试全部失败，修复测试后通过
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- 单元测试：**530/530 全绿**（从522提升8个）
+- 新增测试：8/8 通过
+- 无回归：原有522个测试全部通过
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 需求覆盖
+
+- 灵魂感知：灵魂现在能感知到碰撞开始/结束和触发器进入/离开
+- 世界交互：触发器区域进入/离开可被灵魂感知，支持区域触发类交互
+- 可靠性：stop() 正确清理所有事件监听器，无内存泄漏
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **空间哈希性能基准测试**
+3. **动态障碍局部重规划**
+4. **集成测试自动清理 current_game_id**
+5. **SoulPerceptionSystem 集成风/天气事件**
+6. **感知事件优先级排序**：当前按时间排序，可按严重度+距离加权排序
+7. **感知注意力机制**：灵魂只能关注有限数量的事件，超出范围的被忽略
+

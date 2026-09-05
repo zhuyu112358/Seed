@@ -1,4 +1,4 @@
-﻿// SoulPerceptionSystem: generates PerceptionFrame for every soul each tick.
+// SoulPerceptionSystem: generates PerceptionFrame for every soul each tick.
 //
 // This is the core bridge between the virtual world and the souls inhabiting
 // it. Every tick it gathers what each soul can perceive: visible entities,
@@ -15,7 +15,14 @@ import type { EventSystem } from "../event/EventSystem.js";
 import { WeatherSimulator } from "../event/WeatherSimulator.js";
 import { LightSystem } from "../event/LightSystem.js";
 import { ThermalSystem } from "../event/ThermalSystem.js";
-import { EntityArrivedEvent, CollisionEvent } from "../event/Event.js";
+import {
+  EntityArrivedEvent,
+  CollisionEvent,
+  CollisionEnterEvent,
+  CollisionExitEvent,
+  TriggerEnterEvent,
+  TriggerExitEvent,
+} from "../event/Event.js";
 import { Vector3 } from "../entity/Vector3.js";
 import type { GameObject } from "../entity/Entity.js";
 import type {
@@ -81,6 +88,14 @@ export class SoulPerceptionSystem implements WorldSystem {
   private arrivedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for physics.collision event, set on first tick. */
   private collisionUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for physics.collision.enter event, set on first tick. */
+  private collisionEnterUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for physics.collision.exit event, set on first tick. */
+  private collisionExitUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for physics.trigger.enter event, set on first tick. */
+  private triggerEnterUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for physics.trigger.exit event, set on first tick. */
+  private triggerExitUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -136,7 +151,7 @@ export class SoulPerceptionSystem implements WorldSystem {
       });
     }
 
-    // Lazily subscribe to CollisionEvent on first tick.
+    // Lazily subscribe to CollisionEvent (generic, backward compat) on first tick.
     if (!this.collisionUnsubscribe) {
       this.collisionUnsubscribe = events.on("physics.collision", (evt: CollisionEvent) => {
         const p = evt.payload;
@@ -148,6 +163,67 @@ export class SoulPerceptionSystem implements WorldSystem {
           `Collision between ${p.a} and ${p.b} (impact: ${p.relativeSpeed.toFixed(2)} m/s)`,
           severity,
           p.point,
+          true,
+        );
+      });
+    }
+
+    // Lazily subscribe to CollisionEnterEvent (lifecycle: first contact).
+    if (!this.collisionEnterUnsubscribe) {
+      this.collisionEnterUnsubscribe = events.on("physics.collision.enter", (evt: CollisionEnterEvent) => {
+        const p = evt.payload;
+        const severity = p.relativeSpeed >= 2.0 ? "high" : p.relativeSpeed >= 1.0 ? "medium" : "low";
+        this.recordEvent(
+          `collision_enter_${p.a}_${p.b}_${evt.timestamp}`,
+          "physics.collision.enter",
+          `Collision started: ${p.a} hit ${p.b} (${p.relativeSpeed.toFixed(2)} m/s)`,
+          severity,
+          p.point,
+          true,
+        );
+      });
+    }
+
+    // Lazily subscribe to CollisionExitEvent (lifecycle: contact ended).
+    if (!this.collisionExitUnsubscribe) {
+      this.collisionExitUnsubscribe = events.on("physics.collision.exit", (evt: CollisionExitEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `collision_exit_${p.a}_${p.b}_${evt.timestamp}`,
+          "physics.collision.exit",
+          `Collision ended: ${p.a} separated from ${p.b} (${p.contactDurationTicks} ticks)`,
+          "low",
+          p.lastContactPoint,
+          true,
+        );
+      });
+    }
+
+    // Lazily subscribe to TriggerEnterEvent (soul entered a trigger volume).
+    if (!this.triggerEnterUnsubscribe) {
+      this.triggerEnterUnsubscribe = events.on("physics.trigger.enter", (evt: TriggerEnterEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `trigger_enter_${p.triggerId}_${p.otherId}_${evt.timestamp}`,
+          "physics.trigger.enter",
+          `Entered zone: ${p.triggerId}`,
+          "medium",
+          p.point,
+          true,
+        );
+      });
+    }
+
+    // Lazily subscribe to TriggerExitEvent (soul exited a trigger volume).
+    if (!this.triggerExitUnsubscribe) {
+      this.triggerExitUnsubscribe = events.on("physics.trigger.exit", (evt: TriggerExitEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `trigger_exit_${p.triggerId}_${p.otherId}_${evt.timestamp}`,
+          "physics.trigger.exit",
+          `Exited zone: ${p.triggerId} (${p.contactDurationTicks} ticks)`,
+          "low",
+          p.lastContactPoint,
           true,
         );
       });
@@ -338,6 +414,22 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.collisionUnsubscribe) {
       this.collisionUnsubscribe();
       this.collisionUnsubscribe = null;
+    }
+    if (this.collisionEnterUnsubscribe) {
+      this.collisionEnterUnsubscribe();
+      this.collisionEnterUnsubscribe = null;
+    }
+    if (this.collisionExitUnsubscribe) {
+      this.collisionExitUnsubscribe();
+      this.collisionExitUnsubscribe = null;
+    }
+    if (this.triggerEnterUnsubscribe) {
+      this.triggerEnterUnsubscribe();
+      this.triggerEnterUnsubscribe = null;
+    }
+    if (this.triggerExitUnsubscribe) {
+      this.triggerExitUnsubscribe();
+      this.triggerExitUnsubscribe = null;
     }
   }
 }
