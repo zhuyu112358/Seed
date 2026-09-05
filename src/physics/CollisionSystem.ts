@@ -31,6 +31,7 @@ import {
 } from '../event/Event.js';
 import { Logger } from '../reliability/Logger.js';
 import { SpatialHash } from './SpatialHash.js';
+import { combineMaterials } from './PhysicsMaterial.js';
 
 const log = Logger.for('collision-system');
 
@@ -409,14 +410,16 @@ export class CollisionSystem implements WorldSystem {
     // Apply velocity response (impulse-based reflection along collision normal).
     // Normal points from A to B. If A's relative velocity along normal > 0,
     // A is moving toward B and needs response.
-    if (this.config.restitution > 0) {
+    // Use combined restitution from both entities' physics materials (averaged).
+    const combinedRestitution = combineMaterials(a.physicsMaterial, b.physicsMaterial).restitution;
+    if (combinedRestitution > 0) {
       const relVelX = a.velocity.x - b.velocity.x;
       const relVelZ = a.velocity.z - b.velocity.z;
       const relVelAlongNormal = relVelX * normalX + relVelZ * normalZ;
 
       // Only respond if A is moving toward B (relative velocity along normal > 0).
       if (relVelAlongNormal > 0) {
-        const impulse = (1 + this.config.restitution) * relVelAlongNormal / 2;
+        const impulse = (1 + combinedRestitution) * relVelAlongNormal / 2;
         if (a.type !== 'static' && a.mass > 0) {
           a.velocity = new Vector3(
             a.velocity.x - impulse * normalX,

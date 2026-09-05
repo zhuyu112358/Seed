@@ -2810,3 +2810,128 @@ world.events.on('physics.trigger.exit', (e) => {
 8. **触发器形状**（球形、胶囊形，当前仅 AABB）
 9. **一次性触发器**（触发后自动禁用）
 
+
+
+---
+
+## 2026-09-05 物理材质系统（Physics Material）（第41轮迭代）
+
+### 本轮目标
+
+实现物理材质（Physics Material）系统。当前所有实体使用相同的全局 restitution（弹性系数），无法区分不同材质的物理行为。物理材质允许每个实体有独立的 restitution（弹性）和 friction（摩擦）属性，碰撞时两实体的材质组合（取平均值）决定碰撞响应。这是游戏引擎标准功能（如 Unity 的 PhysicMaterial、Unreal 的 PhysicalMaterial）。
+
+### 实现
+
+**1. 新增 PhysicsMaterial（src/physics/PhysicsMaterial.ts）**
+
+- `PhysicsMaterial` 接口：
+  - `restitution: number` — 弹性系数 [0,1]，0=完全非弹性，1=完全弹性
+  - `friction: number` — 摩擦系数 [0,1]，0=无摩擦（冰），1=高摩擦（橡胶）
+  - `name: string` — 人类可读名称
+- `PhysicsMaterials` 预定义常量对象（10 种材质）：
+  - DEFAULT（0.2/0.5）、ICE（0.05/0.05）、RUBBER（0.9/0.8）
+  - STONE（0.1/0.7）、WOOD（0.15/0.6）、METAL（0.12/0.65）
+  - FLESH（0.3/0.5）、GLASS（0.8/0.2）、BOUNCY（0.95/0.4）
+  - FRICTIONLESS（0/0，理想测试材质）
+- `combineMaterials(a, b)` 函数：两材质取平均值组合
+
+**2. Entity 扩展（src/entity/Entity.ts）**
+
+- 新增 `physicsMaterial: PhysicsMaterial` 属性
+- 构造函数新增 `physicsMaterial?: PhysicsMaterial` 可选参数
+- 默认值 `PhysicsMaterials.DEFAULT`（向后兼容）
+- GameObject 通过 `...opts` 自动传递 physicsMaterial 到父类
+
+**3. CollisionSystem 修改（src/physics/CollisionSystem.ts）**
+
+- 导入 `combineMaterials`
+- 速度响应部分：使用 `combineMaterials(a.physicsMaterial, b.physicsMaterial).restitution` 替代全局 `this.config.restitution`
+- 每对碰撞的弹性系数由两实体的物理材质平均值决定
+- 配置中的 `restitution` 仍保留但不再使用（实体材质优先）
+
+**4. SDK 导出（src/sdk/index.ts）**
+
+- 导出 `PhysicsMaterials`、`combineMaterials`
+- 导出类型 `PhysicsMaterial`
+
+### 测试
+
+**tests/physics-materials.test.ts（14 个新测试）**：
+
+- 预定义材质：
+  - DEFAULT 材质有中等弹性和摩擦
+  - ICE 有极低摩擦和低弹性
+  - RUBBER 有高弹性和高摩擦
+  - BOUNCY 有极高弹性
+  - FRICTIONLESS 有零摩擦和零弹性
+- combineMaterials：
+  - 两材质弹性取平均
+  - 两材质摩擦取平均
+  - 相同材质组合等于自身
+- GameObject physicsMaterial：
+  - 新实体默认获得 DEFAULT 物理材质
+  - 实体接受自定义物理材质
+- 碰撞响应：
+  - 高弹性材质比低弹性材质反弹更多（速度反向更明显）
+  - 混合材质使用平均弹性
+  - restitution=0 时不应用速度响应（按设计，位置校正仍生效）
+  - 默认材质行为匹配 restitution=0.2
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- 单元测试：**508/508 全绿**（从 494 提升 14 个）
+  - 物理材质测试：14/14
+  - 原有碰撞系统测试：19/19（无回归）
+  - 碰撞层测试：17/17（无回归）
+  - 碰撞回调测试：10/10（无回归）
+  - 触发器体积测试：12/12（无回归）
+  - 所有其他测试：无回归
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 使用示例
+
+```typescript
+import { PhysicsMaterials } from 'seed-system';
+
+// Create a bouncy rubber ball.
+const ball = new GameObject({
+  id: 'ball', name: 'Rubber Ball', type: 'dynamic',
+  position: { x: 0, y: 0, z: 0 },
+  halfExtents: { x: 0.3, y: 0.3, z: 0.3 },
+  mass: 1,
+  physicsMaterial: PhysicsMaterials.RUBBER, // high bounce
+});
+
+// Create an icy surface (low friction, low bounce).
+const iceFloor = new GameObject({
+  id: 'ice', name: 'Ice Floor', type: 'static',
+  position: { x: 0, y: -1, z: 0 },
+  halfExtents: { x: 10, y: 0.5, z: 10 },
+  mass: 0,
+  physicsMaterial: PhysicsMaterials.ICE,
+});
+
+// When ball hits ice, combined restitution = (0.9 + 0.05) / 2 = 0.475
+// Ball bounces moderately, slides easily on the ice.
+```
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界）：物理系统完善，支持材质差异化
+- 需求6（底层逻辑抽象）：物理材质是通用机制，可扩展更多材质属性
+- 需求11（向现实世界逼近）：不同材质的物理行为更接近现实
+- 灵魂交互：灵魂可与不同材质的物体交互（弹性地面、冰面等）
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **碰撞响应中的摩擦应用**（当前 friction 字段已定义但未在碰撞响应中使用，需实现切向摩擦冲量）
+3. **空间哈希性能基准测试**
+4. **动态障碍局部重规划**
+5. **连续碰撞检测（CCD）**
+6. **SoulPerceptionSystem 集成碰撞/触发器生命周期事件**
+7. **物理材质密度/体积属性**（影响质量计算）
+8. **材质组合策略可配置**（当前固定取平均，可支持取最小/最大/乘积）
+

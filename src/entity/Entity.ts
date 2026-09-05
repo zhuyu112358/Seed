@@ -3,6 +3,8 @@
 
 import { Vector3 } from './Vector3.js';
 import type { EntityType, IVector3 } from '../types/index.js';
+import type { PhysicsMaterial } from '../physics/PhysicsMaterial.js';
+import { PhysicsMaterials } from '../physics/PhysicsMaterial.js';
 
 let nextEntityId = 1;
 
@@ -18,6 +20,8 @@ export class Entity {
   public velocity: Vector3;
   public mass: number;
   public material: string;
+  /** Physical material properties (restitution, friction) for collision response. */
+  public physicsMaterial: PhysicsMaterial;
   public readonly state: Map<string, unknown>;
   public readonly properties: Map<string, unknown>;
   public active: boolean;
@@ -33,6 +37,7 @@ export class Entity {
     velocity?: IVector3;
     mass?: number;
     material?: string;
+    physicsMaterial?: PhysicsMaterial;
   }) {
     this.id = opts.id ?? genId('ent');
     this.name = opts.name;
@@ -41,6 +46,7 @@ export class Entity {
     this.velocity = Vector3.from(opts.velocity ?? { x: 0, y: 0, z: 0 });
     this.mass = opts.mass ?? 1;
     this.material = opts.material ?? 'default';
+    this.physicsMaterial = opts.physicsMaterial ?? PhysicsMaterials.DEFAULT;
     this.state = new Map();
     this.properties = new Map();
     this.active = true;

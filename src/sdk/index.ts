@@ -38,6 +38,8 @@ export { PhysicsSystem } from '../physics/PhysicsSystem.js';
 export { PhysicsConfig, PhysicsConfigBuilder } from '../physics/PhysicsConfig.js';
 export { CollisionSystem } from '../physics/CollisionSystem.js';
 export { SpatialHash } from '../physics/SpatialHash.js';
+export { PhysicsMaterials, combineMaterials } from '../physics/PhysicsMaterial.js';
+export type { PhysicsMaterial } from '../physics/PhysicsMaterial.js';
 export { MovementController } from '../physics/MovementController.js';
 export { WindForceSystem } from '../physics/WindForceSystem.js';
 
