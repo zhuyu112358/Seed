@@ -28,6 +28,7 @@ import { Message } from "../communication/Message.js";
 import type { AcousticConfig } from "../communication/AcousticPropagation.js";
 import type { PathfinderSystem } from "../pathfinding/PathfinderSystem.js";
 import type { HarvestSystem } from "../resource/HarvestSystem.js";
+import type { CraftingSystem } from "../resource/CraftingSystem.js";
 
 export interface SoulActionConfig {
   /** Maximum move distance per action. Default 5. */
@@ -84,6 +85,7 @@ export class SoulActionSystem implements WorldSystem {
   private acoustic: AcousticPropagation | null = null;
   private pathfinder: PathfinderSystem | null = null;
   private harvest: HarvestSystem | null = null;
+  private crafting: CraftingSystem | null = null;
   private actionsExecuted = 0;
   private actionsFailed = 0;
 
@@ -100,6 +102,7 @@ export class SoulActionSystem implements WorldSystem {
     this.ensureInteraction(world);
     this.ensurePathfinder(world);
     this.ensureHarvest(world);
+    this.ensureCrafting(world);
     const result = this.dispatch(request, world);
     this.history.push({ request, result, tick: world.tick });
     if (this.history.length > 200) this.history.shift();
@@ -165,11 +168,21 @@ export class SoulActionSystem implements WorldSystem {
     }
   }
 
+  /** Lazy-locate CraftingSystem by name. */
+  private ensureCrafting(world: World): void {
+    if (this.crafting && world.systems.includes(this.crafting as unknown as WorldSystem)) return;
+    this.crafting = null;
+    for (const s of world.systems) {
+      if (s.name === 'crafting') { this.crafting = s as unknown as CraftingSystem; break; }
+    }
+  }
+
   tick(_dt: number, world: World, _events: EventSystem): void {
     this.ensurePerception(world);
     this.ensureInteraction(world);
     this.ensurePathfinder(world);
     this.ensureHarvest(world);
+    this.ensureCrafting(world);
 
     // Process queued actions.
     const pending = [...this.queue];
@@ -192,6 +205,7 @@ export class SoulActionSystem implements WorldSystem {
       case "use": return this.doUse(request, soul, world);
       case "attack": return this.doAttack(request, soul, world);
       case "harvest": return this.doHarvest(request, soul, world);
+      case "craft": return this.doCraft(request, soul, world);
       case "wait": return this.success(request, "soul waits", {});
       case "stop": return this.doStop(request, soul);
       case "custom": return this.doCustom(request, soul, world);
@@ -459,6 +473,57 @@ export class SoulActionSystem implements WorldSystem {
       resourceType: node.resourceTypeId,
       harvestTime: node.harvestTime,
       remaining: node.currentAmount,
+    });
+  }
+
+  /**
+   * Craft a recipe. The soul must have a registered inventory (from HarvestSystem)
+   * with sufficient resources. Crafting is asynchronous (takes craftTime ticks);
+   * this action starts the craft and returns immediately.
+   *
+   * Recipe ID can be specified via request.targetId or request.parameters.recipeId.
+   */
+  private doCraft(request: ActionRequest, soul: GameObject, world: World): ActionResult {
+    if (!this.crafting) {
+      return this.fail(request, "CraftingSystem not available in this world");
+    }
+
+    const recipeId = (request.parameters?.recipeId as string) ?? request.targetId;
+    if (!recipeId) {
+      return this.fail(request, "craft requires recipeId (in parameters or targetId)");
+    }
+
+    const recipe = this.crafting.recipes.get(recipeId);
+    if (!recipe) {
+      return this.fail(request, `recipe not found: ${recipeId}`);
+    }
+
+    // Share inventory from HarvestSystem if available (so harvested resources can be crafted).
+    if (this.harvest) {
+      const inv = this.harvest.getInventory(soul.id);
+      if (inv) {
+        this.crafting.registerInventory(soul.id, inv);
+      }
+    }
+
+    // Check if craft can start (resources + concurrency).
+    const check = this.crafting.canCraft(soul.id, recipeId);
+    if (!check.canCraft) {
+      return this.fail(request, `cannot craft ${recipe.name}: ${check.reason ?? "unknown"}`);
+    }
+
+    // Start the craft (consumes inputs immediately).
+    const started = this.crafting.startCraft(soul.id, recipeId, world.events);
+    if (!started) {
+      return this.fail(request, `failed to start crafting ${recipe.name}`);
+    }
+
+    return this.success(request, `crafting ${recipe.name}`, {
+      recipeId,
+      recipeName: recipe.name,
+      craftTime: recipe.craftTime,
+      outputResourceType: recipe.outputResourceTypeId,
+      outputAmount: recipe.outputAmount,
     });
   }
 

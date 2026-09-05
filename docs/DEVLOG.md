@@ -4161,3 +4161,86 @@ M3设计文档：`docs/M3_RESOURCE_SYSTEM_DESIGN.md`
 - 测试文件：49个
 - GitHub：0待推送（上轮已同步）
 
+
+
+---
+
+## 2026-09-06 M3阶段4：craft动作集成+生产感知（第55轮迭代）
+
+### 本轮完成
+
+#### 1. SoulActionSystem集成craft动作 (`src/entity/SoulActionSystem.ts`)
+- 新增`crafting`属性（CraftingSystem | null），懒加载按名称查找
+- 新增`ensureCrafting(world)`方法，在tick()和executeAction()中调用
+- switch新增`case "craft"`，调用`doCraft()`
+- `doCraft()`方法：
+  - 校验CraftingSystem可用
+  - 从parameters.recipeId或targetId获取配方ID
+  - 校验配方存在
+  - **共享库存**：从HarvestSystem获取灵魂库存并注册到CraftingSystem（采集的资源可直接用于生产）
+  - 调用canCraft()检查资源+并发限制，返回具体失败原因
+  - 调用startCraft()启动生产（立即消耗输入资源）
+  - 成功返回ActionResult含recipeId/recipeName/craftTime/output信息
+
+#### 2. ActionRequest类型扩展 (`src/types/index.ts`)
+- action类型新增`'craft'`选项
+
+#### 3. SoulPerceptionSystem集成craft事件 (`src/entity/SoulPerceptionSystem.ts`)
+- 新增`craftCompleteUnsubscribe`字段
+- 监听`crafting.complete`事件：记录"Crafted N type (recipeName)"，low严重度
+- stop()中清理监听器
+- 导入CraftCompleteEvent
+
+#### 4. 测试 (`tests/craft-action.test.ts`)
+- 7个新测试：
+  - craft动作正常启动生产
+  - 资源不足失败
+  - 配方不存在失败
+  - 缺少recipeId失败
+  - targetId作为recipeId使用
+  - 完整采集→生产流水线（2 wood→4 plank）
+  - SoulPerceptionSystem感知craft完成事件
+
+### 验证结果
+
+- **单元测试**：608/608 全绿（601+7）
+- **构建**：0错误
+- **架构约束**：
+  - ✅ 无硬编码世界资源/配方
+  - ✅ 无认知决策逻辑
+  - ✅ SoulBridgeAdapter未修改
+  - ✅ 代码注释英语
+  - ✅ 库存共享通过SoulActionSystem协调（HarvestSystem→CraftingSystem）
+
+### 关键设计：库存共享
+
+HarvestSystem和CraftingSystem各自维护库存Map。SoulActionSystem.doCraft()在启动生产前，从HarvestSystem获取灵魂的库存并注册到CraftingSystem，确保采集的资源可直接用于生产。这避免了修改两个系统的内部结构，保持了模块独立性。
+
+### M3里程碑进度：55%
+
+- ✅ 阶段1：核心资源系统
+- ✅ 阶段2：采集动作集成+事件感知
+- ✅ 阶段3：资源点感知+生产系统
+- ✅ 阶段4：craft动作集成+生产感知
+- ⬜ 阶段5：消耗规则+成长规则
+- ⬜ 阶段6：集成测试验证+SDK发布
+
+### GitHub状态
+
+- 2个commit待推送（f3eca73资源感知+生产系统，本轮craft动作集成）
+- GitHub 443连接持续超时（21秒），下轮重试
+
+### 下一轮计划
+
+1. 重试git push（2个commit待推送）
+2. 消耗规则（ConsumptionRule）：灵魂生存消耗食物/水
+3. 成长规则（GrowthRule）：采集/生产获得经验
+4. 集成测试添加采集+生产场景
+5. M3完成标准核对
+
+### 迭代统计
+
+- 总迭代轮数：55轮
+- 单元测试：608个（M3启动时550个，+58）
+- 测试文件：50个
+

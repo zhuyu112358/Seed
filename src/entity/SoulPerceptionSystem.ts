@@ -27,6 +27,7 @@ import {
   WeatherEvent,
   HarvestCompleteEvent,
   ResourceDepletedEvent,
+  CraftCompleteEvent,
 } from "../event/Event.js";
 import { Vector3 } from "../entity/Vector3.js";
 import type { GameObject } from "../entity/Entity.js";
@@ -110,6 +111,8 @@ export class SoulPerceptionSystem implements WorldSystem {
   private harvestCompleteUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for resource.node.depleted event, set on first tick. */
   private resourceDepletedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for crafting.complete event, set on first tick. */
+  private craftCompleteUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -306,6 +309,21 @@ export class SoulPerceptionSystem implements WorldSystem {
           "resource.node.depleted",
           `Resource node depleted: ${p.resourceTypeId}`,
           "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for crafting completion events.
+    if (!this.craftCompleteUnsubscribe) {
+      this.craftCompleteUnsubscribe = events.on("crafting.complete", (evt: CraftCompleteEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `craft_complete_${p.recipeId}_${evt.timestamp}`,
+          "crafting.complete",
+          `Crafted ${p.outputAmount} ${p.outputResourceTypeId} (${p.recipeName})`,
+          "low",
           { x: 0, y: 0, z: 0 },
           true,
         );
@@ -556,6 +574,11 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.resourceDepletedUnsubscribe) {
       this.resourceDepletedUnsubscribe();
       this.resourceDepletedUnsubscribe = null;
+    }
+
+    if (this.craftCompleteUnsubscribe) {
+      this.craftCompleteUnsubscribe();
+      this.craftCompleteUnsubscribe = null;
     }
   }
 }

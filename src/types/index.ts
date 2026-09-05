@@ -394,7 +394,7 @@ export interface PerceptionFrame {
 /** A soul's requested action. */
 export interface ActionRequest {
   soulId: string;
-  action: 'move' | 'interact' | 'communicate' | 'use' | 'attack' | 'harvest' | 'wait' | 'stop' | 'custom';
+  action: 'move' | 'interact' | 'communicate' | 'use' | 'attack' | 'harvest' | 'craft' | 'wait' | 'stop' | 'custom';
   targetId?: string;
   parameters: Record<string, unknown>;
   timestamp: number;
