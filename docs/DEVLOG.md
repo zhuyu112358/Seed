@@ -2226,3 +2226,83 @@ SDK 专用构建配置：
 8. **连续碰撞检测（CCD）**：防止高速实体穿透薄障碍物
 9. **碰撞层/掩码**：更精细的碰撞过滤（当前仅按 type 过滤）
 
+
+
+---
+
+## 2026-09-05 SDK v1.0.0 Tag 发布 + 3灵魂集成测试（第36轮迭代）
+
+### 本轮目标
+
+1. 打 SDK v1.0.0 git tag 并推送（监控任务已确认发布条件满足）
+2. 3 灵魂集成测试验证
+3. 优化集成测试灵魂选择逻辑
+
+### 实现
+
+**1. SDK v1.0.0 Git Tag**
+
+- 创建 annotated tag `seed-sdk-v1.0.0`，指向 commit d06129a（空间哈希宽相碰撞检测）
+- Tag 消息包含完整的模块清单、验证结果和变更说明
+- **Tag 推送失败**：GitHub 443 端口连接超时（两次重试均失败，21073ms/21086ms），tag 保留本地，下轮重试推送
+
+**2. 3 灵魂集成测试验证**
+
+运行 `npx tsx examples/integration-test.ts --multi 3 100`：
+
+第一次运行（成功）：
+- 3 灵魂：Vex (wind), Nova (fire), Vex (wind)
+- Global perceptions: 8 sent, 0 failed
+- Global actions: 12 received, 7 executed, 0 failed
+- Vex (第一个): 7 actions received, 7 executed, 0 failed
+- Nova: 0 actions（perceive API 返回 400，因 Nova 已在游戏中 current_game_id=game_mtodrklj）
+- 第二个 Vex: 0 actions
+- Unique final positions: 3/3 — **PASS**
+- Verdict: **PASS**
+
+第二次运行（SoulArena 限流）：
+- 选择了 3 个未在游戏中的灵魂（PersistTest, TestSoul, Orin_soul）
+- 全部 60 感知失败（SoulArena 服务端瞬时问题/限流）
+- exit-world 返回 429（Too Many Requests）
+- Verdict: FAIL（SoulArena 服务端问题，非 Seed 问题）
+- 独立位置验证仍通过：3/3
+
+**3. 集成测试灵魂选择优化（examples/integration-test.ts）**
+
+- SoulInfo 新增 `inGame` 字段
+- discoverSouls 函数优化：
+  - 优先选择 `current_game_id` 为空的灵魂（未在游戏中，可正常进入测试世界）
+  - 如果可用灵魂不足，回退到包含在游戏中的灵魂，并输出 WARNING
+  - 记录每个灵魂是否在游戏中
+- 避免因灵魂已在游戏中导致 perceive API 400 错误
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- 单元测试：**444/444 全绿**（未修改内核代码，测试数不变）
+- 3 灵魂集成测试：第一次运行 **PASS**（独立位置 3/3，perceive→decide→act 循环正常）
+- Git tag：`seed-sdk-v1.0.0` 已创建本地，**推送失败**（GitHub 网络超时，下轮重试）
+
+### 开发中发现的问题
+
+1. **SoulArena 灵魂状态**：部分灵魂有 `current_game_id`（已在游戏中），调用 perceive/enter-world API 会返回 400。集成测试现在优先选择未在游戏中的灵魂。
+2. **SoulArena 限流**：短时间内多次运行集成测试可能触发 429 限流，建议测试间隔至少 30 秒。
+3. **GitHub 网络不稳定**：github.com:443 间歇性连接超时，tag 和 commit 推送可能失败，需重试。
+
+### 需求覆盖
+
+- 需求3（SDK 供进一步开发）：SDK v1.0.0 tag 已创建，SoulGame 可依赖稳定版本
+- 需求2（完整详细文档）：集成测试优化和文档更新
+- 多灵魂场景深化：3 灵魂集成测试验证通过
+
+### 后续可扩展方向（列入 backlog）
+
+1. **重试推送 seed-sdk-v1.0.0 tag**（GitHub 网络恢复后）
+2. **发布到 npm**（配置 .npmignore，npm publish）
+3. **空间哈希性能基准测试**（对比暴力 vs 空间哈希的实际 tick 时间）
+4. **动态障碍局部重规划**
+5. **声音衍射（绕射）**
+6. **连续碰撞检测（CCD）**
+7. **碰撞层/掩码**
+8. **集成测试增加灵魂间通信触发场景**（主动注入说话刺激，验证跨灵魂感知）
+

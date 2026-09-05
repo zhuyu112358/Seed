@@ -25,6 +25,7 @@ interface SoulInfo {
   id: string;
   name: string;
   element: string;
+  inGame?: boolean;
 }
 
 interface SoulRuntime {
@@ -42,9 +43,32 @@ async function discoverSouls(count: number): Promise<SoulInfo[]> {
   try {
     const res = await fetch(`${SOUL_ARENA_URL}/api/souls`, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return [];
-    const body = (await res.json()) as { souls?: Array<{ id: string; name: string; element: string }> };
+    const body = (await res.json()) as {
+      souls?: Array<{ id: string; name: string; element: string; current_game_id?: string | null }>;
+    };
     if (!body.souls || body.souls.length === 0) return [];
-    return body.souls.slice(0, count).map((s) => ({ id: s.id, name: s.name, element: s.element }));
+
+    // Prefer souls not currently in a game (they can enter the test world without 400 errors).
+    const available = body.souls.filter((s) => !s.current_game_id);
+    const inGame = body.souls.filter((s) => s.current_game_id);
+
+    let selected: typeof body.souls;
+    if (available.length >= count) {
+      selected = available.slice(0, count);
+      console.log(`  Found ${available.length} available souls (not in game), using first ${count}.`);
+    } else {
+      selected = [...available, ...inGame].slice(0, count);
+      if (inGame.length > 0) {
+        console.log(`  WARNING: Only ${available.length} available souls, using ${count - available.length} souls currently in a game (may cause perceive 400 errors).`);
+      }
+    }
+
+    return selected.map((s) => ({
+      id: s.id,
+      name: s.name,
+      element: s.element,
+      inGame: !!s.current_game_id,
+    }));
   } catch {
     return [];
   }
