@@ -15,6 +15,7 @@ import type { EventSystem } from "../event/EventSystem.js";
 import { WeatherSimulator } from "../event/WeatherSimulator.js";
 import { LightSystem } from "../event/LightSystem.js";
 import { ThermalSystem } from "../event/ThermalSystem.js";
+import { EntityArrivedEvent } from "../event/Event.js";
 import { Vector3 } from "../entity/Vector3.js";
 import type { GameObject } from "../entity/Entity.js";
 import type {
@@ -76,6 +77,8 @@ export class SoulPerceptionSystem implements WorldSystem {
   private readonly commBuffer: BufferedCommunication[] = [];
   private currentTick = 0;
   private soulsPerceived = 0;
+  /** Unsubscribe function for movement.arrived event, set on first tick. */
+  private arrivedUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -113,8 +116,23 @@ export class SoulPerceptionSystem implements WorldSystem {
   /** Number of souls perceived in the last tick. */
   get perceivedSoulCount(): number { return this.soulsPerceived; }
 
-  tick(dt: number, world: World, _events: EventSystem): void {
+  tick(dt: number, world: World, events: EventSystem): void {
     this.currentTick = world.tick;
+
+    // Lazily subscribe to EntityArrivedEvent on first tick.
+    if (!this.arrivedUnsubscribe) {
+      this.arrivedUnsubscribe = events.on("movement.arrived", (evt: EntityArrivedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `${p.entityId}_arrived_${evt.timestamp}`,
+          "movement.arrived",
+          `Arrived at target (${p.stopReason})`,
+          "low",
+          p.actualPosition,
+          true,
+        );
+      });
+    }
 
     // Lazy-locate WeatherSimulator.
     if (!this.weather || !world.systems.includes(this.weather)) {
@@ -293,5 +311,10 @@ export class SoulPerceptionSystem implements WorldSystem {
   }
 
   start(): void { /* no-op */ }
-  stop(): void { /* no-op */ }
+  stop(): void {
+    if (this.arrivedUnsubscribe) {
+      this.arrivedUnsubscribe();
+      this.arrivedUnsubscribe = null;
+    }
+  }
 }

@@ -1018,3 +1018,65 @@ AcousticPropagation 此前只计算距离衰减（inverse-square + medium absorp
 6. **材质相关透射**：不同材质不同透射系数（上一轮 backlog）
 7. **混响/回声**：封闭空间声音反射（上一轮 backlog）
 
+
+
+---
+
+## 2026-09-05 SoulPerceptionSystem监听EntityArrivedEvent：灵魂感知自身到达目标（第21轮迭代）
+
+### 本轮目标
+
+上一轮实现了 EntityArrivedEvent（MovementController 到达目标时发射）。本轮让 **SoulPerceptionSystem 监听该事件**，将到达事件记录到 PerceptionFrame.events，使灵魂能感知到自己（或附近其他实体）到达了移动目标。这是物理移动闭环的感知环节。
+
+### 实现方案
+
+**SoulPerceptionSystem 修改**（`src/entity/SoulPerceptionSystem.ts`）：
+
+1. **懒订阅事件**：在 `tick()` 首次执行时，通过 `events.on("movement.arrived", handler)` 订阅 EntityArrivedEvent。订阅函数保存在 `arrivedUnsubscribe` 字段中。
+2. **事件回调**：收到 EntityArrivedEvent 后，调用已有的 `recordEvent()` 方法将事件加入 eventBuffer：
+   - id: `${entityId}_arrived_${timestamp}`
+   - type: `"movement.arrived"`
+   - name: `"Arrived at target (${stopReason})"`
+   - severity: `"low"`（到达事件不是严重事件）
+   - position: actualPosition
+   - affectsSoul: true
+3. **取消订阅**：`stop()` 方法中调用 `arrivedUnsubscribe()` 并置空，防止内存泄漏。
+4. **`tick()` 的 `_events` 参数改为 `events`**，实际使用。
+
+### 设计决策
+
+1. **为什么用懒订阅而不是在 start() 中订阅？** WorldSystem.start() 不接收事件总线参数，无法在 start() 中获取事件总线。懒订阅在第一次 tick() 时完成，简单可靠。
+2. **为什么 severity 是 "low"？** 到达目标是正常的移动完成，不是危险或异常事件。low 级别确保它不会在感知中过度突出，但仍然可被灵魂感知。
+3. **为什么所有到达事件都记录而不只记录当前灵魂的？** SoulPerceptionSystem 的 eventBuffer 是全局的，每个灵魂的感知帧按距离过滤事件。其他实体的到达事件也应该被附近的灵魂感知到（如"我看到 Nova 到达了门口"）。
+4. **为什么不直接在 MovementController 中调用 SoulPerceptionSystem？** 事件总线解耦——MovementController 不需要知道谁在监听到达事件。任何系统都可以订阅，符合 Seed 的事件驱动架构。
+
+### 新增单元测试（4个）
+
+1. `records EntityArrivedEvent emitted on event bus` — 验证事件被记录到 PerceptionFrame.events，type/name/severity 正确
+2. `records multiple EntityArrivedEvents` — 验证多个到达事件都被记录（不同灵魂）
+3. `does not record EntityArrivedEvent after stop() unsubscribes` — 验证 stop() 后事件不再被记录（取消订阅生效）
+4. `EntityArrivedEvent from other entity is visible to nearby soul` — 验证其他灵魂的到达事件可被附近灵魂感知（按距离过滤）
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**321/321 全绿**（从 317 增至 321，+4）
+- SoulPerceptionSystem 测试：12/12（从 8 增至 12）
+- 回归验证：所有现有测试通过，事件订阅不影响原有感知逻辑
+- 端到端验证：MovementController 发射 EntityArrivedEvent → SoulPerceptionSystem 监听并记录 → PerceptionFrame.events 包含到达事件 → SoulBridgeAdapter 将其发送给 SoulArena
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界搭建、物体定义与交互）：灵魂能感知到移动到达，物理移动闭环完整（施加速度→物理积分→到达检测→事件发射→感知记录→反馈灵魂）
+- 需求6（底层逻辑抽象、强支持扩展）：事件总线解耦，任何系统可监听到达事件；懒订阅模式可复用于其他事件类型
+- 需求12（模拟世界事件）：EntityArrivedEvent 作为底层世界事件被感知系统消费，体现事件驱动架构
+
+### 后续可扩展方向（列入 backlog）
+
+1. **多灵魂集成测试**：2-3个灵魂同时进入世界，验证独立认知、灵魂间声学通信、位置碰撞（任务描述第一优先级）
+2. **路径规划（A*寻路）**：当前move是直线移动，需要避障寻路（多轮 backlog）
+3. **加速/减速曲线**：物理移动平滑加减速（多轮 backlog）
+4. **声音衍射（绕射）**：障碍物边缘的声音绕射（多轮 backlog）
+5. **基于到达的事件触发**：ConditionEngine 监听 movement.arrived，触发"到达门口自动开门"等连锁反应
+6. **SDK准备**：整理API文档、类型定义、CHANGELOG，为打tag做准备（任务描述第三优先级）
+

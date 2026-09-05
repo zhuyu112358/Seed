@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { SoulPerceptionSystem } from "../src/entity/SoulPerceptionSystem.js";
 import { WeatherSimulator } from "../src/event/WeatherSimulator.js";
+import { EntityArrivedEvent } from "../src/event/Event.js";
 import { World } from "../src/engine/World.js";
 import { GameObject } from "../src/entity/Entity.js";
 
@@ -118,5 +119,87 @@ describe("SoulPerceptionSystem", () => {
     world.addEntity(makeSoul("nova", 3, 0, 0));
     world.step(1 / 60);
     assert.equal(perception.perceivedSoulCount, 2);
+  });
+
+  // --- EntityArrivedEvent listening tests ---
+
+  it("records EntityArrivedEvent emitted on event bus", () => {
+    const { world, perception } = makeWorld();
+    const soul = makeSoul("vex", 0, 0, 0);
+    world.addEntity(soul);
+    world.step(1 / 60); // First tick subscribes to events.
+
+    world.events.emit(new EntityArrivedEvent(
+      "soul_vex",
+      { x: 5, y: 0, z: 0 },
+      { x: 4.95, y: 0, z: 0 },
+      "arrived",
+      0.05,
+    ));
+    world.step(1 / 60);
+
+    const frame = perception.getPerception("soul_vex")!;
+    assert.ok(frame.events.length >= 1, "arrival event should be in perception frame");
+    const arrived = frame.events.find((e) => e.type === "movement.arrived");
+    assert.ok(arrived, "should find movement.arrived event");
+    assert.ok(arrived!.name.includes("Arrived"));
+    assert.equal(arrived!.severity, "low");
+  });
+
+  it("records multiple EntityArrivedEvents", () => {
+    const { world, perception } = makeWorld();
+    const soul = makeSoul("vex", 0, 0, 0);
+    world.addEntity(soul);
+    world.step(1 / 60);
+
+    world.events.emit(new EntityArrivedEvent(
+      "soul_vex", { x: 3, y: 0, z: 0 }, { x: 3.02, y: 0, z: 0 }, "arrived", 0.02,
+    ));
+    world.events.emit(new EntityArrivedEvent(
+      "soul_nova", { x: 7, y: 0, z: 0 }, { x: 6.9, y: 0, z: 0 }, "early-stop", 0.1,
+    ));
+    world.step(1 / 60);
+
+    const frame = perception.getPerception("soul_vex")!;
+    const arrivedEvents = frame.events.filter((e) => e.type === "movement.arrived");
+    assert.equal(arrivedEvents.length, 2, "both arrival events should be recorded");
+  });
+
+  it("does not record EntityArrivedEvent after stop() unsubscribes", () => {
+    const { world, perception } = makeWorld();
+    const soul = makeSoul("vex", 0, 0, 0);
+    world.addEntity(soul);
+    world.step(1 / 60); // Subscribe.
+
+    perception.stop(); // Unsubscribe.
+
+    world.events.emit(new EntityArrivedEvent(
+      "soul_vex", { x: 5, y: 0, z: 0 }, { x: 5, y: 0, z: 0 }, "arrived", 0,
+    ));
+    world.step(1 / 60);
+
+    const frame = perception.getPerception("soul_vex")!;
+    const arrived = frame.events.find((e) => e.type === "movement.arrived");
+    assert.equal(arrived, undefined, "event after stop() should not be recorded");
+  });
+
+  it("EntityArrivedEvent from other entity is visible to nearby soul", () => {
+    const { world, perception } = makeWorld();
+    const vex = makeSoul("vex", 0, 0, 0);
+    const nova = makeSoul("nova", 3, 0, 0);
+    world.addEntity(vex);
+    world.addEntity(nova);
+    world.step(1 / 60);
+
+    // Nova arrives at a target near Vex.
+    world.events.emit(new EntityArrivedEvent(
+      "soul_nova", { x: 4, y: 0, z: 0 }, { x: 4.01, y: 0, z: 0 }, "arrived", 0.01,
+    ));
+    world.step(1 / 60);
+
+    const frame = perception.getPerception("soul_vex")!;
+    const arrived = frame.events.find((e) => e.type === "movement.arrived");
+    assert.ok(arrived, "Vex should perceive Nova's arrival event");
+    assert.ok(arrived!.distance <= 10, "arrival event should be within perception range");
   });
 });
