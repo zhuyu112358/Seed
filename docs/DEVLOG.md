@@ -3601,3 +3601,106 @@ Verdict: PASS
 6. **SoulArena 服务端修复**：清除 SOUL_NOT_IN_WORLD 灵魂的过期 current_game_id
 7. **集成测试加入 CI**：确保每次代码变更都自动运行集成测试
 
+
+
+---
+
+## 2026-09-06 天气事件发射+灵魂感知集成（第49轮迭代）
+
+### 本轮目标
+
+激活已预留但未使用的 WeatherEvent 类：WeatherSimulator 在天气状态变化和阵风时发射 WeatherEvent，SoulPerceptionSystem 监听这些事件并记录到感知帧，让灵魂能感知到天气变化。
+
+### 背景
+
+- Event.ts 中已有 WeatherEvent 类（type='world.weather'，payload={kind, strength}），但标记为"Reserved: weather changes, emitted by a future weather subsystem"
+- WeatherSimulator 已实现天气模拟（温度/湿度/风速/风向/气压/天气状态转换），但 tick() 方法的 `_events` 参数未使用，不发射任何事件
+- SoulPerceptionSystem 只感知静态天气状态（当前温度/风速/风向），不感知天气变化事件
+- 灵魂无法感知到"开始下雨"、"暴风雨来临"、"突然刮大风"等动态天气变化
+
+### 实现
+
+**1. src/event/WeatherSimulator.ts（修改）**：
+- 导入 WeatherEvent
+- 新增 `previousState: WeatherState` 字段（跟踪前一状态用于变化检测）
+- 新增 `previousWindSpeed: number` 字段（跟踪前一风速用于阵风检测）
+- 构造函数初始化两个跟踪字段
+- tick() 方法将 `_events` 改为 `events`（实际使用）
+- 天气状态更新后检查状态变化，发射 `new WeatherEvent(newState, strength)`
+- 风速更新后检查增量 >5 m/s，发射 `new WeatherEvent("wind_gust", windSpeed)`
+- 新增 `computeWeatherStrength(state)` 私有方法：根据天气类型和当前条件计算 0-1 强度值
+  - storm: windSpeed/30
+  - rain: humidity/100
+  - snow: |temperature|/20
+  - windy: windSpeed/20
+  - fog: 0.5
+  - cloudy: 0.3
+  - clear: 0.1
+
+**2. src/entity/SoulPerceptionSystem.ts（修改）**：
+- 导入 WeatherEvent
+- 新增 `weatherUnsubscribe: (() => void) | null` 字段
+- 新增 `world.weather` 事件监听器（懒加载订阅）：
+  - 事件名：`"Weather changed: {kind} (strength: {strength})"` 或 `"Wind gust (strength: {strength})"`
+  - 严重度通过 `weatherSeverity(kind, strength)` 方法映射
+  - 位置使用 {0,0,0}（全局事件无特定位置）
+- 新增 `weatherSeverity(kind, strength)` 私有方法：
+  - storm 或 wind_gust(strength>20) → "high"
+  - rain/snow/windy 或 wind_gust(strength>10) → "medium"
+  - 其他 → "low"
+- stop() 方法新增 weatherUnsubscribe 清理
+
+### 测试
+
+**tests/weather-events.test.ts（新建，8个测试）**：
+
+WeatherSimulator event emission:
+1. emits WeatherEvent when weather state changes — 验证状态变化时发射事件，payload.kind 和 strength 正确
+2. does not emit WeatherEvent when state does not change — 5 tick 内最多发射1个事件（低概率随机转换）
+3. emits wind_gust event when wind speed increases significantly — 高波动率下200 tick 验证阵风检测机制不崩溃，阵风事件 payload.strength>5
+4. WeatherEvent has correct type and sourceId — 验证事件类型='world.weather'，sourceId='engine'
+
+SoulPerceptionSystem weather integration:
+5. records weather state change in perception frame — 验证感知帧包含天气变化事件，事件名包含状态名
+6. weather event severity maps correctly — storm → high 严重度
+7. weather event includes strength in name — 事件名包含 "strength:"
+8. stop() unsubscribes weather listener — stop 后不再记录天气事件
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- 单元测试：**550/550 全绿**（从542提升8个）
+- 新增测试：8/8 通过
+- 无回归：原有542个测试全部通过
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 需求覆盖
+
+- 灵魂感知：灵魂能感知到动态天气变化（状态转换和阵风），不再只是静态天气快照
+- 事件系统：激活了预留的 WeatherEvent 类，WeatherSimulator 现在是完整的事件发射者
+- 可靠性：stop() 正确清理所有事件监听器（现有7个+新增天气=8个）
+
+### 天气事件严重度映射
+
+| 天气类型 | 强度条件 | 感知严重度 |
+|----------|----------|------------|
+| storm | 任意 | high |
+| wind_gust | strength > 20 m/s | high |
+| rain | 任意 | medium |
+| snow | 任意 | medium |
+| windy | 任意 | medium |
+| wind_gust | 10 < strength ≤ 20 | medium |
+| clear/cloudy/fog | 任意 | low |
+| wind_gust | strength ≤ 10 | low |
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **空间哈希性能基准测试**
+3. **整条路径障碍检测**（当前只检查当前到下一点）
+4. **预测性重规划**（提前检测前方障碍）
+5. **天气事件影响灵魂决策**：通过 SoulBridgeAdapter 将天气事件通知 SoulArena
+6. **天气事件位置感知**：当前天气事件使用 {0,0,0} 位置，未来可基于灵魂位置计算距离
+7. **极端温度事件**：温度跨越 0°C 或 35°C 阈值时发射事件
+8. **天气事件持续时间**：记录天气状态持续了多久，在感知帧中提供
+

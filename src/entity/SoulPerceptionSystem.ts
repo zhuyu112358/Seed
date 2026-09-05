@@ -23,6 +23,7 @@ import {
   TriggerEnterEvent,
   TriggerExitEvent,
   PathReplannedEvent,
+  WeatherEvent,
 } from "../event/Event.js";
 import { Vector3 } from "../entity/Vector3.js";
 import type { GameObject } from "../entity/Entity.js";
@@ -99,6 +100,8 @@ export class SoulPerceptionSystem implements WorldSystem {
   private triggerExitUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for movement.path_replanned event, set on first tick. */
   private pathReplannedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for world.weather event, set on first tick. */
+  private weatherUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -131,6 +134,13 @@ export class SoulPerceptionSystem implements WorldSystem {
   ): void {
     this.eventBuffer.push({ id, type, name, severity, position, bornTick: this.currentTick, affectsSoul });
     if (this.eventBuffer.length > 100) this.eventBuffer.shift();
+  }
+
+  /** Map weather kind and strength to perception severity. */
+  private weatherSeverity(kind: string, strength: number): string {
+    if (kind === "storm" || (kind === "wind_gust" && strength > 20)) return "high";
+    if (kind === "rain" || kind === "snow" || kind === "windy" || (kind === "wind_gust" && strength > 10)) return "medium";
+    return "low";
   }
 
   /** Number of souls perceived in the last tick. */
@@ -242,6 +252,23 @@ export class SoulPerceptionSystem implements WorldSystem {
           `Path replanned: ${p.oldPathLength}→${p.newPathLength} waypoints (attempt ${p.attempt})`,
           "medium",
           { x: p.goal.x, y: 0, z: p.goal.z },
+          true,
+        );
+      });
+    }
+
+    // Lazily subscribe to weather change events (state transitions and wind gusts).
+    if (!this.weatherUnsubscribe) {
+      this.weatherUnsubscribe = events.on("world.weather", (evt: WeatherEvent) => {
+        const p = evt.payload;
+        const severity = this.weatherSeverity(p.kind, p.strength);
+        const label = p.kind === "wind_gust" ? "Wind gust" : `Weather changed: ${p.kind}`;
+        this.recordEvent(
+          `weather_${p.kind}_${evt.timestamp}`,
+          "world.weather",
+          `${label} (strength: ${p.strength.toFixed(2)})`,
+          severity,
+          { x: 0, y: 0, z: 0 },
           true,
         );
       });
@@ -452,6 +479,10 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.pathReplannedUnsubscribe) {
       this.pathReplannedUnsubscribe();
       this.pathReplannedUnsubscribe = null;
+    }
+    if (this.weatherUnsubscribe) {
+      this.weatherUnsubscribe();
+      this.weatherUnsubscribe = null;
     }
   }
 }

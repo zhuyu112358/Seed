@@ -2,6 +2,7 @@
 import type { EventSystem } from "../event/EventSystem.js";
 import type { World } from "../engine/World.js";
 import type { WeatherState } from "../types/index.js";
+import { WeatherEvent } from "./Event.js";
 
 /** Environmental weather data snapshot. */
 export interface WeatherData {
@@ -46,6 +47,10 @@ export class WeatherSimulator implements WorldSystem {
   private data: WeatherData;
   private readonly config: Required<WeatherConfig>;
   private targetTemperature: number;
+  /** Previous weather state for change detection. */
+  private previousState: WeatherState;
+  /** Previous wind speed for gust detection. */
+  private previousWindSpeed: number;
 
   constructor(config?: WeatherConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -59,6 +64,8 @@ export class WeatherSimulator implements WorldSystem {
       lightLevel: 0.8,
     };
     this.targetTemperature = this.config.initialTemperature;
+    this.previousState = this.data.state;
+    this.previousWindSpeed = this.data.windSpeed;
   }
 
   getWeather(): Readonly<WeatherData> { return this.data; }
@@ -70,7 +77,7 @@ export class WeatherSimulator implements WorldSystem {
   setTargetTemperature(temp: number): void { this.targetTemperature = Math.max(-40, Math.min(50, temp)); }
   setWeatherState(state: WeatherState): void { this.data.state = state; }
 
-  tick(dt: number, world: World, _events: EventSystem): void {
+  tick(dt: number, world: World, events: EventSystem): void {
     // Temperature drifts toward target with day-night cycle influence
     const dayFactor = world.worldTime > 0 ? Math.sin((world.worldTime % 120) / 120 * Math.PI) : 0;
     const target = this.targetTemperature + dayFactor * this.config.temperatureAmplitude * 0.3;
@@ -98,6 +105,20 @@ export class WeatherSimulator implements WorldSystem {
 
     // Weather state transition based on conditions
     this.updateWeatherState(dt);
+
+    // Emit weather state change event if state changed.
+    if (this.data.state !== this.previousState) {
+      const strength = this.computeWeatherStrength(this.data.state);
+      events.emit(new WeatherEvent(this.data.state, strength));
+      this.previousState = this.data.state;
+    }
+
+    // Emit wind gust event if wind speed increased significantly (>5 m/s).
+    const windDelta = this.data.windSpeed - this.previousWindSpeed;
+    if (windDelta > 5) {
+      events.emit(new WeatherEvent("wind_gust", this.data.windSpeed));
+    }
+    this.previousWindSpeed = this.data.windSpeed;
   }
 
   private updateWeatherState(dt: number): void {
@@ -129,6 +150,27 @@ export class WeatherSimulator implements WorldSystem {
     // Cold temperature -> snow/fog
     if (this.data.temperature < 0) {
       this.data.state = humidity > 60 ? "snow" : "fog";
+    }
+  }
+
+  /** Compute a 0-1 strength value for a weather state based on current conditions. */
+  private computeWeatherStrength(state: WeatherState): number {
+    switch (state) {
+      case "storm":
+        return Math.min(1, this.data.windSpeed / 30);
+      case "rain":
+        return Math.min(1, this.data.humidity / 100);
+      case "snow":
+        return Math.min(1, Math.abs(this.data.temperature) / 20);
+      case "windy":
+        return Math.min(1, this.data.windSpeed / 20);
+      case "fog":
+        return 0.5;
+      case "cloudy":
+        return 0.3;
+      case "clear":
+      default:
+        return 0.1;
     }
   }
 
