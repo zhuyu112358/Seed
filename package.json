@@ -1,18 +1,21 @@
 {
   "name": "seed-system",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Seed System - a virtual physical world engine that runs beneath SoulArena, providing a configurable world container, physics, events, communication and soul interaction layer.",
   "type": "module",
-  "main": "dist/api/server.js",
+  "main": "dist/sdk/index.js",
+  "types": "dist/sdk/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:sdk": "tsc -p tsconfig.sdk.json",
     "start": "node dist/api/server.js",
     "dev": "tsx src/api/server.ts",
     "test": "tsx --test tests/**/*.test.ts",
     "eval": "tsx src/evaluator/runEval.ts",
     "evaluate": "tsx src/evaluator/runEvaluation.ts",
     "test-world": "tsx examples/test-world/index.ts",
-    "demo:test-world": "tsx examples/test-world/index.ts"
+    "demo:test-world": "tsx examples/test-world/index.ts",
+    "prepublishOnly": "npm run build:sdk"
   },
   "keywords": [
     "game-engine",

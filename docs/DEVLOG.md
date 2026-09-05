@@ -1946,3 +1946,92 @@ Soul A executeAction(communicate)
 6. **MovementController 速度自适应到达阈值**：根据当前速度动态调整 arrivalThreshold
 7. **SDK准备**：API文档、类型定义、CHANGELOG、打 tag
 
+
+
+---
+
+## 2026-09-05 SDK v1.0.0 打包发布准备（第33轮迭代）
+
+### 本轮目标
+
+应用实现任务（SoulGame）已启动，需要依赖固定版本的 Seed SDK。本轮完成 SDK v1.0.0 的打包发布准备：扩展 SDK 导出、创建 API 文档、创建 CHANGELOG、更新版本号、创建 SDK 构建脚本。
+
+### 实现
+
+**1. SDK index.ts 扩展（src/sdk/index.ts）**
+
+从原来的 10 个导出扩展到 60+ 个导出，覆盖所有核心模块：
+
+- **Engine**: World, WorldEngine, WorldSystem, WorldConfig
+- **Entity**: GameObject, Entity, EntityFactory, Vector3
+- **Physics**: PhysicsSystem, PhysicsConfig, PhysicsConfigBuilder, CollisionSystem, MovementController, WindForceSystem
+- **Event**: EventSystem, Event, EntityArrivedEvent, ConditionEngine
+- **Pathfinding**: GridMap, AStarPathfinder, PathfinderSystem, PathSmoother, PathFollowerSystem, PathResult
+- **Soul Interaction**: SoulBridgeAdapter, SoulPerceptionSystem, SoulActionSystem, SoulClient, PerceptionFrame, ActionRequest, ActionResult
+- **Communication**: AcousticPropagation, NetworkPacket, WorldResonance, Message, CommunicationStrategy
+- **Environment**: WeatherSimulator, WorldClock, WorldEventSystem, LightSystem, ThermalSystem
+- **Interaction**: InteractionSystem
+- **Reliability**: Logger, SnapshotManager, WorldTransaction, ExceptionHandler
+- **Security**: PermissionSystem, RateLimiter, InputValidator
+- **Utils**: ObjectPool
+- **SDK Helpers**: WorldBuilder, createListener, WorldEventHub
+- **Core Types**: PerceptionFrame, ActionRequest, ActionResult, CommunicationMessage, EntityType, WeatherState, EntityConfig, AABB, CollisionResult, WorldSnapshot, Transaction, LogLevel, WorldEvent
+
+**2. CHANGELOG.md 创建**
+
+完整的 v1.0.0 changelog，按模块分类列出所有新增功能、架构约束、已知限制和升级说明。
+
+**3. SDK API 文档（docs/SDK_API.md）**
+
+18KB 综合 API 参考文档，包含：
+- Quick Start 示例
+- 每个核心模块的详细 API 说明（构造函数、配置、方法、属性）
+- PerceptionFrame / ActionRequest 数据结构
+- 6 种 move 动作格式说明
+- 事件类型表
+- 配置参考（WorldConfig, SoulPerceptionConfig, SoulActionConfig, PathfinderSystemConfig, PathFollowerConfig, MovementControllerConfig）
+- 架构说明（系统顺序、状态通信、SoulArena 集成、向后兼容）
+
+**4. package.json 更新**
+
+- version: 0.1.0 → 1.0.0
+- main: dist/api/server.js → dist/sdk/index.js
+- 新增 types: dist/sdk/index.d.ts
+- 新增 build:sdk 脚本（tsc -p tsconfig.sdk.json）
+- 新增 prepublishOnly 脚本（自动构建 SDK）
+
+**5. tsconfig.sdk.json 创建**
+
+SDK 专用构建配置：
+- 继承主 tsconfig
+- 启用 declaration, declarationMap, sourceMap
+- rootDir: src（确保输出路径为 dist/sdk/ 而非 dist/src/sdk/）
+- 仅包含 src/，排除 tests/examples
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- dist/sdk/index.js 存在 ✓
+- dist/sdk/index.d.ts 存在 ✓
+- dist 目录共 228 个文件（编译源码 + 声明文件）
+- 单元测试：**414/414 全绿**
+- GitHub：所有 commit 已同步（5ee2664 已推送）
+
+### 需求覆盖
+
+- 需求3（SDK 供进一步开发）：完整 SDK v1.0.0 准备就绪
+- 需求2（完整详细文档）：SDK API 文档 + CHANGELOG
+- 需求9（分布式部署）：SDK 打包支持独立部署
+
+### 后续可扩展方向（列入 backlog）
+
+1. **打 git tag seed-sdk-v1.0.0**：等待监控任务确认后打 tag
+2. **发布到 npm**：配置 .npmignore，npm publish
+3. **3灵魂集成测试**：更多灵魂同时存在的性能和独立性
+4. **空间哈希/四叉树宽相**：大规模世界碰撞性能优化
+5. **动态障碍局部重规划**
+6. **声音衍射（绕射）**
+7. **漏斗算法（Funnel）**
+8. **SDK 使用示例（examples/sdk-usage/）**
+
