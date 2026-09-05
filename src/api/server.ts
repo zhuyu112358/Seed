@@ -1,5 +1,4 @@
-// HTTP + WebSocket server for Seed.
-import express, { type Request, type Response } from 'express';
+﻿import express, { type Request, type Response } from 'express';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { createServer } from 'node:http';
 import { WorldEngine } from '../engine/WorldEngine.js';
@@ -32,7 +31,7 @@ export async function startServer(deps: ServerDeps): Promise<{ close: () => void
   const app = createApp(deps);
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-  wss.on('connection', (socket: WebSocket) => { log.info('ws client connected'); socket.send(JSON.stringify({ type: 'hello', payload: { protocol: 'seed-soul', version: '0.1.0' }, timestamp: Date.now() })); socket.on('message', (raw) => { try { const msg = JSON.parse(raw.toString()) as { type: string; payload?: unknown; soulId?: string }; log.info({ type: msg.type, soulId: msg.soulId }, 'ws message'); socket.send(JSON.stringify({ type: 'ack', payload: { echo: msg.type }, timestamp: Date.now() })); } catch (err) { socket.send(JSON.stringify({ type: 'error', payload: { message: 'invalid json' }, timestamp: Date.now() })); } }); });
+  wss.on('connection', (socket: WebSocket) => { log.info('ws client connected'); socket.send(JSON.stringify({ type: 'hello', payload: { protocol: 'seed-soul', version: '0.1.0' }, timestamp: Date.now() })); socket.on('message', (raw) => { try { const msg = JSON.parse(raw.toString()) as { type: string; payload?: unknown; soulId?: string }; log.info({ type: msg.type, soulId: msg.soulId }, 'ws message'); socket.send(JSON.stringify({ type: 'ack', payload: { echo: msg.type }, timestamp: Date.now() })); } catch { socket.send(JSON.stringify({ type: 'error', payload: { message: 'invalid json' }, timestamp: Date.now() })); } }); });
   await new Promise<void>((resolve) => httpServer.listen(port, () => { log.info({ port }, 'Seed API listening'); resolve(); }));
   return { close: () => { wss.close(); httpServer.close(); } };
 }

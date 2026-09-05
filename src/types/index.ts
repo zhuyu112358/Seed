@@ -1,4 +1,4 @@
-// Shared type definitions for the Seed world engine.
+﻿// Shared type definitions for the Seed world engine.
 // Comments are intentionally in English.
 
 /** A 3-component floating point vector used for positions, velocities and forces. */

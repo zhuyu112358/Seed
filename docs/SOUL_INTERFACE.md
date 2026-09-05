@@ -1,203 +1,308 @@
-﻿# SOUL_INTERFACE.md — 灵魂-世界交互协议
+# 灵魂-世界接口约定（SOUL_INTERFACE）
 
-> 版本：seed-soul@0.1.0 · 本文档由 Seed 侧定义；SoulArena 侧待其下一次迭代时同步。
-> 字段命名以 SoulArena 实际返回为准（snake_case），不臆造 camelCase。
+> 本文档基于 `src/api/server.ts`、`src/api/soulClient.ts` 与 `src/types/index.ts` 中的真实实现编写。
+> 它定义了一个外部「灵魂」（Soul，由 SoulArena 后端托管）如何进入 Seed 世界、感知世界、执行动作、被世界影响并回传反馈。
 
-## 1. 设计目标
+---
 
-灵魂系统（SoulArena）管理灵魂的"内在"：人格、情绪、价值系统、记忆。
-种子系统（Seed）管理"外在"：世界、物理、事件、空间、通信。
-本协议定义两者之间的握手、感知、动作、世界反馈与回传。
+## 1. 概述
 
-通信通道：
-- **REST**：一次性请求/响应（进入/离开、动作、查询）。
-- **WebSocket**（`/ws`）：实时双向流（持续感知、事件推送、长连接动作）。
+Seed 是一个运行在 SoulArena **之下** 的虚拟物理世界引擎。灵魂本身并不生活在 Seed 进程里，而是由
+SoulArena（独立后端，默认 `http://localhost:3000`）托管其人格、记忆与情绪。Seed 通过两个面向外部的
+通道与灵魂交互：
 
-所有消息均为 JSON，顶层结构统一为：
+1. **REST（HTTP/JSON）**——短请求-响应，用于查询世界状态、实体列表、灵魂名册、提交一次动作。
+2. **WebSocket（`/ws`）**——长连接，用于握手与实时消息往返。
 
-```json
-{ "type": "<消息类型>", "payload": { ... }, "timestamp": 1725..., "soulId": "soul_xxx" }
+`SoulClient`（`src/api/soulClient.ts`）是 Seed 进程**主动**访问 SoulArena 的客户端；
+`createApp` / `startServer`（`src/api/server.ts`）是 Seed **暴露**给外部世界的服务端。两者方向相反，
+字段命名均采用与 SoulArena 确认过的 **snake_case** 契约。
+
+### 1.1 数据流总览
+
+```
+        SoulArena (灵魂托管, :3000)
+              ▲  GET /api/souls            ▲  GET /api/souls/:id
+              │  SoulClient.listSouls()    │  SoulClient.getSoul(id)
+              │                            │
+   ┌──────────┴─────────────────────────────┘
+   │  Seed 进程 (src/api/server.ts, 默认 :3100)
+   │
+   │   外部调用方 / 灵魂代理 ──HTTP/JSON──▶ REST 端点
+   │   外部调用方 / 灵魂代理 ──WebSocket──▶ /ws
+   ▼
+ WorldEngine → World.step → systems.tick（世界模拟主循环）
 ```
 
-## 2. 握手（进入 / 离开）
+---
 
-### 2.1 灵魂进入世界 enter
+## 2. 灵魂生命周期
 
-灵魂通过 REST 或 WebSocket 声明进入。Seed 为其创建 `soul-proxy` 实体。
+| 阶段 | 触发方 | 机制 | 世界内表现 |
+|------|--------|------|-----------|
+| 名册加载 | Seed 启动 | `SoulClient.listSouls()` 拉取 `/api/souls` | 不可达时回退内置 mock 灵魂 |
+| 进入世界 | 外部请求加入 | 在世界内创建一个 **soul-proxy** 实体（`EntityFactory.soulProxy`，id = `soul_<soulId>`） | proxy 占据物理位置，可被感知/交互 |
+| 感知输入 | 灵魂侧轮询/订阅 | 世界每个 tick 汇聚 `PerceptionFrame`（见 §6） | 可见实体、附近灵魂、环境、事件、通信 |
+| 动作执行 | 外部 POST | `POST /api/souls/:id/action` → 校验 → 查找 proxy → 执行 | 动作结果回传 `ActionResult` |
+| 世界影响 | 世界系统 | 碰撞/天气/区域等事件 → `WorldEffect` | 情绪/身体/社交状态变化 |
+| 反馈回传 | 灵魂侧 | `SoulFeedback` 描述对世界影响的反应 | 闭环 |
+| 离开世界 | 移除 proxy | `World.removeEntity('soul_<soulId>')` | proxy 销毁 |
 
-REST：`POST /api/souls/:id/action`（见第 5 节）或 WebSocket：
+> 说明：进入/离开世界的**实体创建**当前由 SDK 完成（`POST /api/entities` 仅做校验并返回占位响应，
+> 见 `server.ts` 与 `docs/SDK.md`）。soul-proxy 的标准 id 为 `` `soul_${soulId}` ``。
 
-```json
-{
-  "type": "soul.enter",
-  "payload": { "position": { "x": 0, "y": 1, "z": 0 }, "world": "test-world" },
-  "timestamp": 1725...,
-  "soulId": "soul_mtmtqt4pm7zdne"
-}
-```
+---
 
-Seed 回复：
+## 3. REST 端点（服务端）
 
-```json
-{ "type": "soul.enter.ack", "payload": { "proxyId": "soul_soul_mtmtqt4pm7zdne", "tick": 42 }, "timestamp": ..., "soulId": "..." }
-```
+所有端点挂在 Seed API 服务（默认端口由 `PORT` 决定，缺省 `3100`）。响应均为 `application/json`。
 
-### 2.2 灵魂离开 exit
+### 3.1 世界状态
 
-```json
-{ "type": "soul.exit", "payload": { "reason": "logout" }, "timestamp": ..., "soulId": "..." }
-```
+`GET /api/world/status`
 
-Seed 删除/停用其 `soul-proxy`，回复 `soul.exit.ack`。
-
-## 3. 感知输入 perception
-
-世界按距离 / LOD 过滤后，周期性（或事件触发）向灵魂推送感知帧：
-
-```json
-{
-  "type": "soul.perception",
-  "payload": {
-    "self": { "proxyId": "soul_...", "position": {"x":0,"y":1,"z":0}, "velocity": {"x":0,"y":0,"z":0} },
-    "entities": [
-      { "id": "ent_...", "name": "crate", "kind": "dynamic", "distance": 3.1, "position": {"x":-3,"y":0.24,"z":0} }
-    ],
-    "events": [ { "type": "physics.collision", "distance": 2.0 } ],
-    "environment": { "timeOfDay": "day", "weather": "clear" },
-    "messages": [ { "from": "soul_...", "text": "hello", "intensity": 0.9 } ]
-  },
-  "timestamp": ...,
-  "soulId": "..."
-}
-```
-
-过滤规则：
-- 只推送 `distance <= maxDistance` 的实体（maxDistance 由灵魂侧在 enter 时声明，默认 30m）。
-- 远距离实体只给 {id,name,distance}，近距离才给完整位置/速度。
-- 事件同样按距离衰减（见 `EventPropagation`）。
-
-## 4. 执行动作 action
-
-灵魂发动作，Seed 校验（InputValidator + PermissionSystem + RateLimiter）后转成世界事件。
-
-REST：`POST /api/souls/:id/action`
+响应体：
 
 ```json
 {
-  "action": "move",
-  "payload": { "target": { "x": 5, "y": 0, "z": 0 }, "speed": 2.0 }
+  "world": "test-world",
+  "running": true,
+  "tick": 120,
+  "worldTime": 2.0,
+  "entityCount": 8
 }
 ```
 
-动作枚举与参数 schema：
+| 字段 | 含义 |
+|------|------|
+| `world` | 当前世界名（`engine.currentWorld.config.name`） |
+| `running` | 引擎是否在跑（`engine.isRunning`） |
+| `tick` | 已推进的 tick 数 |
+| `worldTime` | 世界内累计秒数 |
+| `entityCount` | 实体总数 |
 
-| action | 必选 payload | 说明 |
-|--------|--------------|------|
-| move | target{x,y,z}, speed | 灵魂代理向目标移动 |
-| speak | text(string,<=500) | 经 AcousticPropagation 广播，按距离衰减 |
-| interact | targetId | 与可交互实体交互 |
-| attack | targetId, power | 对目标施加冲量/伤害 |
-| use | targetId | 使用实体（门、开关等） |
+### 3.2 实体
 
-成功响应：
+`GET /api/entities`
+
 ```json
-{ "ok": true, "action": "move", "soulId": "...", "tick": 42 }
+{ "entities": [ { /* Entity.toJSON() */ } ] }
 ```
 
-## 5. 世界对灵魂的影响 world-effect
+`GET /api/entities/:id`
 
-世界把物理/环境影响映射回灵魂系统的字段（见第 7 节映射表）：
+- 命中：`{ "entity": { ... } }`
+- 未命中：`404 { "error": "not_found" }`
+
+`POST /api/entities`
+
+- 请求体经 `InputValidator.validateInline` 校验（要求 `name`(≤64)、`x`、`y`、`z`）。
+- 校验失败：`400 { "error": "validation_failed", "errors": [...] }`。
+- 当前**不真正创建实体**，返回 `201 { "ok": true, "note": "entity creation via SDK; see docs/SDK.md" }`。
+
+### 3.3 灵魂动作
+
+`POST /api/souls/:id/action`
+
+请求体：
 
 ```json
+{ "action": "speak", "payload": { "text": "你好，世界" } }
+```
+
+- `action` 必须是 `move | speak | interact | attack | use` 之一。
+- 先按调用方 IP 做令牌桶限流；超限返回 `429 { "error": "rate_limited", "retryAfterMs": <ms> }`。
+- 再校验请求体；失败返回 `400 validation_failed`。
+- 查找世界内 proxy：`soul_<:id>`；不存在返回 `404 { "error": "soul_not_in_world", "soulId": "..." }`。
+- `speak` 动作会对 `payload.text` 做 `sanitizeString` 清洗后写入日志。
+- 成功响应：`{ "ok": true, "action": "speak", "soulId": "<id>", "tick": <n> }`。
+
+### 3.4 灵魂名册（代理到 SoulArena）
+
+`GET /api/souls`
+
+```json
+{ "souls": [ { /* SoulInfo */ } ], "source": "soul-arena" }
+```
+
+`source` 为 `"soul-arena"` 表示来自真实后端；为 `"mock"` 表示 SoulArena 不可达，使用内置 mock。
+
+---
+
+## 4. SoulClient（主动访问 SoulArena）
+
+`src/api/soulClient.ts`，构造：
+
+```ts
+new SoulClient(baseUrl?)
+// baseUrl 默认 = process.env.SOUL_URL ?? 'http://localhost:3000'
+```
+
+| 方法 | 请求 | 成功返回 | 失败行为 |
+|------|------|----------|----------|
+| `listSouls()` | `GET {baseUrl}/api/souls`（1.5s 超时） | `{ souls: SoulInfo[], usedMock: false }` | 抛错被捕获 → 返回内置 mock，`usedMock: true` |
+| `getSoul(id)` | `GET {baseUrl}/api/souls/:id`（1.5s 超时） | `SoulInfo \| null`（404/错误 → `null`） | 记 warn，返回 `null` |
+
+`listSouls()` 同时兼容数组响应与 `{ souls: [...] }` 包装：
+`Array.isArray(body) ? body : body.souls ?? []`。
+
+### 4.1 SoulInfo 结构（snake_case，与 SoulArena 确认契约）
+
+```ts
+interface SoulInfo {
+  id: string;
+  name: string;
+  element: string;                 // e.g. 'wind' | 'fire'
+  status: string;
+  current_game_id: string | null;
+  birth_time: number;
+  total_existence_ms: number;
+  last_active_at: number;
+  created_at: number;
+  memoryStats: {
+    episodic: number; semantic: number; core: number;
+    links: number; reflections: number; total: number;
+  };
+  personality?: { bravery: number; aggression: number; sociability: number; curiosity: number; loyalty: number };
+  emotion?: { valence: number; arousal: number; dominance: number; trust: number; anticipation: number; fatigue: number };
+  valueSystem?: { beliefs: string[]; priorities: Record<string, number>; moralAlignment: number };
+}
+```
+
+### 4.2 内置 mock 灵魂
+
+SoulArena 不可达时，`listSouls()` 返回两个内置 mock：`Vex`（wind）与 `Nova`（fire），
+`memoryStats` 全为 0，用于无后端时的本地开发。
+
+---
+
+## 5. WebSocket 协议（`/ws`）
+
+服务端通过 `WebSocketServer({ server, path: '/ws' })` 挂载。连接建立后**服务端立即**发送握手消息，
+之后对每条客户端消息回 `ack`（或 `error`）。所有消息均为 JSON 文本帧。
+
+### 5.1 消息信封
+
+```json
+{ "type": "<type>", "payload": <unknown>, "timestamp": <ms> }
+```
+
+### 5.2 服务端 → 客户端
+
+| type | 触发时机 | payload |
+|------|----------|---------|
+| `hello` | 连接建立时立即发送 | `{ "protocol": "seed-soul", "version": "0.1.0" }` |
+| `ack` | 收到任意可解析客户端消息后 | `{ "echo": "<收到的消息 type>" }` |
+| `error` | 客户端消息不是合法 JSON | `{ "message": "invalid json" }` |
+
+握手示例：
+
+```json
+{ "type": "hello",
+  "payload": { "protocol": "seed-soul", "version": "0.1.0" },
+  "timestamp": 1730000000000 }
+```
+
+### 5.3 客户端 → 服务端
+
+当前实现会把每条合法消息的 `type` 原样回显在 `ack.echo` 中：
+
+```json
+{ "type": "perception_request", "payload": { "soulId": "soul_mock_vex" } }
+```
+
+服务端仅记日志并回 `ack`；尚未按 `type` 分派具体动作（订阅/感知帧等完整语义见
+`src/server/index.ts` 的 `SeedServer` 与 `docs/ROADMAP.md`）。
+
+> 另有 `src/server/index.ts` 中的 `SeedServer` 类提供了更完整的 `/ws` 语义（`subscribe` /
+> `action` / `perception_request` → `subscribed` / `action_result` / `perception_frame`），
+> 但它与 `api/server.ts` 是两套并行实现，当前主入口使用 `api/server.ts`。
+
+---
+
+## 6. 感知与反馈数据契约（types 层）
+
+以下类型定义在 `src/types/index.ts`，是灵魂感知世界与回传反馈的目标形状。它们是**契约**，
+当前主循环对它们的逐帧填充由后续迭代实现（见已知问题）。
+
+### 6.1 PerceptionFrame（灵魂每一帧的感知）
+
+```ts
 {
-  "type": "world.effect",
-  "payload": {
-    "damage": 5.0,
-    "environment": { "temperature": 0.2, "wind": 0.8 },
-    "emotionDelta": { "valence": -0.1, "arousal": 0.2, "fatigue": 0.05 },
-    "valueTriggers": [ "danger" ]
-  },
-  "timestamp": ...,
-  "soulId": "..."
+  soulId: string; timestamp: number; worldTime: number;
+  position: IVector3;
+  visibleEntities: { id; name; type; position; distance; visible }[];
+  nearbySouls: { id; name; element; position; distance }[];
+  environment: {
+    temperature; pressure; humidity; windSpeed;
+    windDirection: IVector3; lightLevel; weather: WeatherState; timeOfDay: number;
+  };
+  events: { id; type; name; severity; distance; affectsSoul }[];
+  communications: CommunicationMessage[];
 }
 ```
 
-- 物理伤害：碰撞速度 * 系数 -> damage。
-- 环境影响：天气/温度 -> emotion.valence / arousal。
-- 情绪触发：进入危险区 -> emotion.arousal 上升、valueSystem.moralAlignment 临时偏移。
+### 6.2 ActionRequest / ActionResult
 
-## 6. 灵魂反馈回传 soul-feedback
-
-Seed 把动作结果与状态变化回传给灵魂：
-
-```json
+```ts
+// 灵魂请求动作
 {
-  "type": "soul.feedback",
-  "payload": {
-    "action": "move",
-    "ok": true,
-    "resultingPosition": {"x":3.2,"y":0.54,"z":0},
-    "eventsObserved": 3,
-    "errors": []
-  },
-  "timestamp": ...,
-  "soulId": "..."
+  soulId: string;
+  action: 'move' | 'interact' | 'communicate' | 'use' | 'attack' | 'wait' | 'custom';
+  targetId?: string;
+  parameters: Record<string, unknown>;
+  timestamp: number;
 }
+
+// 世界回传动作结果
+{ soulId; action; success: boolean; message: string; data?: Record<string, unknown>; timestamp: number }
 ```
 
-## 7. 字段映射表（Seed 字段 ↔ SoulArena 实际 snake_case 字段）
+> 注意：REST 端点 `POST /api/souls/:id/action` 实际接受的动作枚举是
+> `move | speak | interact | attack | use`（见 §3.3），与类型层 `ActionRequest.action` 的并集
+> 存在差异（`speak`、`wait`、`custom` 等），属于契约未对齐的已知问题。
 
-> 以下 SoulArena 字段名基于已确认的实际接口（GET /api/souls 与 /api/souls/:id），全部为 snake_case。
+### 6.3 WorldEffect / SoulFeedback
 
-| 含义 | Seed 侧字段 | SoulArena 实际字段 |
-|------|-------------|--------------------|
-| 灵魂 ID | soulId | `id` |
-| 灵魂名 | proxy.name | `name` |
-| 元素 | proxy.properties.element | `element` |
-| 在线状态 | proxy.state.insideWorld | `status` |
-| 当前所在世界 | current_game | `current_game_id` |
-| 出生时间 | — | `birth_time` |
-| 累计存在时长 | — | `total_existence_ms` |
-| 最后活跃 | — | `last_active_at` |
-| 创建时间 | — | `created_at` |
-| 记忆-情景 | perceivedEvents | `memoryStats.episodic` |
-| 记忆-语义 | — | `memoryStats.semantic` |
-| 记忆-核心 | — | `memoryStats.core` |
-| 记忆-链接 | — | `memoryStats.links` |
-| 记忆-反思 | — | `memoryStats.reflections` |
-| 记忆-总计 | — | `memoryStats.total` |
-| 人格-勇敢 | bravery | `personality.bravery` |
-| 人格-攻击 | aggression | `personality.aggression` |
-| 人格-社交 | sociability | `personality.sociability` |
-| 人格-好奇 | curiosity | `personality.curiosity` |
-| 人格-忠诚 | loyalty | `personality.loyalty` |
-| 情绪-效价 | emotionDelta.valence | `emotion.valence` |
-| 情绪-唤醒 | emotionDelta.arousal | `emotion.arousal` |
-| 情绪-支配 | — | `emotion.dominance` |
-| 情绪-信任 | — | `emotion.trust` |
-| 情绪-期待 | — | `emotion.anticipation` |
-| 情绪-疲劳 | emotionDelta.fatigue | `emotion.fatigue` |
-| 价值-信念 | valueTriggers | `valueSystem.beliefs[]` |
-| 价值-优先级 | — | `valueSystem.priorities{}` |
-| 价值-道德对齐 | moralAlignmentDelta | `valueSystem.moralAlignment` |
+```ts
+// 世界对灵魂的影响（情绪/身体/社交）
+{
+  soulId; source;
+  effectType: 'emotion' | 'physical' | 'mental' | 'social' | 'custom';
+  magnitude: number;
+  emotionDelta?: { valence?; arousal?; dominance?; trust?; anticipation? };
+  physicalDelta?: { health?; energy?; fatigue? };
+  description: string; timestamp: number;
+}
 
-## 8. 版本与兼容性
+// 灵魂对世界影响的反馈
+{ soulId; worldEffectId; emotionalResponse; actionTaken; intensity; timestamp: number }
+```
 
-- 协议版本：`seed-soul@0.1.0`（在 WebSocket hello 中下发）。
-- 规则：**新增可选字段不破坏旧客户端**；删除/重命名字段必须升主版本号。
-- 未知字段：接收方必须忽略（forward-compatible）。
-- 时间戳统一 Unix 毫秒（UTC）。
+---
 
-## 9. REST 端点对应
+## 7. 错误码
 
-| 协议动作 | 端点 |
-|----------|------|
-| 拉取灵魂列表 | GET /api/souls（Seed 代理 localhost:3000） |
-| 进入/动作 | POST /api/souls/:id/action |
-| 世界状态 | GET /api/world/status |
-| 实体列表 | GET /api/entities |
+| HTTP | `error` 字段 | 含义 |
+|------|---------------|------|
+| 400 | `validation_failed` | 请求体未通过 schema 校验，附带 `errors` |
+| 401 | `unauthorized` | 开启 `SEED_AUTH=on` 后缺少/错误的 `X-API-Key` |
+| 404 | `not_found` | `GET /api/entities/:id` 未命中 |
+| 404 | `soul_not_in_world` | 世界内不存在 `soul_<id>` proxy |
+| 429 | `rate_limited` | 令牌桶耗尽，附带 `retryAfterMs` |
+| 503 | `no_world` | 当前没有活动世界（实体/动作端点） |
 
-## 10. 备注
+WebSocket 层错误仅 `{ type: "error", payload: { message: "invalid json" } }`。
 
-- 本协议目前由 Seed 侧单方面定义；SoulArena 侧应在其下次迭代中实现对应处理（enter/exit/perception/action/world-effect/soul-feedback）。
-- v0.1.0 仅打通了拉取灵魂列表与 action 入口；完整 WebSocket 双向帧在后续迭代完善。
+---
+
+## 8. 已知问题与限制
+
+1. **`POST /api/entities` 不真正创建实体**，只做校验并返回占位 note；实体创建需走 SDK（见 `docs/SDK.md`）。
+2. **动作枚举不一致**：REST 层用 `move/speak/interact/attack/use`，类型层 `ActionRequest` 用
+   `move/interact/communicate/use/attack/wait/custom`，尚未统一。
+3. **PerceptionFrame 的逐帧汇聚未实现**：`/ws` 目前只回 echo，未推送真实感知帧。
+4. **两套服务端并存**：`api/server.ts`（当前主入口）与 `server/index.ts`（更完整但未接线）接口不统一。
+5. **`permissions.ensure(...)` 在当前 PermissionSystem 实现中不存在**（新实现用 `hasPermission` /
+   `checkPermission`），server.ts 对它的调用是编译错误之一，动作的 RBAC 拦截暂未真正生效。
+6. SoulClient 对 SoulArena 的 1.5s 超时是硬编码；mock 回退是单向的，恢复真实后端需要重启或重连。
