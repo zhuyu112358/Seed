@@ -20,6 +20,10 @@ export interface PathFollowerConfig {
   moveSpeed?: number;
   /** If true, emit a custom event when path is completed. Default true. */
   emitCompletionEvent?: boolean;
+  /** If true, recalculate velocity direction toward the current moveTarget every
+   *  tick (dynamic aiming). This prevents overshooting at high speeds or with
+   *  widely-spaced waypoints. Default false (backward compatible). */
+  enableDynamicAiming?: boolean;
 }
 
 export class PathFollowerSystem implements WorldSystem {
@@ -32,6 +36,7 @@ export class PathFollowerSystem implements WorldSystem {
     this.config = {
       moveSpeed: config?.moveSpeed ?? 5,
       emitCompletionEvent: config?.emitCompletionEvent ?? true,
+      enableDynamicAiming: config?.enableDynamicAiming ?? false,
     };
   }
 
@@ -43,8 +48,16 @@ export class PathFollowerSystem implements WorldSystem {
       if (!movePath || movePath.length === 0) continue;
 
       const moveTarget = entity.state.get("moveTarget") as { x: number; y: number; z: number } | undefined;
-      // If moveTarget is still set, MovementController is still navigating to it.
-      if (moveTarget) continue;
+
+      if (moveTarget) {
+        // MovementController is still navigating to current waypoint.
+        // If dynamic aiming is enabled, re-aim velocity toward target each tick
+        // to prevent overshooting at high speeds or with widely-spaced waypoints.
+        if (this.config.enableDynamicAiming) {
+          this.aimVelocity(entity, moveTarget.x, moveTarget.z);
+        }
+        continue;
+      }
 
       // Advance to next waypoint.
       let index = (entity.state.get("movePathIndex") as number) ?? 0;
@@ -70,13 +83,17 @@ export class PathFollowerSystem implements WorldSystem {
       const wp = movePath[index];
       entity.state.set("moveTarget", { x: wp.x, y: entity.position.y, z: wp.z });
       entity.state.set("movementMode", "physics");
-
-      const dx = wp.x - entity.position.x;
-      const dz = wp.z - entity.position.z;
-      const len = Math.sqrt(dx * dx + dz * dz) || 1;
-      const speed = this.config.moveSpeed;
-      entity.velocity = new Vector3((dx / len) * speed, 0, (dz / len) * speed);
+      this.aimVelocity(entity, wp.x, wp.z);
     }
+  }
+
+  /** Set entity velocity toward a target point at configured moveSpeed. */
+  private aimVelocity(entity: GameObject, targetX: number, targetZ: number): void {
+    const dx = targetX - entity.position.x;
+    const dz = targetZ - entity.position.z;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+    const speed = this.config.moveSpeed;
+    entity.velocity = new Vector3((dx / len) * speed, 0, (dz / len) * speed);
   }
 
   start(): void { /* no-op */ }

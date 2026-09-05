@@ -123,4 +123,94 @@ describe("PathFollowerSystem", () => {
     assert.doesNotThrow(() => world.step(1 / 60));
     assert.equal(soul.state.get("movePath"), undefined);
   });
+
+  // --- Dynamic aiming tests ---
+
+  it("dynamic aiming re-aims velocity toward target each tick", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const physics = new PhysicsSystem({ gravity: 0 });
+    const follower = new PathFollowerSystem({ moveSpeed: 5, enableDynamicAiming: true });
+    const controller = new MovementController({ distanceMode: "2d", enableEarlyStop: false });
+    world.addSystem(physics);
+    world.addSystem(controller);
+    world.addSystem(follower);
+
+    const soul = makeSoul("soul_test", 0, 0);
+    world.addEntity(soul);
+
+    // Set up path with target at (3, 4) — diagonal movement.
+    soul.state.set("movePath", [{ x: 3, z: 4 }]);
+    soul.state.set("movePathIndex", 0);
+    soul.state.set("moveTarget", { x: 3, y: 0, z: 4 });
+    soul.state.set("movementMode", "physics");
+    // Initial velocity is wrong direction (pure +x).
+    soul.velocity.x = 5;
+    soul.velocity.z = 0;
+
+    world.step(1 / 60);
+
+    // Dynamic aiming should have re-aimed velocity toward (3, 4).
+    // Direction should be (3, 4) normalized = (0.6, 0.8).
+    const speed = Math.sqrt(soul.velocity.x ** 2 + soul.velocity.z ** 2);
+    assert.ok(Math.abs(speed - 5) < 0.01, `speed should be ~5, got ${speed.toFixed(2)}`);
+    assert.ok(soul.velocity.z > 0, "velocity should have +z component after re-aim");
+    assert.ok(soul.velocity.x > 0, "velocity should have +x component");
+    const ratio = soul.velocity.z / soul.velocity.x;
+    assert.ok(Math.abs(ratio - 4 / 3) < 0.1, `velocity ratio should be ~4/3, got ${ratio.toFixed(2)}`);
+  });
+
+  it("dynamic aiming disabled (default) does not re-aim velocity", () => {
+    const { world } = makeWorld(); // follower with enableDynamicAiming=false (default)
+    const soul = makeSoul("soul_test", 0, 0);
+    world.addEntity(soul);
+
+    soul.state.set("movePath", [{ x: 3, z: 4 }]);
+    soul.state.set("movePathIndex", 0);
+    soul.state.set("moveTarget", { x: 3, y: 0, z: 4 });
+    soul.state.set("movementMode", "physics");
+    soul.velocity.x = 5;
+    soul.velocity.z = 0;
+
+    world.step(1 / 60);
+
+    // Without dynamic aiming, velocity direction should remain (+x, 0).
+    // (Magnitude may decrease slightly due to PhysicsSystem friction/airResistance.)
+    assert.ok(soul.velocity.x > 4, `x velocity should remain ~5, got ${soul.velocity.x.toFixed(2)}`);
+    assert.ok(Math.abs(soul.velocity.z) < 0.01, `z velocity should remain ~0, got ${soul.velocity.z.toFixed(4)}`);
+  });
+
+  it("dynamic aiming ensures arrival at high speed with widely-spaced waypoints", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const physics = new PhysicsSystem({ gravity: 0 });
+    const follower = new PathFollowerSystem({ moveSpeed: 8, enableDynamicAiming: true });
+    const controller = new MovementController({ distanceMode: "2d", enableEarlyStop: false, arrivalThreshold: 0.15 });
+    world.addSystem(physics);
+    world.addSystem(controller);
+    world.addSystem(follower);
+
+    const soul = makeSoul("soul_test", 0, 0);
+    world.addEntity(soul);
+
+    // Single waypoint 6.4m away diagonally — the scenario that failed without dynamic aiming.
+    soul.state.set("movePath", [{ x: 4, z: 5 }]);
+    soul.state.set("movePathIndex", 0);
+    soul.state.set("moveTarget", { x: 4, y: 0, z: 5 });
+    soul.state.set("movementMode", "physics");
+    soul.velocity.x = 8;
+    soul.velocity.z = 0;
+
+    // Step until path completed.
+    let completed = false;
+    for (let i = 0; i < 200; i++) {
+      world.step(1 / 60);
+      if (!soul.state.get("movePath")) {
+        completed = true;
+        break;
+      }
+    }
+
+    assert.ok(completed, "path should be completed with dynamic aiming");
+    assert.ok(Math.abs(soul.position.x - 4) < 0.3, `should be near x=4, got ${soul.position.x.toFixed(2)}`);
+    assert.ok(Math.abs(soul.position.z - 5) < 0.3, `should be near z=5, got ${soul.position.z.toFixed(2)}`);
+  });
 });
