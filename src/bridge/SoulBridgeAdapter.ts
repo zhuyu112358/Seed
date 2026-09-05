@@ -13,6 +13,7 @@ import type { WorldSystem } from '../engine/World.js';
 import type { EventSystem } from '../event/EventSystem.js';
 import type { PerceptionFrame, ActionRequest, ActionResult } from '../types/index.js';
 import { Logger } from '../reliability/Logger.js';
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 
 const log = Logger.for('soul-bridge');
 
@@ -28,19 +29,30 @@ export interface BridgeConfig {
   perceiveTimeoutMs?: number;
   /** Maximum actions queued per soul before dropping oldest. Default: 20 */
   maxQueuedActionsPerSoul?: number;
+  /** Port for the webhook action receiver. If set, startWebhookServer() will listen here. Default: 3001 */
+  webhookPort?: number;
+  /** World ID used when calling enter-world. Default: 'seed-default' */
+  worldId?: string;
+  /** World name used when calling enter-world. Default: 'Seed Virtual World' */
+  worldName?: string;
 }
 
 /** Action format as output by SoulArena. */
 export interface SoulArenaAction {
   id?: string;
-  type: string; // speak | expression | move | attack | interact | use | wait | custom
+  type: string; // speak | expression | move | attack | interact | use | wait | observe | gesture | sleep | flee | custom
   content?: string;
   targetId?: string;
   modality?: string;
   volume?: number;
   expression?: string;
   intensity?: number;
+  direction?: { x: number; y: number; z: number };
+  speed?: number;
+  distance?: number;
   parameters?: Record<string, unknown>;
+  priority?: number;
+  reason?: string;
 }
 
 /** Statistics for bridge operations. */
@@ -60,6 +72,9 @@ const DEFAULT_CONFIG: Required<BridgeConfig> = {
   enableSituationMode: true,
   perceiveTimeoutMs: 2000,
   maxQueuedActionsPerSoul: 20,
+  webhookPort: 3001,
+  worldId: 'seed-default',
+  worldName: 'Seed Virtual World',
 };
 
 /**
@@ -80,6 +95,8 @@ export class SoulBridgeAdapter implements WorldSystem {
   private actionSystem: unknown = null;
   private tickCount = 0;
   private actionQueue = new Map<string, SoulArenaAction[]>();
+  private webhookServer: Server | null = null;
+  private enteredSouls = new Set<string>();
   private stats: BridgeStats = {
     perceptionsSent: 0,
     perceptionsFailed: 0,
@@ -150,7 +167,7 @@ export class SoulBridgeAdapter implements WorldSystem {
         ? this.buildSituationPayload(frame)
         : this.buildStructuredPayload(frame);
 
-      const res = await fetch(`${this.config.soulArenaUrl}/api/soul/${soulId}/perceive`, {
+      const res = await fetch(`${this.config.soulArenaUrl}/api/souls/${soulId}/perceive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -228,10 +245,14 @@ export class SoulBridgeAdapter implements WorldSystem {
    * Mapping:
    *   speak      -> communicate (content, medium=acoustic)
    *   expression -> custom (expression, intensity)
-   *   move       -> move (parameters passthrough)
+   *   move       -> move (direction, speed, distance passthrough)
+   *   flee       -> move (direction, speed, with flee flag)
    *   attack     -> attack (targetId, parameters)
    *   interact   -> interact (targetId, parameters)
    *   use        -> use (targetId, parameters)
+   *   observe    -> custom (observe, parameters)
+   *   gesture    -> custom (gesture, expression, intensity)
+   *   sleep      -> custom (sleep)
    *   wait       -> wait
    *   other      -> custom (originalType preserved)
    */
@@ -252,14 +273,35 @@ export class SoulBridgeAdapter implements WorldSystem {
           parameters: { expression: action.expression, intensity: action.intensity ?? 0.5 },
           timestamp,
         };
-      case 'move':
-        return { soulId, action: 'move', parameters: action.parameters ?? {}, timestamp };
-      case 'attack':
-        return { soulId, action: 'attack', targetId: action.targetId, parameters: action.parameters ?? {}, timestamp };
+      case 'move': {
+        const params: Record<string, unknown> = { ...action.parameters };
+        if (action.direction) params.direction = action.direction;
+        if (action.speed !== undefined) params.speed = action.speed;
+        if (action.distance !== undefined) params.distance = action.distance;
+        return { soulId, action: 'move', parameters: params, timestamp };
+      }
+      case 'flee': {
+        const params: Record<string, unknown> = { fleeing: true, ...action.parameters };
+        if (action.direction) params.direction = action.direction;
+        if (action.speed !== undefined) params.speed = action.speed;
+        if (action.reason) params.reason = action.reason;
+        return { soulId, action: 'move', parameters: params, timestamp };
+      }
+      case 'attack': {
+        const params: Record<string, unknown> = { ...action.parameters };
+        if (action.intensity !== undefined) params.intensity = action.intensity;
+        return { soulId, action: 'attack', targetId: action.targetId, parameters: params, timestamp };
+      }
       case 'interact':
         return { soulId, action: 'interact', targetId: action.targetId, parameters: action.parameters ?? {}, timestamp };
       case 'use':
         return { soulId, action: 'use', targetId: action.targetId, parameters: action.parameters ?? {}, timestamp };
+      case 'observe':
+        return { soulId, action: 'custom', parameters: { originalType: 'observe', ...action.parameters }, timestamp };
+      case 'gesture':
+        return { soulId, action: 'custom', parameters: { originalType: 'gesture', expression: action.expression, intensity: action.intensity }, timestamp };
+      case 'sleep':
+        return { soulId, action: 'custom', parameters: { originalType: 'sleep' }, timestamp };
       case 'wait':
         return { soulId, action: 'wait', parameters: {}, timestamp };
       default:
@@ -392,6 +434,135 @@ export class SoulBridgeAdapter implements WorldSystem {
     this.actionQueue.clear();
   }
 
+  /**
+   * Register a soul with SoulArena's world interface. Must be called before
+   * perceptions will be accepted (SoulArena returns 400 if soul not in world).
+   * Sets the callbackUrl to this bridge's webhook server if running.
+   */
+  async enterWorld(soulId: string): Promise<boolean> {
+    try {
+      const callbackUrl = this.webhookServer
+        ? `http://localhost:${this.config.webhookPort}/actions`
+        : undefined;
+      const res = await fetch(`${this.config.soulArenaUrl}/api/souls/${soulId}/enter-world`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          worldId: this.config.worldId,
+          worldName: this.config.worldName,
+          callbackUrl,
+          communicationMedium: 'direct_api',
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        this.enteredSouls.add(soulId);
+        log.info({ soulId }, 'soul entered world');
+        return true;
+      }
+      log.warn({ soulId, status: res.status }, 'enter-world failed');
+      return false;
+    } catch (err) {
+      log.warn({ err: String(err), soulId }, 'enter-world threw');
+      return false;
+    }
+  }
+
+  /** Remove a soul from SoulArena's world interface. */
+  async exitWorld(soulId: string, reason = 'requested'): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.config.soulArenaUrl}/api/souls/${soulId}/exit-world`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        this.enteredSouls.delete(soulId);
+        log.info({ soulId }, 'soul exited world');
+        return true;
+      }
+      log.warn({ soulId, status: res.status }, 'exit-world failed');
+      return false;
+    } catch (err) {
+      log.warn({ err: String(err), soulId }, 'exit-world threw');
+      return false;
+    }
+  }
+
+  /**
+   * Start the webhook action receiver server. SoulArena POSTs actions to
+   * http://localhost:<port>/actions when a soul makes a decision.
+   * Each action is ingested via ingestAction() and queued for execution.
+   */
+  startWebhookServer(port?: number): Promise<number> {
+    const listenPort = port ?? this.config.webhookPort;
+    return new Promise((resolve, reject) => {
+      if (this.webhookServer) {
+        resolve(listenPort);
+        return;
+      }
+      const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+        if (req.method === 'POST' && req.url === '/actions') {
+          let body = '';
+          req.on('data', (chunk) => { body += chunk; });
+          req.on('end', () => {
+            try {
+              const payload = JSON.parse(body) as { soulId?: string; actions?: SoulArenaAction[] };
+              const soulId = payload.soulId;
+              if (soulId && payload.actions && Array.isArray(payload.actions)) {
+                for (const action of payload.actions) {
+                  this.ingestAction(soulId, action);
+                }
+                log.info({ soulId, count: payload.actions.length }, 'webhook received actions');
+              }
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ status: 'ok' }));
+            } catch {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'invalid_json' }));
+            }
+          });
+        } else if (req.method === 'GET' && req.url === '/health') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'running', queuedActions: this.actionQueue.size }));
+        } else {
+          res.writeHead(404);
+          res.end();
+        }
+      });
+      server.on('error', (err) => reject(err));
+      server.listen(listenPort, () => {
+        this.webhookServer = server;
+        log.info({ port: listenPort }, 'webhook action receiver started');
+        resolve(listenPort);
+      });
+    });
+  }
+
+  /** Stop the webhook action receiver server. */
+  stopWebhookServer(): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.webhookServer) { resolve(); return; }
+      this.webhookServer.close(() => {
+        this.webhookServer = null;
+        log.info('webhook action receiver stopped');
+        resolve();
+      });
+    });
+  }
+
+  /** Check if a soul has been registered with SoulArena's world interface. */
+  isSoulEntered(soulId: string): boolean {
+    return this.enteredSouls.has(soulId);
+  }
+
   start(): void { /* no-op */ }
-  stop(): void { this.actionQueue.clear(); }
+  stop(): void {
+    this.actionQueue.clear();
+    if (this.webhookServer) {
+      this.webhookServer.close();
+      this.webhookServer = null;
+    }
+  }
 }
