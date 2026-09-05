@@ -1,92 +1,80 @@
 # 路线图（ROADMAP）
 
-> v0.1 → v1.0 规划。优先级：**P0**=阻塞当前可用，**P1**=近期必备，**P2**=增强，**P3**=远期/探索。
+> 基于 `src/` 现状与 `DEVLOG.md` 已知问题制定。文档中文。
+> 路线图按里程碑组织；优先级与已知问题编号（K1–K11）对应 `DEVLOG.md`。
 
 ---
 
-## 1. 版本主线
+## 1. 总体方向
 
-### v0.1.x —— 「可用基线」（当前）
-
-目标：编译通过、可跑一个世界、REST/WS 基本可用。
-
-- [ ] **P0** 修复全部 24 个 TS 错误（安全层调用、Role 类型、评估入口）。
-- [ ] **P0** 统一物理配置（标量类 vs 向量接口）。
-- [ ] **P0** 修复 `systems/index.ts` 断裂 barrel。
-- [ ] **P0** 提供世界装配 main（把 `WorldEngine + SoulClient + startServer` 串起来）。
-- [ ] **P1** `npm run build` 0 错误 → `npm run eval` 出第一份真实报告。
-- [ ] **P1** 合并两套服务端（`api/server.ts` 与 `server/index.ts`）。
-
-### v0.2 —— 灵魂闭环
-
-- [ ] **P1** 实现 PerceptionFrame 逐帧汇聚，经 `/ws` 推送真实感知帧。
-- [ ] **P1** `POST /api/souls/:id/action` 真正执行动作（move/attack/use）并回 `ActionResult`。
-- [ ] **P1** 世界影响（`WorldEffect`）与灵魂反馈（`SoulFeedback`）闭环。
-- [ ] **P1** 统一动作枚举（REST 与 `ActionRequest` 类型对齐）。
-
-### v0.3 —— 玩法系统
-
-- [ ] **P1** 时钟系统（昼夜、`ClockSystem`）与天气系统（`WeatherSystem`）落地。
-- [ ] **P1** 事件触发（`WorldEventTrigger`）与 `ConditionEngine` 规则接线到玩法。
-- [ ] **P2** NPC 行为树/简单 AI。
-
-### v0.5 —— 世界深度
-
-- [ ] **P2** 经济系统（物品/货币/交易）。
-- [ ] **P2** 建造系统（放置/拆除/耐久）。
-- [ ] **P2** 农业/生长系统。
-- [ ] **P2** 魔法/技能系统（与 `WorldResonance` 媒介挂钩）。
-- [ ] **P2** 载具/物理移动平台。
-
-### v0.8 —— 多人与分布式
-
-- [ ] **P2** 多人同步（状态快照增量同步、`NetworkPacket` 真实路由）。
-- [ ] **P2** 世界分片与跨节点通信。
-- [ ] **P2** 网关层（统一认证、per-soul/IP 限流）。
-
-### v1.0 —— 产品化
-
-- [ ] **P3** VR 客户端接入。
-- [ ] **P3** 可视化世界编辑器。
-- [ ] **P3** AI 角色（自主灵魂）深度集成。
-- [ ] **P3** 热力学/流体等高级物理。
+Seed 的目标是成为 SoulArena 之下一个**可配置、可扩展、可靠**的虚拟物理世界层：灵魂可进入世界、感知环境、执行动作、承受世界反馈，世界本身支持可插拔物理、通信、事件与安全策略。
 
 ---
 
-## 2. Backlog（带优先级）
+## 2. M0 — 构建转绿与接口收敛（最高优先）
 
-| 特性 | 描述 | 优先级 |
-|------|------|--------|
-| 编译清零 | 修复 24 个 TS 错误 | P0 |
-| 安全层对齐 | server.ts 改用 `validateInline/result.valid/consume/checkPermission` | P0 |
-| Role 五角色 | `Role` 扩展为 admin/moderator/soul/observer/anonymous | P0 |
-| 物理配置统一 | 标量类 ↔ 向量接口二选一 | P0 |
-| 世界装配 main | 引导脚本串起 engine+soulClient+server | P0 |
-| 感知帧推送 | `/ws` 推真实 `PerceptionFrame` | P1 |
-| 动作真正执行 | 动作改物理状态并回结果 | P1 |
-| 世界影响闭环 | `WorldEffect`/`SoulFeedback` | P1 |
-| 时钟/天气系统 | `ClockSystem`/`WeatherSystem` | P1 |
-| 事件触发接线 | `WorldEventTrigger` + ConditionEngine | P1 |
-| 通信接口统一 | `communication/` 与 `systems/strategies/` 收敛 | P1 |
-| 评估入口修复 | runEval/test-world 对齐 WorldEvaluator | P1 |
-| NPC | 非玩家角色行为 | P2 |
-| 经济系统 | 货币/交易/商店 | P2 |
-| 建造系统 | 放置/拆除/结构 | P2 |
-| 农业 | 生长/收获/土壤 | P2 |
-| 魔法 | 技能/谐振媒介 | P2 |
-| 载具 | 移动平台/物理 | P2 |
-| 多人同步 | 状态增量同步 | P2 |
-| 世界编辑器 | 可视化编辑 | P3 |
-| AI 角色 | 自主灵魂 | P3 |
-| VR | 头显接入 | P3 |
-| 热力学 | 温度/热传导 | P3 |
-| 流体 | 液体模拟 | P3 |
+> 对应 K1 / K2 / K8，目标：`npm run build` 零错误、`npm start` 可跑。
+
+- [ ] 让 `server.ts` 能拿到当前世界：为 `WorldEngine` 暴露对 `World` 的访问，或改造处理器直接查询 `EntitySystem`。
+- [ ] 修复 `evaluator/index.ts`：删除不存在的 `EvaluatorConfig` / `EvalActivityCounters` 导出。
+- [ ] 重写/修复 `runEval.ts`：改用真实 `WorldBuilder` / 核心 `World` API。
+- [ ] 修复或删除 `examples/test-world/index.ts`：补齐 `WorldEngine` 所需 `bounds`/`physics`，或改用 `EntitySystem`。
+- [ ] 移除或补全 `runEvaluation.ts`（`npm run evaluate` 指向的缺失文件）。
+- [ ] 使 `tests/` 在 CI 中可运行并全绿。
+
+**完成标准**：`npm run build`、`npm test`、`npm run eval`、`npm run dev` 全部可执行。
 
 ---
 
-## 3. 依赖与里程碑
+## 3. M1 — 架构收敛（去重）
 
-- **v0.1.x → v0.2**：必须先完成编译清零与世界装配 main，否则灵魂闭环无处挂载。
-- **v0.2 → v0.3**：感知帧与动作闭环稳定后，再叠时钟/天气/事件。
-- **v0.5 → v0.8**：玩法稳定后再考虑多人；否则同步成本随玩法复杂度暴涨。
-- 物理后端升级（Rapier/Jolt）建议在 v0.3 后、玩法复杂度上来时再做，避免过早优化。
+> 对应 K3 / K4 / K5 / K6 / K7。
+
+- [ ] 合并 `entity/` 与 `engine/` 的 `Entity` / `Vector3`：选定一套（建议保留 `entity/` 不可变向量 + `GameObject`，把运行时迁移过去）。
+- [ ] 合并 `event/` 与 `systems/` 的 `EventSystem` / `ConditionEngine`：明确“通用总线”与“玩法事件定义”两层职责，消除同名类。
+- [ ] 统一 `PhysicsConfig`：选定“类”还是“types 接口”，统一字段名（标量 vs 向量 gravity、friction vs frictionCoefficient）。
+- [ ] 统一通信策略接口：让 `CommunicationStrategy`（core）与 `ICommunicationStrategy`（types）对齐，或明确二者分层。
+- [ ] 决定 `sdk/EntityFactory.ts` / `sdk/PhysicsConfig.ts` / `sdk/WorldEventListener.ts` 的去留：接入 `sdk/index.ts` 桶导出，或删除。
+- [ ] 让 `WorldBuilder` 的 `build()` / `buildAndStart()` 与真实引擎闭环。
+
+---
+
+## 4. M2 — 灵魂闭环（SoulBridge）
+
+> 对应 `SOUL_INTERFACE.md` 已知问题。
+
+- [ ] 实现 `SoulWorldAdapter`：`buildPerceptionFrame` / `executeAction` / `createSoulEntity` / `removeSoulEntity`。
+- [ ] 对齐动作枚举（K11）：统一 `server.ts` 与 `types/ActionRequest`。
+- [ ] 把 `POST /api/souls/:id/action` 的 `move/interact/attack/use` 真正接到物理与化身。
+- [ ] 把 `/ws` 事件接到世界事件总线（碰撞、进入区域、感知帧推送）。
+- [ ] 为 `SoulBridge.validator` 写一个到 `security/InputValidator` 的适配层（桥期望 `validateInline`，见 K10）。
+
+---
+
+## 5. M3 — 可靠性与运维
+
+- [ ] 快照/事务闭环：`WorldTransaction` 支持更多可撤销操作（不止位置）；与 `ExceptionHandler` 紧急快照联动验证。
+- [ ] Dockerfile + 生产部署样例（systemd / pm2）。
+- [ ] CI：`build + test + eval` 流水线。
+- [ ] 指标：把 `WorldEvaluator` 的报告接入运行时 metrics（`/api/world/status` 已有雏形）。
+- [ ] 日志轮转（当前 `Logger` 只追加 `logs/seed.log`）。
+
+---
+
+## 6. M4 — 能力增强
+
+- [ ] **物理后端替换**：`IPhysicsBackend` 之后接 `cannon-es` / `rapier`；当前 `SimplePhysics2D` 是 O(n²) 参考实现。
+- [ ] **真实通信介质**：`NetworkPacket`（WebRTC/WebSocket 网状路由、延迟/带宽）与 `WorldResonance`（与灵魂元素/价值系统亲和）从 stub 升级。
+- [ ] **天气 / 时钟子系统**：`WeatherEvent` 已预留，`WorldBuilder.enableWeather/enableClock` 已有开关但无实现。
+- [ ] **玩法事件**：`systems/EventSystem` 的 `EventDefinition` + 条件自动触发。
+- [ ] **安全增强**：按灵魂 id 限流、RBAC 角色完善、`InputValidator` 内置常用 schema。
+- [ ] **空间查询**：`Quadtree` 目前仅 XZ 平面；评估是否需要 3D / 多层级。
+
+---
+
+## 7. 远期愿景
+
+- 多世界 / 多房间：一个 Seed 进程承载多个 `World`，灵魂跨世界迁移。
+- 确定性回放：快照 + 事务 + 固定步长，支持录屏/回放与回归测试。
+- 可视化调试：暴露调试端点与 `/ws` 调试客户端，便于观察实体、碰撞、感知帧。
+- 与 SoulArena 的长连接替代轮询（`SoulBridge.update` 当前按 `pollIntervalSec` 轮询）。

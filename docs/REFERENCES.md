@@ -1,73 +1,78 @@
 # 参考项目调研（REFERENCES）
 
-> 架构选型参考。每个条目列出可借鉴的架构要点，用于指导 Seed 的后续演进。
+> Seed 的架构参考了以下开源/知名虚拟世界与游戏引擎项目。本文记录它们与 Seed 设计决策的对应关系。文档中文。
 
 ---
 
-## 1. Minecraft
+## 1. 为什么调研这些项目
 
-- **可借鉴**：体素世界 + 区块（chunk）按需加载；实体与世界严格分离；红石式「事件/条件」驱动玩法；
-  服务器无状态 tick + 持久化快照（region 文件）的世界存储思路。
-- **对 Seed 的启发**：`SnapshotManager` 的世界快照/恢复、`ConditionEngine` 的规则求值，以及未来按
-  区域分片（区块）的分布式规划。
-
-## 2. Valheim
-
-- **可借鉴**：固定 tick 但物理只在加载半径内推进；地点（zone）生成与事件（raid）触发；
-  客户端预测 + 服务器权威。
-- **对 Seed 的启发**：`zoneTrigger` 区域进入检测、`EventPropagation` 的空间衰减/可见半径；
-  未来只对灵魂附近实体做物理与感知计算。
-
-## 3. Second Life / OpenSimulator
-
-- **可借鉴**：实体作为可脚本化对象（LSL），资产/对象与脚本分离；多网格（region）分布式世界，
-  跨 region 边界平滑迁移；用户生成内容的权限与归属。
-- **对 Seed 的启发**：soul-proxy 作为灵魂在世界内的可脚本化身；`CommunicationStrategy` 的多媒介；
-  未来世界分片与灵魂跨区迁移；资产/实体的归属与权限（RBAC）。
-
-## 4. MMORPG（通用客户端-服务器模型）
-
-- **可借鉴**：服务器权威 + 客户端插值；AOI（Area of Interest）只同步玩家附近实体；
-  兴趣管理与状态同步协议；聊天/通信分频道。
-- **对 Seed 的启发**：`PerceptionFrame` 的可见实体/附近灵魂裁剪；`NetworkPacket` 通信；
-  `/ws` 的订阅（subscribe）模型；灵魂只收自己附近的事件。
-
-## 5. ECS（Entity-Component-System）架构
-
-- **可借鉴**：实体只是 id，数据放组件表，系统按组件过滤处理；数据导向布局利于缓存与并行；
-  易于扩展新行为而不改实体类。
-- **对 Seed 的启发**：当前 `Entity/GameObject` 是类层次，`EntityState/EntityComponent` 接口已预留
-  （`types/index.ts`）；未来可向 ECS 迁移以支撑大量实体；`WorldEngine` 的 system tick 已是 ECS 雏形。
-
-## 6. 物理引擎
-
-### 6.1 Bullet
-- 成熟 3D 刚体/碰撞库，宽/窄相分明、碰撞回调丰富。可借鉴其 broadphase/narrowphase 分层。
-
-### 6.2 Box2D
-- 2D 刚体参考实现，AABB/圆形窄相、冲量求解、静态/动态/运动体分类。Seed 的 `SimplePhysics2D`
-  与之同构（重力积分 + AABB 反射）。
-
-### 6.3 Rapier
-- Rust 写的现代刚体引擎，性能优秀、API 现代；`IPhysicsBackend` 契约的 `step/applyImpulse` 形态
-  与之一致，适合作为 Node 侧 wasm/native 后端替换。
-
-### 6.4 Jolt
-- 高性能多线程刚体引擎（《 horizon 》等使用），适合大量动态体；Seed 的 `substeps`、
-  `maxVelocity` 配置项即为其预留。
-
-> **对 Seed 的结论**：当前 `SimplePhysics2D` 是 v0.1 参考实现；`IPhysicsBackend` 已抽象，后续可在
-> 玩法复杂后接入 Rapier/Jolt（通过 wasm 或 native binding），上层 `PhysicsSystem` 无需改动。
+Seed 是“底层世界容器 + 灵魂接入层”，需要在以下维度做取舍：实体模型、物理、事件/玩法、持久化/可靠性、多客户端通信、安全与多租户。下面每个项目对应 Seed 的一个或多个子系统。
 
 ---
 
-## 7. 小结：Seed 各模块对应的参考范式
+## 2. Minecraft（Mojang）
 
-| Seed 模块 | 主要参考 |
-|-----------|----------|
-| 世界存储/快照 | Minecraft region、Second Life 对象持久化 |
-| 区域/事件 | Valheim raid、MMORPG AOI |
-| 通信策略 | Second Life 频道、MMORPG 聊天分频道 |
-| 实体模型 | ECS（未来迁移方向） |
-| 物理后端 | Box2D（当前）→ Rapier/Jolt（未来） |
-| 分布式 | OpenSimulator 多 region、MMORPG 服务器权威 |
+- **借鉴点**：
+  - 固定步长 tick 主循环（20 TPS），客户端/服务器分离。Seed 的 `World.step(dt)` / `WorldEngine.start(setInterval)` 即此意。
+  - 实体按类型（`EntityType`）分类，区块化空间管理。Seed 的 `Quadtree`（XZ 平面）是其区块思想的简化版。
+- **取舍**：Minecraft 是方块/体素世界；Seed 走 AABB/球 连续刚体路线，不做体素。物理只做参考实现（`SimplePhysics2D`），将来可换 `rapier/cannon-es`。
+
+## 3. Valheim（Iron Gate）
+
+- **借鉴点**：
+  - 小型、可自托管的专用服务器；世界状态文件 + 自动保存/回滚。对应 Seed 的 `SnapshotManager`（自动保留最新 N 份）与 `WorldTransaction`（撤销日志）。
+  - 玩家 = 世界中的一个化身，世界事件对玩家施加影响。对应 Seed 的 soul-proxy / `WorldEffect`。
+- **取舍**：Valheim 是确定性较差的单机+协作；Seed 面向多灵魂在线，需要更严格的权限与限流（`security/`）。
+
+## 4. Second Life（Linden Lab）
+
+- **借鉴点**：
+  - 世界对象与“居民（resident）”分离的对象模型；对象有属性表（properties/state bag）。对应 Seed 的 `Entity.properties` / `Entity.state` 两个 `Map`。
+  - 区域（region）边界与跨区。对应 Seed 的 `zoneTrigger` / `area` 实体与 `EventPropagation` 半径衰减。
+- **取舍**：Second Life 有完整脚本系统（LSL）；Seed v0.1 只做 `ConditionEngine` 谓词，不做通用脚本沙箱（安全风险高，列入远期）。
+
+## 5. OpenSimulator（开源 Second Life 兼容）
+
+- **借鉴点**：
+  - 区域服务器网格（grid）架构、Avatar 作为外部实体进入区域、感知（viewer）与仿真分离。对应 Seed 的 `SoulBridge`（外部灵魂系统 ↔ 世界化身）。
+  - 开放的 REST/WebSocket 接口。对应 Seed 的 `api/server.ts` + `/ws`。
+- **取舍**：OpenSimulator 庞大且耦合；Seed 保持小内核 + 可插拔子系统。
+
+## 6. ECS / 游戏引擎通用实践
+
+- **借鉴点**：
+  - World（实体集合）+ System（按 tick 推进）的组合，而非每对象 update。对应 Seed 的 `WorldSystem` 接口与 `World.step`。
+  - 对象池避免热分配：`ObjectPool<CollisionResult>`。
+  - 空间分区做广义相位碰撞：`Quadtree`。
+- **取舍**：Seed 没有引入完整 ECS（实体=普通类 + Map 状态），以降低 v0.1 复杂度。
+
+## 7. 物理引擎参考
+
+- **cannon-es / Rapier / Jolt**：`IPhysicsBackend` 接口就是为它们预留的——`step(dt, bodies, config)` + `applyImpulse`，参考了这类引擎的“积分 + 广义/窄相位碰撞”职责划分。
+- **当前 `SimplePhysics2D`**：O(n²) AABB 碰撞 + 速度反射，仅作 v0.1 参考实现，不代表最终性能曲线。
+
+## 8. 通信模型参考
+
+- **声学衰减**：`AcousticPropagation` 的 `1/(1+att·d²)` × 吸收模型，参考了真实声能衰减（平方反比 + 介质吸收）。
+- **“网络/共鸣”介质**：`NetworkPacket` / `WorldResonance` 是占位，分别参考分布式网状通信与“远距离共情/心灵感应”的抽象，留待 M4 实现。
+
+## 9. 可靠性参考
+
+- **结构化日志**：`Logger` 的 pino 风格 `(message, meta?)` / `(bindings, message?)` 双重载，参考 pino。
+- **快照/事务**：`SnapshotManager` + `WorldTransaction` + `ExceptionHandler` 的“崩溃即快照、可回滚”策略，参考了游戏服务器与数据库 undo log 的常见做法。
+
+---
+
+## 10. 对 Seed 的启示（已落地 vs 待办）
+
+| 维度 | 参考 | Seed 现状 | 待办 |
+|------|------|-----------|------|
+| 主循环 | Minecraft | `World.step` / `WorldEngine.start` | 固定步长 + 插值 |
+| 空间索引 | Minecraft/ECS | `Quadtree`（XZ） | 3D / 多层级 |
+| 物理 | cannon-es/Rapier | `SimplePhysics2D`（参考实现） | 换后端 |
+| 持久化 | Valheim | `SnapshotManager` + `WorldTransaction` | 更多撤销操作、回放 |
+| 灵魂接入 | OpenSim/Second Life | `SoulBridge` + `SoulClient` | 实现 `SoulWorldAdapter` |
+| 通信 | 声学/网状 | `AcousticPropagation` + 2 stub | 升级 network/resonance |
+| 安全 | 多租户服务器 | `security/` 基础件 | 角色/限流完善 |
+
+> 注：以上为架构调研笔记，不构成对第三方项目代码的引用；Seed 未直接复制任何参考项目源码。
