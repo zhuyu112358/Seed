@@ -142,6 +142,67 @@ export class CollisionExitEvent extends Event<{
   }
 }
 
+/** Emitted when an entity ENTERS a trigger volume (first tick of overlap). */
+export class TriggerEnterEvent extends Event<{
+  triggerId: string;
+  otherId: string;
+  point: { x: number; y: number; z: number };
+}> {
+  constructor(
+    triggerId: string, otherId: string,
+    point: { x: number; y: number; z: number },
+  ) {
+    super({
+      type: 'physics.trigger.enter',
+      payload: { triggerId, otherId, point },
+      sourceId: triggerId,
+      origin: point,
+    });
+  }
+}
+
+/** Emitted when an entity STAYS inside a trigger volume (subsequent ticks). */
+export class TriggerStayEvent extends Event<{
+  triggerId: string;
+  otherId: string;
+  point: { x: number; y: number; z: number };
+  contactDurationTicks: number;
+}> {
+  constructor(
+    triggerId: string, otherId: string,
+    point: { x: number; y: number; z: number },
+    contactDurationTicks: number,
+  ) {
+    super({
+      type: 'physics.trigger.stay',
+      payload: { triggerId, otherId, point, contactDurationTicks },
+      sourceId: triggerId,
+      origin: point,
+    });
+  }
+}
+
+/** Emitted when an entity EXITS a trigger volume (first tick without overlap). */
+export class TriggerExitEvent extends Event<{
+  triggerId: string;
+  otherId: string;
+  lastContactPoint: { x: number; y: number; z: number };
+  contactDurationTicks: number;
+}> {
+  constructor(
+    triggerId: string, otherId: string,
+    lastContactPoint: { x: number; y: number; z: number },
+    contactDurationTicks: number,
+  ) {
+    super({
+      type: 'physics.trigger.exit',
+      payload: { triggerId, otherId, lastContactPoint, contactDurationTicks },
+      sourceId: triggerId,
+      origin: lastContactPoint,
+    });
+  }
+}
+
 export class EntityEnterZone extends Event<{ zoneId: string; entityId: string }> {
   constructor(zoneId: string, entityId: string, origin: { x: number; y: number; z: number }) {
     super({

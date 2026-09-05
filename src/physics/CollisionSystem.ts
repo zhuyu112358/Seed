@@ -25,6 +25,9 @@ import {
   CollisionEnterEvent,
   CollisionStayEvent,
   CollisionExitEvent,
+  TriggerEnterEvent,
+  TriggerStayEvent,
+  TriggerExitEvent,
 } from '../event/Event.js';
 import { Logger } from '../reliability/Logger.js';
 import { SpatialHash } from './SpatialHash.js';
@@ -54,6 +57,10 @@ export interface CollisionSystemConfig {
   /** Cell size for spatial hash broad phase, in world units. Default 5.
    *  Should be roughly 1-2x the average entity size for optimal performance. */
   spatialHashCellSize?: number;
+  /** Enable trigger volume detection. Entities with state.isTrigger === true
+   *  overlap without physical response (no separation, no bounce) and emit
+   *  TriggerEnter/Stay/Exit events. Default true. */
+  enableTriggers?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<CollisionSystemConfig> = {
@@ -66,6 +73,7 @@ const DEFAULT_CONFIG: Required<CollisionSystemConfig> = {
   maxPairsPerTick: 500,
   broadPhase: 'brute-force',
   spatialHashCellSize: 5,
+  enableTriggers: true,
 };
 
 /** Statistics for CollisionSystem. */
@@ -84,6 +92,15 @@ interface CollisionPairInfo {
   normal: { x: number; z: number };
   penetration: number;
   /** How many ticks this pair has been in continuous contact. */
+  contactDurationTicks: number;
+}
+
+/** Info about a trigger overlap pair, used for trigger lifecycle tracking. */
+interface TriggerPairInfo {
+  triggerId: string;
+  otherId: string;
+  point: { x: number; y: number; z: number };
+  /** How many ticks this pair has been in continuous overlap. */
   contactDurationTicks: number;
 }
 
@@ -115,6 +132,10 @@ export class CollisionSystem implements WorldSystem {
   private previousCollisions = new Map<string, CollisionPairInfo>();
   private currentCollisions = new Map<string, CollisionPairInfo>();
 
+  /** Trigger overlap state for lifecycle events (Enter/Stay/Exit). */
+  private previousTriggers = new Map<string, TriggerPairInfo>();
+  private currentTriggers = new Map<string, TriggerPairInfo>();
+
   constructor(config?: CollisionSystemConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.enabled = true;
@@ -128,23 +149,27 @@ export class CollisionSystem implements WorldSystem {
   tick(_dt: number, world: World, events: EventSystem): void {
     if (!this.enabled) return;
 
-    // Clear current tick's collision state.
+    // Clear current tick's collision and trigger state.
     this.currentCollisions.clear();
+    this.currentTriggers.clear();
 
-    // Collect collidable bodies.
+    // Collect collidable bodies (including trigger volumes).
     const bodies: GameObject[] = [];
     for (const entity of world.entities.values()) {
       if (!(entity instanceof GameObject)) continue;
       if (!entity.active) continue;
-      if (!this.config.collidableTypes.includes(entity.type)) continue;
+      const isTrigger = this.config.enableTriggers && entity.state.get('isTrigger') === true;
+      if (!isTrigger && !this.config.collidableTypes.includes(entity.type)) continue;
       if (this.config.respectCollidesFlag && entity.state.get('collides') === false) continue;
       bodies.push(entity);
     }
 
     if (bodies.length < 2) {
-      // No bodies to collide — detect exits for pairs from previous tick.
+      // No bodies — detect exits for both collisions and triggers.
       this.detectExits(events);
+      this.detectTriggerExits(events);
       this.swapCollisionState();
+      this.swapTriggerState();
       return;
     }
 
@@ -154,11 +179,13 @@ export class CollisionSystem implements WorldSystem {
       this.tickBruteForce(bodies, events);
     }
 
-    // Detect collisions that ended this tick (in previous but not current).
+    // Detect collisions and triggers that ended this tick.
     this.detectExits(events);
+    this.detectTriggerExits(events);
 
     // Swap state for next tick.
     this.swapCollisionState();
+    this.swapTriggerState();
   }
 
   /** Emit CollisionExitEvent for pairs that were colliding last tick but not this tick. */
@@ -182,6 +209,28 @@ export class CollisionSystem implements WorldSystem {
     this.currentCollisions = temp;
     // currentCollisions now points to the old previous map — clear it for next tick.
     this.currentCollisions.clear();
+  }
+
+  /** Emit TriggerExitEvent for pairs that were overlapping last tick but not this tick. */
+  private detectTriggerExits(events: EventSystem): void {
+    for (const [key, info] of this.previousTriggers) {
+      if (!this.currentTriggers.has(key)) {
+        events.emit(new TriggerExitEvent(
+          info.triggerId, info.otherId,
+          info.point,
+          info.contactDurationTicks,
+        ));
+        log.debug({ trigger: info.triggerId, other: info.otherId, duration: info.contactDurationTicks }, 'trigger exit');
+      }
+    }
+  }
+
+  /** Swap previous and current trigger state maps. */
+  private swapTriggerState(): void {
+    const temp = this.previousTriggers;
+    this.previousTriggers = this.currentTriggers;
+    this.currentTriggers = temp;
+    this.currentTriggers.clear();
   }
 
   /** Brute-force pair check (O(n²)) — default for backward compatibility. */
@@ -223,6 +272,50 @@ export class CollisionSystem implements WorldSystem {
   }
 
   /**
+   * Handle trigger volume overlap — no physical response, only events.
+   * Returns true if overlap was processed.
+   */
+  private handleTriggerOverlap(
+    a: GameObject, b: GameObject,
+    aIsTrigger: boolean,
+    events: EventSystem,
+  ): boolean {
+    // Determine trigger and other (if both are triggers, use a as trigger).
+    const trigger = aIsTrigger ? a : b;
+    const other = aIsTrigger ? b : a;
+
+    // Compute overlap point (midpoint).
+    const point = {
+      x: (a.position.x + b.position.x) / 2,
+      y: (a.position.y + b.position.y) / 2,
+      z: (a.position.z + b.position.z) / 2,
+    };
+
+    // Track trigger state for lifecycle events.
+    const key = this.pairKey(trigger.id, other.id);
+    const prevInfo = this.previousTriggers.get(key);
+    const contactDuration = prevInfo ? prevInfo.contactDurationTicks + 1 : 1;
+
+    const pairInfo: TriggerPairInfo = {
+      triggerId: trigger.id,
+      otherId: other.id,
+      point,
+      contactDurationTicks: contactDuration,
+    };
+    this.currentTriggers.set(key, pairInfo);
+
+    // Emit lifecycle events: Enter (first overlap) or Stay (continuing).
+    if (!prevInfo) {
+      events.emit(new TriggerEnterEvent(trigger.id, other.id, point));
+      log.debug({ trigger: trigger.id, other: other.id }, 'trigger enter');
+    } else {
+      events.emit(new TriggerStayEvent(trigger.id, other.id, point, contactDuration));
+    }
+
+    return true;
+  }
+
+  /**
    * Check AABB overlap between two bodies and resolve collision if detected.
    * Returns true if a collision was detected and resolved.
    */
@@ -244,6 +337,14 @@ export class CollisionSystem implements WorldSystem {
     if (this.config.checkYAxis) {
       const overlapY = aMin.y <= bMax.y && aMax.y >= bMin.y;
       if (!overlapY) return false;
+    }
+
+    // Check if this is a trigger overlap (at least one entity is a trigger).
+    // Triggers have no physical response — no separation, no bounce.
+    const aIsTrigger = this.config.enableTriggers && a.state.get('isTrigger') === true;
+    const bIsTrigger = this.config.enableTriggers && b.state.get('isTrigger') === true;
+    if (aIsTrigger || bIsTrigger) {
+      return this.handleTriggerOverlap(a, b, aIsTrigger, events);
     }
 
     this.stats.collisionsDetected++;

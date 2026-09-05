@@ -2671,3 +2671,142 @@ world.events.on('physics.collision.exit', (e) => {
 7. **碰撞回调过滤**（只监听特定实体对或特定层的碰撞）
 8. **触发器体积（Trigger Volumes）**（无物理响应，仅发射 enter/exit 事件）
 
+
+
+---
+
+## 2026-09-05 触发器体积系统（Trigger Volumes）（第40轮迭代）
+
+### 本轮目标
+
+实现触发器体积（Trigger Volumes）系统。与刚完成的碰撞回调系统（Enter/Stay/Exit）互补：触发器体积是特殊的碰撞区域，实体进入时不产生物理响应（不分离、不反弹），仅发射 TriggerEnter/Stay/Exit 事件。这是游戏引擎标准功能（如 Unity 的 OnTriggerEnter/Stay/Exit），对灵魂交互至关重要（进入区域触发事件、检测区域、安全区等）。
+
+### 实现
+
+**1. 新增事件类（src/event/Event.ts）**
+
+- `TriggerEnterEvent`（type: `physics.trigger.enter`）：实体首次进入触发器时发射
+  - payload: triggerId, otherId, point
+- `TriggerStayEvent`（type: `physics.trigger.stay`）：实体持续在触发器内时发射
+  - payload: triggerId, otherId, point, contactDurationTicks
+- `TriggerExitEvent`（type: `physics.trigger.exit`）：实体离开触发器时发射
+  - payload: triggerId, otherId, lastContactPoint, contactDurationTicks
+
+**2. 配置扩展（src/physics/CollisionSystem.ts）**
+
+- `enableTriggers: boolean` — 是否启用触发器检测（默认 true，向后兼容）
+
+**3. 触发器状态跟踪**
+
+- 新增 `previousTriggers` / `currentTriggers` 两个 Map（与碰撞状态跟踪独立）
+- `TriggerPairInfo` 接口：triggerId, otherId, point, contactDurationTicks
+- 复用 `pairKey()` 规范化对键
+
+**4. tick() 方法扩展**
+
+- 开始时清空 currentTriggers
+- 实体收集时包含 isTrigger=true 的实体（不受 collidableTypes 限制）
+- 所有对检查完成后，调用 detectTriggerExits() 检测离开的触发器
+- 调用 swapTriggerState() 交换状态
+- bodies < 2 时也正确检测触发器 exit
+
+**5. checkAndResolve() 方法修改**
+
+- AABB 重叠检测后，检查是否至少一个实体是触发器（state.isTrigger === true）
+- 若是触发器对，调用 handleTriggerOverlap() 处理并直接返回（跳过物理响应）
+- 非触发器对继续正常的物理碰撞流程
+
+**6. handleTriggerOverlap() 方法**
+
+- 确定 trigger 和 other（两个都是触发器时用 a 作为 trigger）
+- 计算重叠点（中点）
+- 记录到 currentTriggers
+- 根据 previousTriggers 判断：
+  - 不在 previous → 发射 TriggerEnterEvent，contactDurationTicks = 1
+  - 在 previous → 发射 TriggerStayEvent，contactDurationTicks 递增
+- **无位置校正、无速度响应**——实体可自由穿过触发器
+
+**7. detectTriggerExits() / swapTriggerState() 方法**
+
+- 与碰撞版本逻辑相同，独立维护触发器状态
+
+### 测试
+
+**tests/trigger-volumes.test.ts（12 个新测试）**：
+
+- TriggerEnterEvent：
+  - 首次重叠时发射
+  - 后续帧不重复发射
+  - 触发器不导致物理分离（实体保持在触发器内）
+- TriggerStayEvent：
+  - 持续重叠的后续帧发射
+  - contactDurationTicks 递增
+- TriggerExitEvent：
+  - 离开时发射
+  - 从未重叠的实体不发射
+  - 报告正确的接触持续时间
+- 多触发器和实体：
+  - 每对独立跟踪生命周期
+  - 两个触发器互相重叠也发射事件
+- 配置：
+  - enableTriggers:false 时不发射触发器事件
+- 触发器 vs 物理碰撞：
+  - 触发器不发射物理碰撞事件
+  - 实体可在重叠触发器的同时与其他实体物理碰撞
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- 单元测试：**494/494 全绿**（从 482 提升 12 个）
+  - 触发器测试：12/12
+  - 原有碰撞系统测试：19/19（无回归）
+  - 碰撞层测试：17/17（无回归）
+  - 碰撞回调测试：10/10（无回归）
+  - 所有其他测试：无回归
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 使用示例
+
+```typescript
+// Create a trigger volume (e.g., a safe zone or quest area).
+const safeZone = new GameObject({
+  id: 'safe-zone', name: 'Safe Zone', type: 'trigger',
+  position: { x: 10, y: 0, z: 10 },
+  halfExtents: { x: 5, y: 2, z: 5 },
+  mass: 0, material: 'trigger',
+});
+safeZone.state.set('isTrigger', true);
+
+const collision = new CollisionSystem();
+world.addSystem(collision);
+world.addEntity(safeZone);
+
+// Listen for trigger events.
+world.events.on('physics.trigger.enter', (e) => {
+  console.log(`${e.payload.otherId} entered ${e.payload.triggerId}`);
+});
+world.events.on('physics.trigger.exit', (e) => {
+  console.log(`${e.payload.otherId} left ${e.payload.triggerId} after ${e.payload.contactDurationTicks} ticks`);
+});
+```
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界）：碰撞系统完善，支持触发器体积
+- 需求6（底层逻辑抽象）：触发器是通用机制，可用于区域检测、任务触发、安全区等
+- 灵魂交互：灵魂进入特定区域可触发事件（如进入房间触发对话、进入危险区触发警告）
+- 与碰撞回调系统互补：物理碰撞有响应，触发器无响应仅事件
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **空间哈希性能基准测试**
+3. **动态障碍局部重规划**
+4. **连续碰撞检测（CCD）**
+5. **物理材质**（摩擦/弹性系数）
+6. **SoulPerceptionSystem 集成碰撞/触发器生命周期事件**
+7. **触发器过滤**（只触发特定层或特定类型实体）
+8. **触发器形状**（球形、胶囊形，当前仅 AABB）
+9. **一次性触发器**（触发后自动禁用）
+
