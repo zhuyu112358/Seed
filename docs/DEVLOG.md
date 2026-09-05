@@ -5402,3 +5402,118 @@ M6具体内容待管理策略文档定义，可能方向：
 - SDK版本：v2.1.0（M5完成），M6目标v2.2.0
 - 已发布tag：5个
 
+
+
+---
+
+## 2026-09-06 M6阶段2：动态任务系统（第69轮迭代）
+
+### 本轮完成
+
+#### 1. 上轮推送确认
+- b6344f4（M6阶段1行为树）已在GitHub，0待推送（本轮开始时重试推送成功）
+
+#### 2. 动态任务系统 (`src/task/`)
+
+**TaskTypes** (`TaskTypes.ts`)
+- ObjectiveType枚举：collect/reach/interact/kill/custom（可扩展）
+- TaskObjective：id/type/target/requiredAmount/description/evaluate（自定义回调）
+- ObjectiveProgress：objectiveId/currentAmount/completed
+- TaskStatus：locked/available/active/completed/failed
+- TaskDefinition：id/name/description/objectives/rewards/acceptConditions/autoAccept/repeatable
+- TaskCondition：task_completed/task_active/custom/level/resource
+- TaskInstance：taskId/agentId/status/objectiveProgress/acceptedAt/completedAt/failedAt
+  - updateObjective()：更新进度，返回是否刚完成
+  - allObjectivesCompleted()：检查全部完成
+  - getProgress()：完成百分比
+  - serialize()：序列化
+
+**TaskEvents** (`TaskEvents.ts`) — 6个事件类
+- TaskAvailableEvent：任务变为可用
+- TaskAcceptedEvent：任务被接受
+- TaskProgressEvent：目标进度变化
+- TaskCompletedEvent：任务完成
+- TaskFailedEvent：任务失败
+- TaskStatusChangedEvent：状态变化
+
+**TaskSystem** (`TaskSystem.ts`) — WorldSystem
+- registerTask/unregisterTask/getTaskDefinition/getTaskIds
+- getAvailableTasks()：条件检查+去重+可重复任务
+- acceptTask()：接受任务（条件验证+去重），返回TaskInstance
+- updateObjectiveProgress()：更新目标进度，自动完成检查
+- completeTask()：手动完成（奖励发放）
+- failTask()：失败任务
+- abandonTask()：放弃任务（可重新接受）
+- hasCompletedTask()：检查完成状态
+- tick()：自动接受autoAccept任务
+- serialize/deserialize
+
+#### 3. SDK导出 (`src/sdk/index.ts`)
+- task模块全部导出（TaskInstance+所有类型+6事件类+TaskSystem）
+
+#### 4. 测试 (`tests/task-system.test.ts`)
+- 26个新测试，覆盖：
+  - 注册：4个（注册/重复抛出/注销/getTaskIds）
+  - 可用性：5个（无条件可用/条件未满足/前置完成后可用/不可重复完成后不可用/可重复完成后可用）
+  - 接受：4个（接受返回实例/不可用返回null/不能重复接受/事件发射）
+  - 进度：6个（更新进度/进度上限/全部完成自动完成/完成事件/进度事件/完成百分比）
+  - 失败放弃：4个（失败改状态/失败事件/放弃删除/放弃后可重新接受）
+  - 多目标：1个（多目标任务全部完成才完成）
+  - 自动接受：1个（autoAccept任务tick时自动接受）
+  - TaskInstance序列化：1个
+
+### 关键修复
+
+- **getAvailableTasks status检查**：之前只检查任务是否在active map中，不检查status。完成后的任务仍在map中导致被误判为active。修复：检查`instance.status === "active"`。
+- **acceptTask status检查**：同样修复，允许接受已完成/失败的任务（如果可重复或条件满足）。
+
+### 架构设计
+
+**任务生命周期**：
+```
+locked → available → active → completed
+                      ↓        ↓
+                    failed  (repeatable → available)
+```
+
+**任务事件链**：
+```
+TaskSystem（条件检查/进度更新/完成判断）
+  → 发射任务事件（EventBus）
+    → SoulPerceptionSystem（感知任务变化，待M6阶段3集成）
+      → SoulArena（灵魂感知到任务状态，做出决策）
+```
+
+**与SoulArena分工**：
+- SoulArena：任务内容设计（定义任务/目标/奖励）、任务接受决策、任务完成后的行为
+- Seed：任务状态管理（注册/接受/进度/完成/失败）、事件发射、条件检查框架
+
+### 验证结果
+
+- **单元测试**：807/807 全绿（781+26新）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M6里程碑进度：40%
+
+- ✅ 阶段1：行为树基础设施（43测试）
+- ✅ 阶段2：动态任务系统（26测试）
+- ⬜ 阶段3：任务事件感知集成（SoulPerceptionSystem监听任务事件）
+- ⬜ 阶段4：世界叙事链（事件序列/条件触发/叙事状态机）
+- ⬜ 阶段5：玩家影响世界反馈+端到端验证+SDK v2.2.0发布
+
+### 下一轮计划
+
+1. M6阶段3：任务事件感知集成
+   - SoulPerceptionSystem添加6个任务事件监听器
+   - task.available/task.accepted/task.progress/task.completed/task.failed/task.status_changed
+   - 严重度映射：completed=high, failed=high, progress=low, accepted=medium, available=low
+   - 10+测试
+
+### 迭代统计
+
+- 总迭代轮数：69轮
+- 单元测试：807个（M6阶段1结束781，+26）
+- 测试文件：62个
+- SDK版本：v2.1.0（M5完成），M6目标v2.2.0
+

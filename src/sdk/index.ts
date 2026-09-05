@@ -230,3 +230,25 @@ export {
 export type { BehaviorAgent } from '../behavior/BehaviorNode.js';
 export { BehaviorTree } from '../behavior/BehaviorTree.js';
 export { BehaviorTreeSystem } from '../behavior/BehaviorTreeSystem.js';
+
+// --- Task System (M6) ---
+export { TaskInstance } from '../task/TaskTypes.js';
+export type {
+  ObjectiveType,
+  TaskObjective,
+  TaskObjectiveContext,
+  ObjectiveProgress,
+  TaskStatus,
+  TaskDefinition,
+  TaskCondition,
+  TaskConditionContext,
+} from '../task/TaskTypes.js';
+export {
+  TaskAvailableEvent,
+  TaskAcceptedEvent,
+  TaskProgressEvent,
+  TaskCompletedEvent,
+  TaskFailedEvent,
+  TaskStatusChangedEvent,
+} from '../task/TaskEvents.js';
+export { TaskSystem } from '../task/TaskSystem.js';
