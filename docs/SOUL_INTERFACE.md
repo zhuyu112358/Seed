@@ -205,3 +205,21 @@ src/entity/SoulPerceptionSystem.ts 已实现 PerceptionFrame 逐帧汇聚。每 
 获取感知：perception.getPerception(soulId) 返回最新 PerceptionFrame，getAllPerceptions() 返回全部。
 
 未来扩展：视野锥（FOV cone）、障碍物遮挡、注意力过滤、感官模态阈值。
+
+
+## 8. 动作系统实现（SoulActionSystem）
+
+src/entity/SoulActionSystem.ts 已实现 ActionRequest/ActionResult 执行引擎。与 SoulPerceptionSystem 形成感知→决策→动作闭环。
+
+支持七种动作：
+- **move**：移动灵魂proxy，支持目标坐标 {x,y,z} 或方向+距离 {direction,distance}，最大移动距离默认 5m
+- **interact**：与 interactive 类型物体交互，需 targetId，最大交互距离 3m，记录 interactionCount
+- **communicate**：发送通信消息，需 content，自动记录到 SoulPerceptionSystem 通信缓冲区，附近灵魂可感知
+- **use**：使用目标物体，需 targetId，记录 useCount
+- **attack**：攻击目标，需 targetId，施加击退冲量（与质量成反比），最大攻击距离 6m
+- **wait**：等待，总是成功
+- **custom**：自定义动作扩展点
+
+配置项：maxMoveDistance（默认5）、maxInteractDistance（默认3）、maxQueuePerSoul（默认10）。
+
+API：executeAction(request, world) 同步执行、queueAction(request) 排队（tick中处理）、getHistory(soulId) 动作历史、executedCount/failedCount/queueLength 统计。

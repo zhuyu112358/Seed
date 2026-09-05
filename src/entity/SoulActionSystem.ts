@@ -1,0 +1,297 @@
+﻿// SoulActionSystem: executes soul actions on the world.
+//
+// This is the counterpart to SoulPerceptionSystem: perception lets souls
+// READ the world, action lets souls WRITE to it. Together they form the
+// perceive -> decide -> act loop that connects SoulArena souls to the Seed
+// virtual world.
+//
+// Supported actions (per types/index.ts ActionRequest):
+//   move         - relocate soul proxy (target position or direction+distance)
+//   interact     - interact with a target interactive entity
+//   communicate  - send a message via a communication medium
+//   use          - use a target entity (consume/activate)
+//   attack       - apply force/damage to a target
+//   wait         - no-op (soul chooses to wait)
+//   custom       - extension point for world-specific actions
+//
+// Corresponds to SOUL_INTERFACE.md section 6.2 (ActionRequest / ActionResult).
+
+import type { World, WorldSystem } from "../engine/World.js";
+import type { EventSystem } from "../event/EventSystem.js";
+import { Vector3 } from "../entity/Vector3.js";
+import type { GameObject } from "../entity/Entity.js";
+import type { ActionRequest, ActionResult } from "../types/index.js";
+import type { SoulPerceptionSystem } from "./SoulPerceptionSystem.js";
+
+export interface SoulActionConfig {
+  /** Maximum move distance per action. Default 5. */
+  maxMoveDistance?: number;
+  /** Maximum interaction distance. Default 3. */
+  maxInteractDistance?: number;
+  /** Maximum actions queued per soul. Default 10. */
+  maxQueuePerSoul?: number;
+}
+
+const DEFAULT_CONFIG: Required<SoulActionConfig> = {
+  maxMoveDistance: 5,
+  maxInteractDistance: 3,
+  maxQueuePerSoul: 10,
+};
+
+export interface ActionHistoryEntry {
+  request: ActionRequest;
+  result: ActionResult;
+  tick: number;
+}
+
+export class SoulActionSystem implements WorldSystem {
+  readonly name = "soul-action";
+  enabled = true;
+
+  private readonly config: Required<SoulActionConfig>;
+  private readonly queue: ActionRequest[] = [];
+  private readonly history: ActionHistoryEntry[] = [];
+  private perception: SoulPerceptionSystem | null = null;
+  private actionsExecuted = 0;
+  private actionsFailed = 0;
+
+  constructor(config?: SoulActionConfig) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /** Execute an action immediately (synchronous). */
+  executeAction(request: ActionRequest, world: World): ActionResult {
+    this.ensurePerception(world);
+    const result = this.dispatch(request, world);
+    this.history.push({ request, result, tick: world.tick });
+    if (this.history.length > 200) this.history.shift();
+    if (result.success) this.actionsExecuted++;
+    else this.actionsFailed++;
+    return result;
+  }
+
+  /** Queue an action for execution on the next tick. */
+  queueAction(request: ActionRequest): boolean {
+    const soulQueue = this.queue.filter(a => a.soulId === request.soulId);
+    if (soulQueue.length >= this.config.maxQueuePerSoul) return false;
+    this.queue.push(request);
+    return true;
+  }
+
+  /** Get action history for a soul. */
+  getHistory(soulId?: string): ActionHistoryEntry[] {
+    if (!soulId) return [...this.history];
+    return this.history.filter(h => h.request.soulId === soulId);
+  }
+
+  /** Total successful actions. */
+  get executedCount(): number { return this.actionsExecuted; }
+  /** Total failed actions. */
+  get failedCount(): number { return this.actionsFailed; }
+  /** Current queue length. */
+  get queueLength(): number { return this.queue.length; }
+
+  /** Lazy-locate SoulPerceptionSystem by name. */
+  private ensurePerception(world: World): void {
+    if (this.perception && world.systems.includes(this.perception as unknown as WorldSystem)) return;
+    this.perception = null;
+    for (const s of world.systems) {
+      if (s.name === 'soul-perception') { this.perception = s as unknown as SoulPerceptionSystem; break; }
+    }
+  }
+
+  tick(_dt: number, world: World, _events: EventSystem): void {
+    this.ensurePerception(world);
+
+    // Process queued actions.
+    const pending = [...this.queue];
+    this.queue.length = 0;
+    for (const request of pending) {
+      this.executeAction(request, world);
+    }
+  }
+
+  private dispatch(request: ActionRequest, world: World): ActionResult {
+    const soul = this.findSoulProxy(request.soulId, world);
+    if (!soul) {
+      return this.fail(request, `soul proxy not found for soulId=${request.soulId}`);
+    }
+
+    switch (request.action) {
+      case "move": return this.doMove(request, soul, world);
+      case "interact": return this.doInteract(request, soul, world);
+      case "communicate": return this.doCommunicate(request, soul, world);
+      case "use": return this.doUse(request, soul, world);
+      case "attack": return this.doAttack(request, soul, world);
+      case "wait": return this.success(request, "soul waits", {});
+      case "custom": return this.doCustom(request, soul, world);
+      default: return this.fail(request, `unknown action: ${request.action}`);
+    }
+  }
+
+  private doMove(request: ActionRequest, soul: GameObject, _world: World): ActionResult {
+    const p = request.parameters;
+    let targetX = soul.position.x;
+    let targetY = soul.position.y;
+    let targetZ = soul.position.z;
+
+    if (p.x !== undefined && p.y !== undefined) {
+      targetX = Number(p.x);
+      targetY = Number(p.y);
+      if (p.z !== undefined) targetZ = Number(p.z);
+    } else if (p.direction && p.distance) {
+      const dir = p.direction as { x: number; y: number; z: number };
+      const dist = Number(p.distance);
+      targetX += dir.x * dist;
+      targetY += dir.y * dist;
+      targetZ += dir.z * dist;
+    } else {
+      return this.fail(request, "move requires {x,y,z} or {direction,distance}");
+    }
+
+    const dist = soul.position.distance({ x: targetX, y: targetY, z: targetZ });
+    if (dist > this.config.maxMoveDistance) {
+      return this.fail(request, `move distance ${dist.toFixed(2)} exceeds max ${this.config.maxMoveDistance}`);
+    }
+
+    soul.position = new Vector3(targetX, targetY, targetZ);
+    soul.state.set("lastMoveAt", Date.now());
+    return this.success(request, `moved to (${targetX.toFixed(1)}, ${targetY.toFixed(1)}, ${targetZ.toFixed(1)})`, {
+      position: { x: targetX, y: targetY, z: targetZ },
+      distance: Math.round(dist * 100) / 100,
+    });
+  }
+
+  private doInteract(request: ActionRequest, soul: GameObject, world: World): ActionResult {
+    if (!request.targetId) return this.fail(request, "interact requires targetId");
+    const target = world.getEntity(request.targetId) as GameObject | undefined;
+    if (!target) return this.fail(request, `target not found: ${request.targetId}`);
+    if (target.type !== "interactive") return this.fail(request, `target ${target.name} is not interactive (type=${target.type})`);
+
+    const dist = soul.position.distance(target.position);
+    if (dist > this.config.maxInteractDistance) {
+      return this.fail(request, `target too far: ${dist.toFixed(2)}m > ${this.config.maxInteractDistance}m`);
+    }
+
+    target.state.set("lastInteractedBy", request.soulId);
+    target.state.set("lastInteractedAt", Date.now());
+    const interactionCount = (target.state.get("interactionCount") as number ?? 0) + 1;
+    target.state.set("interactionCount", interactionCount);
+
+    return this.success(request, `interacted with ${target.name}`, {
+      targetId: target.id,
+      targetName: target.name,
+      interactionCount,
+    });
+  }
+
+  private doCommunicate(request: ActionRequest, soul: GameObject, _world: World): ActionResult {
+    const content = String(request.parameters.content ?? "");
+    if (!content) return this.fail(request, "communicate requires content");
+    const medium = String(request.parameters.medium ?? "acoustic");
+
+    // Record in perception system so nearby souls can hear it.
+    if (this.perception) {
+      this.perception.recordCommunication({
+        id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        senderId: request.soulId,
+        senderType: "soul",
+        medium: medium as never,
+        content,
+        metadata: { soulName: soul.name },
+        position: { x: soul.position.x, y: soul.position.y, z: soul.position.z }, timestamp: Date.now(), priority: 0, ttl: 30000 });
+    }
+
+    soul.state.set("lastSpokeAt", Date.now());
+    return this.success(request, `${soul.name} says: ${content}`, {
+      content,
+      medium,
+      position: { x: soul.position.x, y: soul.position.y, z: soul.position.z },
+    });
+  }
+
+  private doUse(request: ActionRequest, soul: GameObject, world: World): ActionResult {
+    if (!request.targetId) return this.fail(request, "use requires targetId");
+    const target = world.getEntity(request.targetId) as GameObject | undefined;
+    if (!target) return this.fail(request, `target not found: ${request.targetId}`);
+
+    const dist = soul.position.distance(target.position);
+    if (dist > this.config.maxInteractDistance) {
+      return this.fail(request, `target too far: ${dist.toFixed(2)}m > ${this.config.maxInteractDistance}m`);
+    }
+
+    target.state.set("lastUsedBy", request.soulId);
+    target.state.set("lastUsedAt", Date.now());
+    const useCount = (target.state.get("useCount") as number ?? 0) + 1;
+    target.state.set("useCount", useCount);
+
+    return this.success(request, `used ${target.name}`, {
+      targetId: target.id,
+      targetName: target.name,
+      useCount,
+    });
+  }
+
+  private doAttack(request: ActionRequest, soul: GameObject, world: World): ActionResult {
+    if (!request.targetId) return this.fail(request, "attack requires targetId");
+    const target = world.getEntity(request.targetId) as GameObject | undefined;
+    if (!target) return this.fail(request, `target not found: ${request.targetId}`);
+    if (String(target.type) === "static") return this.fail(request, "cannot attack static entity");
+
+    const dist = soul.position.distance(target.position);
+    if (dist > this.config.maxInteractDistance * 2) {
+      return this.fail(request, `target too far: ${dist.toFixed(2)}m`);
+    }
+
+    // Apply impulse away from attacker.
+    const dx = target.position.x - soul.position.x;
+    const dy = target.position.y - soul.position.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const force = Number(request.parameters.force ?? 5);
+    if (String(target.type) !== "static" && target.mass > 0) {
+      target.velocity = new Vector3(
+        target.velocity.x + (dx / len) * force / target.mass,
+        target.velocity.y + (dy / len) * force / target.mass,
+        target.velocity.z,
+      );
+    }
+    target.state.set("lastAttackedBy", request.soulId);
+    target.state.set("lastAttackedAt", Date.now());
+
+    return this.success(request, `attacked ${target.name} with force ${force}`, {
+      targetId: target.id,
+      targetName: target.name,
+      force,
+      knockback: { x: (dx / len) * force, y: (dy / len) * force },
+    });
+  }
+
+  private doCustom(request: ActionRequest, soul: GameObject, _world: World): ActionResult {
+    // Extension point: worlds can override or listen for custom actions.
+    soul.state.set("lastCustomAction", JSON.stringify(request.parameters));
+    soul.state.set("lastCustomActionAt", Date.now());
+    return this.success(request, `custom action executed: ${JSON.stringify(request.parameters).slice(0, 100)}`, {
+      parameters: request.parameters,
+    });
+  }
+
+  private findSoulProxy(soulId: string, world: World): GameObject | null {
+    // Try with soul_ prefix first, then without.
+    const withPrefix = world.getEntity(`soul_${soulId}`) as GameObject | undefined;
+    if (withPrefix && withPrefix.type === "soul") return withPrefix;
+    const direct = world.getEntity(soulId) as GameObject | undefined;
+    if (direct && direct.type === "soul") return direct;
+    return null;
+  }
+
+  private success(request: ActionRequest, message: string, data: Record<string, unknown>): ActionResult {
+    return { soulId: request.soulId, action: request.action, success: true, message, data, timestamp: Date.now() };
+  }
+
+  private fail(request: ActionRequest, message: string): ActionResult {
+    return { soulId: request.soulId, action: request.action, success: false, message, timestamp: Date.now() };
+  }
+
+  start(): void { /* no-op */ }
+  stop(): void { /* no-op */ }
+}
