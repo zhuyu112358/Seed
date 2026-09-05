@@ -1162,3 +1162,86 @@ AcousticPropagation 此前只计算距离衰减（inverse-square + medium absorp
 6. **灵魂间碰撞检测**：当前灵魂可重叠，可添加灵魂间碰撞或社交距离
 7. **SDK 准备**：整理 API 文档、类型定义、CHANGELOG，为打 tag 做准备
 
+
+
+---
+
+## 2026-09-05 A*路径规划系统：网格导航地图与寻路算法（第23轮迭代）
+
+### 本轮目标
+
+任务描述第二优先级第一项：**路径规划（A*寻路）**。当前 move 是直线移动，需要避障寻路。实现完整的路径规划系统，包括网格导航地图、A*算法、WorldSystem 集成。
+
+### 实现
+
+**新增模块 `src/pathfinding/`**，包含 4 个文件：
+
+#### 1. GridMap.ts — 网格导航地图
+
+- 可配置：cellSize（默认1.0）、width/height（默认100）、originX/originZ（默认0,0）、allowDiagonal（默认true）
+- 世界坐标↔网格坐标双向转换
+- `blockRegion(minX, minZ, maxX, maxZ)`：标记世界空间 AABB 区域为障碍物
+- `getNeighbors(cellX, cellZ)`：返回可通行邻居，支持 8 方向（对角）或 4 方向
+- **对角移动防穿墙**：对角移动时检查两个正交邻居都可通行，防止切角穿墙
+- 使用 Uint8Array 存储 blocked 状态，内存高效
+
+#### 2. AStarPathfinder.ts — A*寻路算法
+
+- **二叉最小堆**开放集，O(log n) 插入/提取最小
+- **Octile 距离启发函数**（8 方向移动的最优启发），对角禁用时退化为曼哈顿距离
+- **起点/终点障碍物处理**：如果起点或终点在障碍物内，BFS 搜索最近可通行格子（半径上限10）
+- **maxIterations 保护**（默认100000），防止无限循环
+- 返回 `PathResult`：waypoints（世界空间路径点）、length（路径长度）、cellsExplored（探索格子数）
+
+#### 3. PathfinderSystem.ts — WorldSystem 集成
+
+- 实现 WorldSystem 接口，可注册到 World
+- 自动扫描世界实体标记障碍物：
+  - `type === "static"` 的实体默认阻挡（可配置 blockingTypes）
+  - `state.blocksPath === true` 的实体阻挡（可配置 respectBlocksPathFlag）
+  - 动态实体默认不阻挡（会移动）
+- `dirty` 标记机制：障碍物变化时标记 dirty，下次 findPath 或 tick 时重建网格
+- `findPath(startX, startZ, goalX, goalZ, world?)`：对外寻路 API
+
+#### 4. index.ts — 模块导出
+
+### 设计决策
+
+1. **为什么用网格而不是 NavMesh？** 网格实现简单、调试直观、适合 2D 俯视世界。NavMesh 更适合复杂 3D 环境，但当前 Seed 是 2.5D（x/z 平面 + y 高度），网格足够。未来可扩展 NavMesh。
+2. **为什么动态实体不默认阻挡？** 动态实体会移动，如果标记为障碍物会导致网格频繁重建。路径规划时可以临时考虑动态障碍，或让灵魂的感知系统处理避障。
+3. **为什么用 dirty 标记而不是每 tick 全量重建？** 全量重建 O(entities * cells)，开销大。dirty 标记只在需要时重建，性能更好。
+4. **对角移动防穿墙**：这是 A* 网格寻路的经典问题。如果不检查，路径会从两个垂直墙的夹角"切"过去。实现了标准的双正交邻居检查。
+
+### 新增单元测试（24个）
+
+**GridMap（10个）**：默认配置、坐标转换、标记阻挡、区域阻挡、邻居查询（对角/正交）、阻挡邻居排除、对角防切角、清除网格
+
+**AStarPathfinder（8个）**：直线路径、越界返回null、绕墙路径、窄走廊路径、完全包围目标返回null、maxIterations保护、路径长度/探索数报告
+
+**PathfinderSystem（6个）**：WorldSystem注册、静态实体重建网格、blocksPath标志、动态实体不阻挡、世界中寻路、绕障碍物寻路、markDirty强制重建
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**351/351 全绿**（从 327 增至 351，+24）
+- 路径规划测试：24/24
+- 回归验证：所有现有测试通过
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界搭建、物体定义与交互）：路径规划是物体在世界中移动的核心能力，支持避障
+- 需求6（底层逻辑抽象、强支持扩展）：GridMap/AStar/PathfinderSystem 三层分离，可替换启发函数、可扩展 NavMesh、可配置障碍物规则
+- 需求10（性能优化）：二叉堆开放集、dirty标记延迟重建、Uint8Array 存储，参考大型游戏寻路方案
+- 任务描述第二优先级：路径规划（A*寻路）✅
+
+### 后续可扩展方向（列入 backlog）
+
+1. **SoulActionSystem 集成路径规划**：move 动作新增 pathfinding 模式，自动寻路到目标
+2. **路径平滑**：当前路径是网格中心点折线，可添加漏斗算法（Funnel Algorithm）平滑
+3. **动态障碍避障**：路径执行中遇到新障碍时重新规划（局部重规划）
+4. **NavMesh 支持**：复杂地形的导航网格替代方案
+5. **多灵魂路径冲突**：多个灵魂寻路时的路径协调和让行
+6. **加速/减速曲线**：物理移动平滑加减速（多轮 backlog）
+7. **声音衍射（绕射）**：障碍物边缘声音绕射（多轮 backlog）
+8. **SDK 准备**：API 文档、类型定义、CHANGELOG、打 tag
+
