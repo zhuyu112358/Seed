@@ -5,6 +5,83 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-06
+
+### Milestone M4: Persistence & Procedural Generation
+
+Seed v2.0.0 introduces world persistence (save/load), deterministic procedural
+generation, and full system state serialization. Major highlights include
+WorldSerializer, WorldSaveManager, SeededRandom (deterministic PRNG),
+WorldGenerator (plugin-based procedural generation), and ISerializable
+implementation across all core resource systems.
+
+### Added
+
+#### Persistence System
+- **WorldSerializer** — Generic world state serialization/deserialization.
+  SerializedWorld format: version/name/tickRate/worldTime/tick/entities/systems/metadata.
+  SerializedEntity: id/name/type/position/velocity/mass/material/active/state/properties/children.
+  Entity state/properties Maps serialized as plain objects. Children hierarchy preserved recursively.
+  toJSON()/fromJSON() for string serialization. Version validation on load.
+- **ISerializable interface** — Systems implement serialize()/deserialize() for state persistence.
+  isSerializable() type guard. WorldSerializer auto-detects and serializes ISerializable systems.
+- **WorldSaveManager** — Save file management: save/load/exists/delete/list/getMetadata.
+  Configurable saveDirectory (default "./saves") and fileExtension (default ".seed.json").
+  SaveMetadata: name/path/size/modifiedAt/worldName/tick/version.
+  List sorted by modification time (newest first). Corrupted files skipped.
+  Auto-creates save directory. savedAt timestamp in metadata. Custom metadata support.
+- **HarvestSystem ISerializable** — Serializes inventories (soulId → items + maxCapacity)
+  and nodeStates (entityId → currentAmount). Deserialize restores inventories and node amounts
+  (nodes must be re-registered by app before deserialize).
+- **CraftingSystem ISerializable** — Serializes inventories and activeCrafts
+  (soulId → [{recipeId, ticksRemaining}]). Deserialize rebuilds ActiveCraft from recipeId
+  (recipes must be re-registered).
+- **ConsumptionSystem ISerializable** — Serializes souls (soulId → {inventory, tickCounters}).
+  Deserialize restores SoulConsumptionState with inventory + tickCounters Map.
+- **GrowthSystem ISerializable** — Serializes soulGrowth (soulId → ruleId → {totalXP, level}).
+  Deserialize restores growth state. Event listeners are transient (re-registered in tick).
+
+#### Procedural Generation
+- **SeededRandom** — Deterministic PRNG (mulberry32 algorithm). Same seed = same sequence.
+  Supports number and string seeds (FNV-1a hash). next() [0,1), nextInt(min,max) inclusive,
+  nextFloat(min,max), chance(p), pick(arr), sample(arr,n) without replacement, shuffle(arr)
+  (Fisher-Yates). getState()/setState() for serialization/resume. fork() creates independent
+  sub-generator.
+- **WorldGenerator** — Plugin-based procedural world generation framework.
+  GenerationContext: world/rng/seed/data (shared Map between plugins).
+  GenerationPlugin: name + generate(ctx), runs in registration order.
+  addPlugin (chainable, duplicate name throws), removePlugin, getPluginNames.
+  generate(world?) creates or populates a world. generateWithData returns world + data.
+  Plugins share data via ctx.data (e.g., terrain map → resource placement).
+  Deterministic: same seed + same plugins = same world.
+
+#### Examples
+- **persistence-demo.ts** — End-to-end persistence demo: create world → run (harvest/craft/consume/grow)
+  → save → load into fresh world → verify 7 state fields match → continue running.
+  Demonstrates config vs state separation: recipes/rules re-registered, state restored via ISerializable.
+  All 7 state fields verified: wood/plank/food/treeAmount/XP/level/tick.
+
+### Architecture Principles
+- **Config vs State separation** — Configuration (ResourceType/Recipe/Rule) is registered via
+  Registry at runtime, NOT serialized, re-registered by app after world load. State (inventories/
+  activeCrafts/counters/growth) is serialized via ISerializable. Save files contain only mutable state.
+- **No hardcoded world content** — WorldGenerator has no built-in generation logic; all generation
+  via plugins provided by application layer. SeededRandom is a generic utility.
+- **Plugin-based composability** — WorldGenerator plugins run in order, share data via context,
+  can be freely combined for different generation strategies.
+- **Entity factory pattern** — WorldSerializer.deserialize uses an entityFactory callback to create
+  entities, allowing application layer to re-attach components (ResourceNode, etc.) before
+  system state deserialization.
+
+### Tests
+- 69 new tests since v1.2.0 (636 → 705)
+- world-serializer.test.ts (12), world-save-manager.test.ts (15),
+  seeded-random.test.ts (15), world-generator.test.ts (15), system-serialization.test.ts (12)
+
+### Breaking Changes
+- None at the API level. v2.0.0 reflects the major milestone (persistence + generation),
+  not breaking API changes. Existing v1.x code continues to work.
+
 ## [1.2.0] - 2026-09-06
 
 ### Milestone M3: Resource System & Economy

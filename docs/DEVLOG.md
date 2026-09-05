@@ -4834,3 +4834,75 @@ WorldSerializer自动检测实现ISerializable的系统并序列化其状态：
 - 测试文件：57个
 - SDK版本：v1.2.0（M3完成），M4目标v2.0.0
 
+
+
+---
+
+## 2026-09-06 M4阶段5：端到端验证+SDK v2.0.0发布（第63轮迭代）
+
+### 本轮完成
+
+#### 1. 端到端持久化演示 (`examples/persistence-demo.ts`)
+- 完整M4持久化流水线验证：创建世界→运行（采集/生产/消耗/成长）→存档→加载到新世界→验证7项状态一致→继续运行
+- **Phase 1**：创建世界（2实体+4系统），注册资源类型/配方/规则（运行时配置，非硬编码）
+- **Phase 2**：运行10tick（采集3次wood→生产4plank→消耗2food→Woodcutting Lv.2）
+- **Phase 3**：存档到临时目录，验证存档元数据（name/tick/size）
+- **Phase 4**：加载到全新世界（重新创建系统+重新注册配方/规则，entityFactory中重新注册ResourceNode组件）
+- **Phase 5**：验证7项状态一致：
+  - wood: 1=1 ✅
+  - plank: 4=4 ✅
+  - food: 8=8 ✅
+  - tree amount: 7=7 ✅
+  - XP: 50=50 ✅
+  - level: 2=2 ✅
+  - tick: 10=10 ✅
+- **Phase 6**：加载后继续运行5tick，世界正常运行
+- **关键架构发现**：entityFactory必须在创建实体时重新注册组件（如ResourceNode），因为系统状态反序列化在实体创建之后执行，节点必须在反序列化前已注册
+
+#### 2. SDK v2.0.0发布准备
+- package.json版本更新：1.2.0 → 2.0.0
+- CHANGELOG.md添加v2.0.0完整条目（M4全部新增：持久化系统+程序化生成+架构原则+测试）
+- SDK构建通过
+- 705测试全绿
+
+### M4里程碑完成：100%
+
+- ✅ 阶段1：世界序列化系统（WorldSerializer）
+- ✅ 阶段2：世界存档/读档系统（WorldSaveManager）
+- ✅ 阶段3：种子系统+程序化世界生成器（SeededRandom+WorldGenerator）
+- ✅ 阶段4：核心系统ISerializable实现（Harvest/Crafting/Consumption/Growth）
+- ✅ 阶段5：端到端验证+SDK v2.0.0发布
+
+### SDK v2.0.0发布内容
+
+- **持久化系统**：WorldSerializer + ISerializable接口 + WorldSaveManager
+- **4个核心系统ISerializable**：HarvestSystem/CraftingSystem/ConsumptionSystem/GrowthSystem
+- **程序化生成**：SeededRandom（确定性PRNG）+ WorldGenerator（插件式生成框架）
+- **端到端演示**：persistence-demo.ts（7项状态验证全通过）
+- **69个新测试**（636→705）
+- **架构原则**：配置与状态分离、无硬编码世界内容、插件式可组合、实体工厂模式
+
+### 验证结果
+
+- **单元测试**：705/705 全绿
+- **端到端持久化演示**：✅ 通过（7项状态全部一致，加载后继续运行正常）
+- **构建**：0错误（主项目+SDK）
+- **GitHub**：0待推送（上轮已同步）
+
+### 下一轮计划（M5里程碑）
+
+M4完成，SDK v2.0.0发布后进入M5里程碑。M5方向待管理策略文档确认，可能包括：
+- 经济规则深化（交易/价格/稀缺性）
+- 社交系统（灵魂间关系/群体行为）
+- 网络同步/多人支持
+- 性能优化（ECS/数据导向）
+- 持久化深化（增量存档/自动保存/存档迁移）
+
+### 迭代统计
+
+- 总迭代轮数：63轮
+- 单元测试：705个（M4启动时636个，+69）
+- 测试文件：57个
+- SDK版本：v2.0.0（M4完成）
+- Git tag：seed-sdk-v2.0.0（待打）
+
