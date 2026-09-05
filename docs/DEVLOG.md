@@ -2539,3 +2539,135 @@ const acoustic = new AcousticPropagation({
 8. **多次衍射**（声音绕过多个角落）
 9. **集成测试增加灵魂隔墙通信场景**
 
+
+
+---
+
+## 2026-09-05 碰撞回调系统（Collision Enter/Stay/Exit）（第39轮迭代）
+
+### 本轮目标
+
+实现碰撞回调系统（Collision Callbacks）。当前 CollisionSystem 只做物理响应（位置分离+速度响应），每帧发射一个通用 CollisionEvent，没有 Enter/Stay/Exit 三态区分。游戏引擎标准功能（如 Unity 的 OnCollisionEnter/Stay/Exit），让上层系统（SoulPerceptionSystem、InteractionSystem 等）能精确感知碰撞的开始、持续和结束。
+
+### 实现
+
+**1. 新增事件类（src/event/Event.ts）**
+
+- `CollisionEnterEvent`（type: `physics.collision.enter`）：两实体首次接触时发射
+  - payload: a, b, point, relativeSpeed, normal, penetration
+- `CollisionStayEvent`（type: `physics.collision.stay`）：两实体持续接触时发射（第二帧及以后）
+  - payload: a, b, point, relativeSpeed, normal, penetration, contactDurationTicks
+- `CollisionExitEvent`（type: `physics.collision.exit`）：两实体停止接触时发射
+  - payload: a, b, lastContactPoint, contactDurationTicks
+- 保留原有 `CollisionEvent`（type: `physics.collision`）用于向后兼容
+
+**2. 碰撞状态跟踪（src/physics/CollisionSystem.ts）**
+
+- 新增 `previousCollisions: Map<string, CollisionPairInfo>` — 上一帧的碰撞对
+- 新增 `currentCollisions: Map<string, CollisionPairInfo>` — 当前帧的碰撞对
+- `pairKey(aId, bId)` — 规范化对键（按字典序排序，保证 a-b 和 b-a 同键）
+- `CollisionPairInfo` 接口：aId, bId, point, relativeSpeed, normal, penetration, contactDurationTicks
+
+**3. tick() 方法重构**
+
+- 开始时清空 currentCollisions
+- 所有碰撞对检查完成后，调用 `detectExits()` 检测结束的碰撞
+- 调用 `swapCollisionState()` 交换 previous/current 状态
+- 当 bodies < 2 时也正确检测 exit（之前直接 return，现在先检测 exit 再 return）
+
+**4. checkAndResolve() 方法修改**
+
+- 碰撞检测成功后，记录到 currentCollisions
+- 检查该对上一帧是否在 previousCollisions 中：
+  - 不在 → 发射 CollisionEnterEvent，contactDurationTicks = 1
+  - 在 → 发射 CollisionStayEvent，contactDurationTicks = 上一帧 + 1
+- 同时发射通用 CollisionEvent 用于向后兼容
+
+**5. detectExits() 方法**
+
+- 遍历 previousCollisions 中所有对
+- 如果不在 currentCollisions 中，发射 CollisionExitEvent
+- 携带 lastContactPoint 和 contactDurationTicks
+
+**6. swapCollisionState() 方法**
+
+- 交换 previous 和 current 引用
+- 清空新的 current（旧的 previous）供下一帧使用
+
+### 测试
+
+**tests/collision-callbacks.test.ts（10 个新测试）**：
+
+- CollisionEnterEvent：
+  - 首次接触时发射
+  - 后续帧不重复发射（只在第一帧）
+  - 分离后重新碰撞时再次发射
+- CollisionStayEvent：
+  - 持续接触的后续帧发射
+  - 包含碰撞法线和穿透深度
+  - contactDurationTicks 递增
+- CollisionExitEvent：
+  - 分离时发射
+  - 从未碰撞的实体不发射
+  - 报告正确的接触持续时间
+- 向后兼容：仍发射通用 CollisionEvent
+- 多碰撞对：每对独立跟踪生命周期
+
+### 开发中发现的问题与修复
+
+1. **world.tick is not a function**：World 类使用 `step(dt)` 方法推进时间，`tick` 是计数器属性而非方法。修复：测试中用 `world.step(1/60)`。
+2. **事件系统属性名错误**：World 的事件系统属性是 `world.events`，不是 `world.eventSystem`。修复：所有引用改为 `world.events`。
+3. **position 赋值为普通对象**：`b.position = { x: 100, ... } as any` 可能导致问题。修复：使用 `new Vector3(100, 0, 0)`。
+4. **多对测试中意外碰撞**：c 放在 (0, 0.5) 时与 b（x≈0.7）距离 0.86 < 1.0，导致额外的 enter 事件。修复：c 放在 a 的另一侧 (-0.5, 0)，与 b 距离 1.2 > 1.0。
+5. **移开实体用 y 轴**：`c.position = new Vector3(0, 100, 0)` 但 checkYAxis=false，y 不影响碰撞，c 仍与 a 碰撞。修复：用 x=100 移开。
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- 单元测试：**482/482 全绿**（从 472 提升 10 个）
+  - 碰撞回调测试：10/10
+  - 原有碰撞系统测试：19/19（无回归）
+  - 碰撞层测试：17/17（无回归）
+  - 所有其他测试：无回归
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 使用示例
+
+```typescript
+const collision = new CollisionSystem();
+world.addSystem(collision);
+
+// Listen for collision lifecycle events.
+world.events.on('physics.collision.enter', (e) => {
+  console.log(`Collision started: ${e.payload.a} vs ${e.payload.b}`);
+  console.log(`  Impact speed: ${e.payload.relativeSpeed.toFixed(2)} m/s`);
+  console.log(`  Normal: (${e.payload.normal.x}, ${e.payload.normal.z})`);
+});
+
+world.events.on('physics.collision.stay', (e) => {
+  console.log(`Colliding for ${e.payload.contactDurationTicks} ticks`);
+});
+
+world.events.on('physics.collision.exit', (e) => {
+  console.log(`Collision ended after ${e.payload.contactDurationTicks} ticks`);
+});
+```
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界）：碰撞系统完善，支持精确的碰撞生命周期感知
+- 需求6（底层逻辑抽象）：碰撞回调是通用事件机制，上层系统可自由监听
+- 灵魂感知：SoulPerceptionSystem 可监听 enter/exit 事件，让灵魂感知到"开始碰撞"和"碰撞结束"，而不仅是每帧的碰撞状态
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **空间哈希性能基准测试**
+3. **动态障碍局部重规划**
+4. **连续碰撞检测（CCD）**
+5. **物理材质**（不同材质的摩擦/弹性系数）
+6. **SoulPerceptionSystem 集成碰撞生命周期事件**（灵魂感知碰撞开始/结束）
+7. **碰撞回调过滤**（只监听特定实体对或特定层的碰撞）
+8. **触发器体积（Trigger Volumes）**（无物理响应，仅发射 enter/exit 事件）
+

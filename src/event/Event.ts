@@ -69,6 +69,79 @@ export class CollisionEvent extends Event<{
   }
 }
 
+/** Emitted when two bodies START colliding (first tick of contact). */
+export class CollisionEnterEvent extends Event<{
+  a: string;
+  b: string;
+  point: { x: number; y: number; z: number };
+  relativeSpeed: number;
+  normal: { x: number; z: number };
+  penetration: number;
+}> {
+  constructor(
+    a: string, b: string,
+    point: { x: number; y: number; z: number },
+    relativeSpeed: number,
+    normal: { x: number; z: number },
+    penetration: number,
+  ) {
+    super({
+      type: 'physics.collision.enter',
+      payload: { a, b, point, relativeSpeed, normal, penetration },
+      sourceId: a,
+      origin: point,
+    });
+  }
+}
+
+/** Emitted when two bodies CONTINUE colliding (subsequent ticks of contact). */
+export class CollisionStayEvent extends Event<{
+  a: string;
+  b: string;
+  point: { x: number; y: number; z: number };
+  relativeSpeed: number;
+  normal: { x: number; z: number };
+  penetration: number;
+  contactDurationTicks: number;
+}> {
+  constructor(
+    a: string, b: string,
+    point: { x: number; y: number; z: number },
+    relativeSpeed: number,
+    normal: { x: number; z: number },
+    penetration: number,
+    contactDurationTicks: number,
+  ) {
+    super({
+      type: 'physics.collision.stay',
+      payload: { a, b, point, relativeSpeed, normal, penetration, contactDurationTicks },
+      sourceId: a,
+      origin: point,
+    });
+  }
+}
+
+/** Emitted when two bodies STOP colliding (first tick without contact). */
+export class CollisionExitEvent extends Event<{
+  a: string;
+  b: string;
+  lastContactPoint: { x: number; y: number; z: number };
+  contactDurationTicks: number;
+}> {
+  constructor(
+    a: string, b: string,
+    lastContactPoint: { x: number; y: number; z: number },
+    contactDurationTicks: number,
+  ) {
+    super({
+      type: 'physics.collision.exit',
+      payload: { a, b, lastContactPoint, contactDurationTicks },
+      sourceId: a,
+      origin: lastContactPoint,
+    });
+  }
+}
+
 export class EntityEnterZone extends Event<{ zoneId: string; entityId: string }> {
   constructor(zoneId: string, entityId: string, origin: { x: number; y: number; z: number }) {
     super({

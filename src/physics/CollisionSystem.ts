@@ -20,7 +20,12 @@ import type { World, WorldSystem } from '../engine/World.js';
 import type { EventSystem } from '../event/EventSystem.js';
 import { Vector3 } from '../entity/Vector3.js';
 import { GameObject } from '../entity/Entity.js';
-import { CollisionEvent } from '../event/Event.js';
+import {
+  CollisionEvent,
+  CollisionEnterEvent,
+  CollisionStayEvent,
+  CollisionExitEvent,
+} from '../event/Event.js';
 import { Logger } from '../reliability/Logger.js';
 import { SpatialHash } from './SpatialHash.js';
 
@@ -70,6 +75,18 @@ export interface CollisionSystemStats {
   collisionsResolved: number;
 }
 
+/** Info about a collision pair, used for lifecycle event tracking. */
+interface CollisionPairInfo {
+  aId: string;
+  bId: string;
+  point: { x: number; y: number; z: number };
+  relativeSpeed: number;
+  normal: { x: number; z: number };
+  penetration: number;
+  /** How many ticks this pair has been in continuous contact. */
+  contactDurationTicks: number;
+}
+
 /**
  * CollisionSystem: AABB collision detection and response for top-down worlds.
  *
@@ -90,13 +107,29 @@ export class CollisionSystem implements WorldSystem {
   /** Spatial hash for broad-phase collision detection (lazy-initialized). */
   private spatialHash: SpatialHash | null = null;
 
+  /**
+   * Collision pair state for lifecycle events (Enter/Stay/Exit).
+   * Key = normalized pair key "idA|idB" (idA < idB lexicographically).
+   * Value = collision info from the previous tick.
+   */
+  private previousCollisions = new Map<string, CollisionPairInfo>();
+  private currentCollisions = new Map<string, CollisionPairInfo>();
+
   constructor(config?: CollisionSystemConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.enabled = true;
   }
 
+  /** Create a normalized pair key for collision state tracking. */
+  private pairKey(aId: string, bId: string): string {
+    return aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`;
+  }
+
   tick(_dt: number, world: World, events: EventSystem): void {
     if (!this.enabled) return;
+
+    // Clear current tick's collision state.
+    this.currentCollisions.clear();
 
     // Collect collidable bodies.
     const bodies: GameObject[] = [];
@@ -108,13 +141,47 @@ export class CollisionSystem implements WorldSystem {
       bodies.push(entity);
     }
 
-    if (bodies.length < 2) return;
+    if (bodies.length < 2) {
+      // No bodies to collide — detect exits for pairs from previous tick.
+      this.detectExits(events);
+      this.swapCollisionState();
+      return;
+    }
 
     if (this.config.broadPhase === 'spatial-hash') {
       this.tickSpatialHash(bodies, events);
     } else {
       this.tickBruteForce(bodies, events);
     }
+
+    // Detect collisions that ended this tick (in previous but not current).
+    this.detectExits(events);
+
+    // Swap state for next tick.
+    this.swapCollisionState();
+  }
+
+  /** Emit CollisionExitEvent for pairs that were colliding last tick but not this tick. */
+  private detectExits(events: EventSystem): void {
+    for (const [key, info] of this.previousCollisions) {
+      if (!this.currentCollisions.has(key)) {
+        events.emit(new CollisionExitEvent(
+          info.aId, info.bId,
+          info.point,
+          info.contactDurationTicks,
+        ));
+        log.debug({ a: info.aId, b: info.bId, duration: info.contactDurationTicks }, 'collision exit');
+      }
+    }
+  }
+
+  /** Swap previous and current collision state maps. */
+  private swapCollisionState(): void {
+    const temp = this.previousCollisions;
+    this.previousCollisions = this.currentCollisions;
+    this.currentCollisions = temp;
+    // currentCollisions now points to the old previous map — clear it for next tick.
+    this.currentCollisions.clear();
   }
 
   /** Brute-force pair check (O(n²)) — default for backward compatibility. */
@@ -275,7 +342,7 @@ export class CollisionSystem implements WorldSystem {
     a.state.set('lastCollidedWith', b.id);
     b.state.set('lastCollidedWith', a.id);
 
-    // Emit collision event so perception and other systems can react.
+    // Compute collision point and relative speed.
     const collisionPoint = {
       x: (a.position.x + b.position.x) / 2,
       y: (a.position.y + b.position.y) / 2,
@@ -285,6 +352,28 @@ export class CollisionSystem implements WorldSystem {
       Math.pow(a.velocity.x - b.velocity.x, 2) +
       Math.pow(a.velocity.z - b.velocity.z, 2),
     );
+    const collisionNormal = { x: normalX, z: normalZ };
+
+    // Track collision state for lifecycle events (Enter/Stay/Exit).
+    const key = this.pairKey(a.id, b.id);
+    const prevInfo = this.previousCollisions.get(key);
+    const contactDuration = prevInfo ? prevInfo.contactDurationTicks + 1 : 1;
+
+    const pairInfo: CollisionPairInfo = {
+      aId: a.id, bId: b.id, point: collisionPoint,
+      relativeSpeed: relSpeed, normal: collisionNormal,
+      penetration, contactDurationTicks: contactDuration,
+    };
+    this.currentCollisions.set(key, pairInfo);
+
+    // Emit lifecycle events: Enter (first contact) or Stay (continuing).
+    if (!prevInfo) {
+      events.emit(new CollisionEnterEvent(a.id, b.id, collisionPoint, relSpeed, collisionNormal, penetration));
+    } else {
+      events.emit(new CollisionStayEvent(a.id, b.id, collisionPoint, relSpeed, collisionNormal, penetration, contactDuration));
+    }
+
+    // Emit generic collision event for backward compatibility.
     events.emit(new CollisionEvent(a.id, b.id, collisionPoint, relSpeed));
 
     log.debug({ a: a.id, b: b.id, penetration: penetration.toFixed(3) }, 'collision resolved');
