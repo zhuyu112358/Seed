@@ -302,3 +302,19 @@ export {
   TradeExpiredEvent,
 } from '../trade/TradeEvents.js';
 export { TradingSystem } from '../trade/TradingSystem.js';
+
+// --- Party System (M7) ---
+export type {
+  Party,
+  PartyResult,
+  ExperienceShareHandler,
+  LootShareHandler,
+} from '../party/PartyTypes.js';
+export {
+  PartyCreatedEvent,
+  PartyDisbandedEvent,
+  PartyMemberJoinedEvent,
+  PartyMemberLeftEvent,
+  PartyLeaderChangedEvent,
+} from '../party/PartyEvents.js';
+export { PartySystem } from '../party/PartySystem.js';

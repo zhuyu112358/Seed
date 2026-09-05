@@ -6127,3 +6127,115 @@ SoulPerceptionSystem现在监听以下事件类别：
 - 测试文件：68个
 - SDK版本：v2.2.0（M6完成），M7目标v2.3.0
 
+
+
+---
+
+## 2026-09-06 M7阶段4：组队系统（第76轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- b8be40e（M7阶段3社交+交易事件感知集成）已在GitHub，0待推送
+- 910个单元测试全部通过
+
+#### 2. 组队系统 (`src/party/`)
+
+**PartyTypes** (`PartyTypes.ts`)
+- Party：id/name/leaderId/memberIds[]/maxSize(默认4)/createdTick/metadata
+- PartyResult：success/partyId/error
+- ExperienceShareHandler：经验共享回调（应用层定义分配）
+- LootShareHandler：战利品共享回调（应用层定义分配）
+
+**PartyEvents** (`PartyEvents.ts`) — 5个事件类
+- PartyCreatedEvent：队伍创建
+- PartyDisbandedEvent：队伍解散
+- PartyMemberJoinedEvent：成员加入
+- PartyMemberLeftEvent：成员离开（含reason: left/kicked）
+- PartyLeaderChangedEvent：队长变更
+
+**PartySystem** (`PartySystem.ts`) — WorldSystem
+- createParty()：创建队伍（创建者成为队长+首个成员，不能已在队伍中）
+- disbandParty()：解散队伍（仅队长可操作，清理所有成员的反向查找）
+- joinParty()：加入队伍（验证：队伍存在/不在其他队伍/队伍未满）
+- leaveParty()：离开队伍（队长离开自动转让给下一个成员；最后一人离开自动解散）
+- kickMember()：踢人（仅队长，不能踢自己）
+- transferLeadership()：转让队长（仅当前队长，新队长必须在队伍中）
+- getParty/getPartyByMember/getParties/isInParty/getPartySize
+- shareExperience()：经验共享（调用experienceShareHandler回调）
+- shareLoot()：战利品共享（调用lootShareHandler回调）
+- memberToParty反向查找表（O(1)查询成员所在队伍）
+- serialize/deserialize
+
+#### 3. SDK导出 (`src/sdk/index.ts`)
+- party模块全部导出（Party/PartyResult+5事件类+PartySystem）
+
+#### 4. 测试 (`tests/party-system.test.ts`)
+- 30个新测试，覆盖：
+  - 创建队伍：4个（带名字/默认名字/已在队伍/事件）
+  - 加入队伍：4个（正常/满员/已在队伍/事件）
+  - 离开队伍：5个（正常/队长离开转让/最后一人解散/事件/队长变更事件）
+  - 解散队伍：3个（队长解散/非队长不能/事件）
+  - 踢人：3个（正常/非队长不能/不能踢自己）
+  - 转让队长：3个（正常/非队长不能/事件）
+  - 查询：3个（getPartyByMember/isInParty/getParties）
+  - 共享：2个（经验共享/战利品共享）
+  - 序列化：1个
+  - WorldSystem：2个（添加到world/stop清理）
+
+### 架构设计
+
+**组队系统模型**：
+```
+PartySystem
+  ├── parties: Map<partyId, Party>（正向查找）
+  └── memberToParty: Map<memberId, partyId>（反向查找，O(1)）
+       → 成员操作（加入/离开/踢人）同步更新两个表
+       → 队长离开自动转让（memberIds[0]）或解散（空队伍）
+       → 共享回调（经验/战利品）由应用层注入
+```
+
+**与SoulArena分工**：
+- SoulArena：组队决策（是否组队/谁当队长/经验分配规则/战利品分配规则）
+- Seed：队伍状态管理（创建/解散/加入/离开/踢人/转让）+事件发射+共享回调框架
+
+### 关键特性
+
+- **双向查找**：parties正向 + memberToParty反向，O(1)查询
+- **队长自动转让**：队长离开时自动转让给下一个成员
+- **空队伍自动解散**：最后一人离开时自动解散
+- **共享框架**：experienceShareHandler/lootShareHandler回调注入，Seed不实现分配逻辑
+- **权限控制**：解散/踢人/转让仅队长可操作
+
+### 验证结果
+
+- **单元测试**：940/940 全绿（M7阶段3结束910，+30）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M7里程碑进度：80%
+
+- ✅ 阶段1：社交关系图（29测试）
+- ✅ 阶段2：交易系统（27测试）
+- ✅ 阶段3：社交+交易事件感知集成（12测试）
+- ✅ 阶段4：组队系统（30测试）
+- ⬜ 阶段5：端到端验证+SDK v2.3.0发布
+
+### 下一轮计划
+
+1. M7阶段5：端到端验证+SDK v2.3.0发布
+   - 创建examples/m7-demo.ts（社交→交易→组队→感知全链路演示）
+   - 组队事件感知集成（SoulPerceptionSystem监听5个party事件）
+   - 运行完整测试套件确认无回归
+   - 更新package.json版本2.2.0→2.3.0
+   - 更新CHANGELOG.md（v2.2.0→v2.3.0完整条目）
+   - 打git tag seed-sdk-v2.3.0
+   - commit并推送
+
+### 迭代统计
+
+- 总迭代轮数：76轮
+- 单元测试：940个（M7阶段3结束910，+30）
+- 测试文件：69个
+- SDK版本：v2.2.0（M6完成），M7目标v2.3.0
+
