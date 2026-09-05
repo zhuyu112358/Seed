@@ -5816,3 +5816,106 @@ M7：待管理策略文档定义。可能方向：
 - SDK版本：v2.2.0（M6完成）
 - 已发布tag：6个
 
+
+
+---
+
+## 2026-09-06 M7阶段1：社交关系图（第73轮迭代）
+
+### 本轮完成
+
+#### 1. 上轮推送确认
+- de341aa（SDK v2.2.0发布）+ seed-sdk-v2.2.0 tag重试推送成功，0待推送
+- M6里程碑完全完成并发布
+
+#### 2. M7里程碑定义（管理策略更新）
+- M7：多人交互系统+社交关系+交易组队（SDK v2.3.0）
+- 完成标准：NPC-NPC交互+社交关系图（友好/敌对/中立）+交易系统（物品交换/价格协商）+组队系统（组队/离队/队伍共享）+社交事件感知
+- 管理策略文档MANAGEMENT_STRATEGY.md已更新：M6标记完成，M7添加
+
+#### 3. 社交关系图 (`src/social/`)
+
+**SocialTypes** (`SocialTypes.ts`)
+- SocialRelationType：friend/neutral/enemy/rival/ally/family（6种关系类型）
+- SocialRelation：entityA/entityB/type/trust(0-100)/familiarity(0-100)/lastInteractionTick/interactionCount/metadata
+- SocialRelationChange：关系变化事件payload
+- SocialInteractionContext：社交交互上下文
+
+**SocialEvents** (`SocialEvents.ts`) — 3个事件类
+- SocialRelationChangedEvent：关系类型变化
+- SocialTrustChangedEvent：信任值变化
+- SocialInteractionEvent：社交交互（含trustDelta/familiarityDelta）
+
+**SocialGraph** (`SocialGraph.ts`) — WorldSystem
+- 无向图存储（key排序："entityA|entityB"）
+- setRelation/getRelation/hasRelation/removeRelation
+- getRelations(entityId)：获取某实体所有关系
+- getRelationsByType：按类型过滤
+- getFriends/getEnemies/getAllies：快捷查询
+- modifyTrust/modifyFamiliarity：修改信任/熟悉度（自动钳制0-100，自动创建neutral关系）
+- recordInteraction：记录社交交互（更新信任/熟悉度/交互计数，发射事件）
+- getTrust/getRelationType：快捷查询（无关系返回默认值50/neutral）
+- relationCount：关系总数
+- serialize/deserialize：序列化支持
+- tick()：预留（未来关系衰减/周期检查）
+- stop()：清理
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- social模块全部导出（SocialRelationType/SocialRelation+3事件类+SocialGraph）
+
+#### 5. 测试 (`tests/social-graph.test.ts`)
+- 29个新测试，覆盖：
+  - 基础关系：6个（set/get/无向/未知/remove/计数）
+  - 信任熟悉度：8个（默认50/修改/钳制/自动创建/familiarity/默认查询）
+  - 按类型查询：5个（friends/enemies/allies/byType/getRelations）
+  - 交互：4个（更新信任熟悉度/自动创建/计数/事件）
+  - 事件：3个（relation_changed/trust_changed/同类型不发射）
+  - 序列化：1个
+  - WorldSystem：2个（添加到world/stop清理）
+  - 全部关系类型：1个
+
+### 架构设计
+
+**社交图模型**：
+```
+无向图（entityA|entityB排序key）
+  → SocialRelation（type/trust/familiarity/interactionCount）
+    → 应用层通过recordInteraction/modifyTrust修改
+      → 发射社交事件（EventBus）
+        → SoulPerceptionSystem（待M7阶段3集成感知）
+```
+
+**与SoulArena分工**：
+- SoulArena：社交决策（是否友好/敌对、交互类型、信任变化逻辑）
+- Seed：社交关系存储+修改API+事件发射（不做社交决策）
+
+### 验证结果
+
+- **单元测试**：871/871 全绿（M6结束842，+29）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M7里程碑进度：20%
+
+- ✅ 阶段1：社交关系图（29测试）
+- ⬜ 阶段2：交易系统（物品交换/价格协商/交易事件）
+- ⬜ 阶段3：社交事件感知集成（SoulPerceptionSystem监听3个社交事件）
+- ⬜ 阶段4：组队系统（组队/离队/队伍共享/队伍事件）
+- ⬜ 阶段5：端到端验证+SDK v2.3.0发布
+
+### 下一轮计划
+
+1. M7阶段2：交易系统
+   - TradeOffer（发起方/接收方/offerItems/requestItems/status）
+   - TradingSystem（WorldSystem，发起/接受/拒绝/取消交易，价格协商，交易事件）
+   - TradeEvent：trade.offered/trade.accepted/trade.rejected/trade.cancelled/trade.completed
+   - 15+测试
+
+### 迭代统计
+
+- 总迭代轮数：73轮
+- 单元测试：871个（M6结束842，+29）
+- 测试文件：66个
+- SDK版本：v2.2.0（M6完成），M7目标v2.3.0
+- 已发布tag：6个
+

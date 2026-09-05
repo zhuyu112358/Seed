@@ -269,3 +269,17 @@ export {
   NarrativeCompletedEvent,
 } from '../narrative/NarrativeEvents.js';
 export { NarrativeSystem } from '../narrative/NarrativeSystem.js';
+
+// --- Social System (M7) ---
+export type {
+  SocialRelationType,
+  SocialRelation,
+  SocialRelationChange,
+  SocialInteractionContext,
+} from '../social/SocialTypes.js';
+export {
+  SocialRelationChangedEvent,
+  SocialTrustChangedEvent,
+  SocialInteractionEvent,
+} from '../social/SocialEvents.js';
+export { SocialGraph } from '../social/SocialGraph.js';
