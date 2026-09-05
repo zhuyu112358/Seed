@@ -124,7 +124,21 @@ class GameObject extends Entity {        // adds physical/interaction properties
 | `soulProxy(opts{soulId,name,element,position?})` | type `soul-proxy`，id=`soul_<id>` |
 | `distance(a,b)` | 点到点距离（便捷方法） |
 
-### 3.5 物理（`src/physics/`）
+### 3.5 交互系统（`src/entity/InteractionSystem.ts`）
+
+通用可交互物体状态机系统，管理物体的交互状态转换（如门 open↔closed、开关 on↔off）。对应需求5（物体定义与互相交互）。
+
+- `InteractionSystem`（`name='interaction'`）：WorldSystem，注册可交互物体定义，处理 interact/use 调用，维护运行时状态，触发事件
+- `InteractableDef`：可交互物体定义（entityId, type, name, initialState, states[], transitions[], usable, maxUses）
+- `InteractableType`：`toggle` | `door` | `button` | `lever` | `container` | `custom`
+- `StateTransition`：状态转换规则（from, to, condition?, blockedMessage?）
+- `InteractionResult`：交互结果（success, previousState, newState, transitioned, message, actorId）
+- API：`register(def)` / `unregister(id)` / `isRegistered(id)` / `getState(id)` / `getRuntime(id)` / `interact(id, actorId?, events?)` / `use(id, actorId?, events?)` / `reset(id)` / `getStats()`
+- 内置工厂：`createDoorDef()`（open↔closed）、`createToggleDef()`（on↔off）、`createButtonDef()`（released↔pressed）、`createLeverDef()`（down↔up）、`createContainerDef()`（open↔closed）
+- 状态转换时通过 EventSystem 发出 `interaction.state-change` 事件；use 时发出 `interaction.use` 事件
+- 支持 maxUses 消耗限制（耗尽后 use 失败）、maxInteractables 容量限制
+
+### 3.6 物理（`src/physics/`）
 
 - `PhysicsConfig`（类）：`constructor(opts?)`，`static defaults()`，`static builder()`。字段 `gravity=9.8`（标量，Y 轴）、`friction=0.1`、`airResistance=0.05`、`fixedDt=1/60`、`enabled=true`、`restitution=0.6`。`PhysicsConfigBuilder` 提供 fluent 链式 `gravity/friction/airResistance/fixedDt/enabled/restitution/build()`。
 - `IPhysicsBackend`（接口）：`{ name; step(dt, bodies, config): {collisions: CollisionPair[]}; applyImpulse(body, ix, iy, iz) }`，并导出 `aabbOverlap(...)`。
@@ -133,7 +147,7 @@ class GameObject extends Entity {        // adds physical/interaction properties
 
 > 注意：`physics/PhysicsConfig`（标量 gravity 的**类**）与 `types/index.ts` 的 `PhysicsConfig`（向量 gravity 的**接口**）是两套定义，见已知问题。
 
-### 3.6 事件（`src/event/`）
+### 3.7 事件（`src/event/`）
 
 - `Event`：事件信封 `{ type, payload, timestamp, sourceId, propagation{origin, remainingRadius, intensity} }`，`cancel()` / `isCancelled()`。
 - 具体事件：`CollisionEvent`（type `physics.collision`）、`EntityEnterZone`（`zone.enter`）、`WorldTickEvent`（`world.tick`）、`WeatherEvent`（`world.weather`）。
@@ -141,7 +155,7 @@ class GameObject extends Entity {        // adds physical/interaction properties
 - `ConditionEngine`：谓词可辨识联合 `entityProperty | worldTime | and | or | not`，`evaluate(pred, ctx{worldTime, entities})`。
 - `EventPropagation`：`{attenuationPerMetre, maxRadius}` 空间衰减，`distanceTo/intensityAt/filterByRadius`。
 
-### 3.7 通信（`src/communication/`）
+### 3.8 通信（`src/communication/`）
 
 - `Message`：`{ id, content, sourceId, position, medium, intensity, timestamp }`，`medium = 'acoustic' | 'network' | 'resonance'`；另有 `ReceivedMessage{original, receivedIntensity, distance}`。
 - `CommunicationStrategy`（接口）：`{ medium; transmit(message, source, world: WorldView): ReceivedMessage[] }`；`WorldView = { entities: Iterable<GameObject>; byId(id) }`。
@@ -149,7 +163,7 @@ class GameObject extends Entity {        // adds physical/interaction properties
 - `NetworkPacket`（`medium='network'`，**stub**）：当前无衰减广播给所有 active 实体。
 - `WorldResonance`（`medium='resonance'`，**stub**）：当前只让 `soul-proxy` 实体以满强度接收。
 
-### 3.8 性能工具（`src/utils/`）
+### 3.9 性能工具（`src/utils/`）
 
 - `ObjectPool<T>`（`src/utils/ObjectPool.ts`）：通用对象池，复用频繁创建/销毁的对象以减少 GC 压力。泛型设计，可池化任何类型。
   - 配置：`factory`（创建函数）、`reset`（重置函数，可选）、`validate`（验证函数，可选）、`initialSize`（预分配数）、`maxSize`（最大池容量）

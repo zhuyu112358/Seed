@@ -188,3 +188,39 @@
 
 **需求覆盖：** 需求1（灵魂-世界接口约定）核心闭环打通——感知生成→SoulArena决策→动作执行完整链路。
 
+
+
+---
+
+## 2026-09-05 InteractionSystem 物体交互系统（第8轮迭代）
+
+**需求5核心缺口补全：** 创建 InteractionSystem，实现可交互物体的状态机，物体交互不再只是记录计数，而是有实际的状态变化。
+
+**新增文件：**
+- `src/entity/InteractionSystem.ts`：通用可交互物体状态机系统
+
+**核心功能：**
+- 可交互物体定义（InteractableDef）：entityId, type, name, initialState, states[], transitions[], usable, maxUses
+- 6种交互类型：toggle（开关）、door（门）、button（按钮）、lever（拉杆）、container（容器）、custom（自定义）
+- 状态转换引擎：按当前状态查找匹配的 transition，执行 from→to 转换
+- interact(entityId, actorId?, events?)：触发状态转换，返回 InteractionResult
+- use(entityId, actorId?, events?)：使用物体，递增 useCount，支持 maxUses 消耗限制
+- 状态转换时发出 interaction.state-change 事件；use 时发出 interaction.use 事件
+- 运行时追踪：interactCount, useCount, lastInteractedBy/At, lastUsedBy/At
+- reset(entityId)：重置到初始状态，清除计数
+- getStats()：聚合统计（totalRegistered, totalInteractions, totalUses, byType）
+- 内置工厂函数：createDoorDef/createToggleDef/createButtonDef/createLeverDef/createContainerDef
+- 支持自定义多状态机（如锁：locked→unlocking→unlocked→locked）
+- maxInteractables 容量限制
+
+**架构约束遵守：**
+- 通用状态机，不硬编码具体世界属性
+- 不实现灵魂决策逻辑，只处理交互状态转换
+- 可交互物体定义通过 register() 传入，不写死在内核
+
+**测试：** 新增 23 个单元测试（注册/拒绝、5种内置类型状态转换、无转换失败、交互计数追踪、use计数/不可用/耗尽、reset、unregister、getStats、事件发射、容量限制、自定义3状态机、WorldSystem tick），完整测试套件 200/200 通过。
+
+**文档：** ARCHITECTURE.md 新增 3.5 节「交互系统」，后续章节重新编号（3.5物理→3.6，3.6事件→3.7，3.7通信→3.8，3.8性能工具→3.9）。
+
+**需求覆盖：** 需求5（虚拟物理世界搭建，物体的定义与互相之间的交互）——物体交互从"只记录计数"升级为"实际状态机转换"，门可以开关、灯可以亮灭、按钮可以按下、容器可以打开。
+
