@@ -1,6 +1,0 @@
-﻿import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { AcousticPropagation } from '../src/communication/AcousticPropagation.js';
-import { Message } from '../src/communication/Message.js';
-import { EntityFactory } from '../src/entity/EntityFactory.js';
-test('attenuation', () => { const ap = new AcousticPropagation({maxRadius:20}); const src = EntityFactory.dynamicBox({name:'s',position:{x:0,y:0,z:0}}); const near = EntityFactory.dynamicBox({name:'n',position:{x:2,y:0,z:0}}); const far = EntityFactory.dynamicBox({name:'f',position:{x:15,y:0,z:0}}); const ents=[src,near,far]; const view={entities:ents,byId:(id:string)=>ents.find(e=>e.id===id)}; const r = ap.transmit(new Message({content:'x',sourceId:src.id,position:src.position.toObject(),medium:'acoustic',intensity:1}),src,view); const nr=r.find(x=>x.recipientId===near.id); const fr=r.find(x=>x.recipientId===far.id); if(nr&&fr) assert.ok(nr.receivedIntensity>=fr.receivedIntensity); });

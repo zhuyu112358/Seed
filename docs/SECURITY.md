@@ -1,194 +1,218 @@
 # 安全文档（SECURITY）
 
-> 基于 `src/security/` 下的真实实现编写：`ApiKeyAuth.ts`、`InputValidator.ts`、`RateLimiter.ts`、
-> `PermissionSystem.ts`、`sanitize.ts`，以及 `src/reliability/Logger.ts` 的审计日志。
+> 本文件为新建文档。严格基于 `src/security/` 真实源码：
+> `InputValidator.ts`、`PermissionSystem.ts`、`RateLimiter.ts`、`ApiKeyAuth.ts`、`sanitize.ts`。
+> 文档中文，代码注释英文。
 
 ---
 
-## 1. 威胁模型
+## 1. 概述
 
-Seed 暴露 HTTP + WebSocket 服务，外部（灵魂/客户端）可以读取世界、提交实体创建、提交灵魂动作。
-主要威胁：
+Seed 的安全层由五部分组成，均为零依赖、可独立使用的小模块：
 
-| 威胁 | 缓解层 |
-|------|--------|
-| 未授权访问 API | ApiKeyAuth（API Key） |
-| 恶意/畸形请求体 | InputValidator（schema 校验） |
-| 暴力刷接口 / DoS | RateLimiter（令牌桶） |
-| 越权操作（灵魂改世界） | PermissionSystem（RBAC） |
-| 注入（XSS / 命令 / 模板注入） | sanitize（sanitizeString / looksInjective） |
-| 故障后的取证与恢复 | Logger（结构化 JSON）+ ExceptionHandler 紧急快照 |
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| 输入校验 | `InputValidator` | 按字段规则校验入参对象 |
+| 访问控制 | `PermissionSystem` | 基于角色的简单 RBAC |
+| 限流 | `RateLimiter` | 按客户端固定窗口限流 |
+| API Key | `apiKeyAuth()` | Express 中间件，校验 `X-API-Key` |
+| 文本清洗 | `sanitizeString` / `looksInjective` | 自由文本二次清洗与注入检测 |
 
-安全是**纵深**的：认证 → 限流 → 校验 → 授权 → 输出清洗，逐层兜底。
+这些模块在 `api/server.ts` 中被组装到 HTTP 入口。
 
 ---
 
-## 2. 认证授权（ApiKeyAuth）
+## 2. 输入校验 `InputValidator`（`src/security/InputValidator.ts`）
 
-来源：`src/security/ApiKeyAuth.ts`。
-
-```ts
-apiKeyAuth({ enabled: boolean; validKeys: string[] })  // Express 中间件工厂
-```
-
-- 请求头：`X-API-Key`（Express 不区分大小写，代码读 `req.header('x-api-key')`）。
-- `enabled=false` 时直接 `next()`（开发模式全放行）。
-- `enabled=true` 时：缺 key 或 key 不在 `validKeys` 中 → `401 { "error": "unauthorized",
-  "message": "missing or invalid X-API-Key" }`。
-- 在 `server.ts` 中由环境变量驱动：
-  - `enabled = process.env.SEED_AUTH === 'on'`
-  - `validKeys = (process.env.SEED_API_KEYS ?? 'dev-seed-key').split(',')`
-
-> 生产务必 `SEED_AUTH=on` 并配置强 `SEED_API_KEYS`；默认 `dev-seed-key` 仅供本地开发。
-
----
-
-## 3. 输入验证（InputValidator）
-
-来源：`src/security/InputValidator.ts`，基于 **Ajv**（`new Ajv({ allErrors: true, strict: false })`）。
-
-### 3.1 API
+> **与早期设想不同**：当前实现**没有** `registerSchema` / `validate(name, data)` / `validateInline` / `sanitize` / `getRegisteredSchemas`，也**没有内置 schema**。使用时每次直接传 schema。
 
 ```ts
 class InputValidator {
-  constructor(logger?);
-  registerSchema(name: string, schema: ValidationSchema): void;
-  validate(name: string, data: unknown): ValidationResult;        // 按已注册 schema 名校验
-  validateInline(schema: ValidationSchema, data: unknown): ValidationResult; // 内联 schema
-  sanitize(input: unknown, maxLen?): { clean: unknown; injected: boolean };
-  getRegisteredSchemas(): string[];
+  constructor(); // no arguments
+  validate(schema: Schema, input: unknown): ValidationResult;
 }
 
-interface ValidationResult { valid: boolean; errors: { field: string; message: string }[] }
-```
-
-`ValidationSchema`（`types/index.ts`）：`{ type, required?, properties?, min?, max?, pattern?,
-enum?, items? }`；内部会把 `min/max` 转成 Ajv 的 `minimum/maximum`。
-
-### 3.2 5 个内置 schema（构造时自动注册）
-
-| schema 名 | 必填 | 要点 |
-|-----------|------|------|
-| `ActionRequest` | `action`, `soulId` | `action` enum：`move/interact/communicate/observe`；`soulId/targetId` 匹配 `^[A-Za-z0-9_-]{1,64}$` |
-| `PerceptionFrameConfig` | `distance` | `distance` 0–5000，`fov` 0–360，`includeSounds/includeVisuals` 布尔 |
-| `EntityConfig` | `type` | `type` 匹配 `^[A-Za-z0-9_-]{1,32}$`，`name` ≤64 |
-| `CommunicationMessage` | `from`, `body` | `from` 匹配 id 正则，`body` ≤1000，`channel` ≤64 |
-| `WorldEventTrigger` | `eventType` | `eventType` 匹配 `^[a-z_]{2,32}$` |
-
-### 3.3 与 server.ts 的对接现状
-
-> **已知不一致**（见 DEVLOG）：`server.ts` 仍按旧写法调用安全层——把 schema 对象当 `validate` 的
-> `name` 字符串传入、读取 `result.ok/result.value`。正确用法是
-> `validator.validateInline(schema, body)` 并判断 `result.valid`。修复前 REST 校验不生效。
-
----
-
-## 4. 速率限制（RateLimiter）
-
-来源：`src/security/RateLimiter.ts`，**令牌桶**算法。
-
-### 4.1 配置（RateLimitConfig，types/index.ts）
-
-```ts
-interface RateLimitConfig {
-  enabled: boolean;
-  maxRequests: number;       // 窗口内预算
-  windowMs: number;          // 窗口
-  perSoul: boolean;          // 按灵魂分桶
-  perIP: boolean;            // 按 IP 分桶
-  burstMultiplier: number;   // 突发容量 = max(maxRequests, burstMultiplier*maxRequests)
+type FieldType = 'string' | 'number' | 'boolean' | 'object' | 'array';
+interface FieldRule {
+  type: FieldType;
+  required?: boolean;
+  min?: number;      // string length or numeric lower bound
+  max?: number;      // string length or numeric upper bound
+  enum?: Array<string | number | boolean>;
+  pattern?: RegExp;
+}
+type Schema = Record<string, FieldRule>;
+interface ValidationResult {
+  ok: boolean;
+  errors: string[];
+  value: Record<string, unknown>;
 }
 ```
 
-### 4.2 API
+校验规则：非对象/数组/null 直接失败；缺失必填字段报错；按 `type` 做类型检查；`string` 额外查长度/pattern；`number` 额外查上下界；`enum` 查枚举；通过的字段进入 `value`。
+
+示例（与 `server.ts` 中实体创建一致）：
 
 ```ts
-new RateLimiter(config: RateLimitConfig, logger?);
-consume(key, tokens=1): { allowed; remaining; retryAfterMs };  // 扣令牌，拒绝时给 retryAfterMs
-check(key): { allowed; remaining };                            // 只看不扣（无 retryAfterMs）
-reset(key): void;  resetAll(): void;
-getStats(): { totalRequests; allowed; rejected; activeKeys; topKeys };
+import { InputValidator } from './security/InputValidator.js';
+
+const v = new InputValidator();
+const result = v.validate(
+  {
+    name: { type: 'string', required: true, max: 64 },
+    x: { type: 'number', required: true },
+    y: { type: 'number', required: true },
+    z: { type: 'number', required: true },
+  },
+  req.body,
+);
+if (!result.ok) {
+  // handle result.errors
+}
 ```
-
-桶按 `windowMs * 5` 闲置期自动清理（`reapStale`）；`!enabled` 时直接放行。
-
-> **已知不一致**：需要带 `retryAfterMs` 的限流响应应使用 `consume()`；`check()` 不返回
-> `retryAfterMs`。`server.ts` 当前 429 分支与构造参数仍在迁移中。
 
 ---
 
-## 5. RBAC 权限（PermissionSystem）
+## 3. 访问控制 `PermissionSystem`（`src/security/PermissionSystem.ts`）
 
-来源：`src/security/PermissionSystem.ts`。
-
-### 5.1 5 个默认角色
-
-| 角色 | 默认权限 |
-|------|----------|
-| `admin` | `*:*`（全部资源全部动作） |
-| `moderator` | `entity.*` 的 read/update/delete，`event.*` 的 execute |
-| `soul` | `world.*:read`、`entity.*:read`、`entity.own:update`、`action.*:execute`、`communication.*:execute` |
-| `observer` | `*:read` |
-| `anonymous` | `world.public:read` |
-
-### 5.2 API
+> **与早期设想不同**：当前是规则数组 + 通配匹配，**没有** `defineRole/assignRole/hasPermission/checkPermission/addPermissionToRole`。
 
 ```ts
-new PermissionSystem(logger?);
-defineRole(role, permissions: Permission[]): void;
-assignRole(entityId, role): void;  removeRole(entityId): void;  getRole(entityId): Role | null;
-hasPermission(entityId, resource, action): boolean;          // 带缓存
-checkPermission(entityId, resource, action): { allowed; reason? };
-addPermissionToRole(role, permission): void;
-removePermissionFromRole(role, resource, action): void;
+interface PermissionRule { role: Role; resource: string; action: string; }
+type Role = 'admin' | 'moderator' | 'soul' | 'observer' | 'anonymous';
+
+class PermissionSystem {
+  constructor();
+  grant(rule: PermissionRule): void;
+  isAllowed(role: Role, resource: string, action: string): boolean;
+  ensure(role: Role, resource: string, action: string): void; // throws if denied
+}
 ```
 
-资源匹配支持 `*` 通配与 `prefix.*` 前缀（如 `entity.*` 匹配 `entity.own`）。未分配角色的实体按
-`anonymous` 处理。
+匹配规则：规则满足 `role` 相同，且 `resource` 为 `*` 或等于请求资源，且 `action` 为 `*` 或等于请求动作。
 
-> **已知类型不一致**：`types/index.ts` 的 `Role` 联合类型目前只有 `'admin'|'soul'|'observer'`，
-> 缺少 `moderator` / `anonymous`，导致 PermissionSystem 有 3 个编译错误。修复方向是把 `Role`
-> 扩展为五角色。
->
-> 另外旧文档假设的 `permissions.ensure(role, resource, action)` 在新实现中**不存在**，应使用
-> `hasPermission` / `checkPermission`。
+**构造时内置的默认授权**：
 
----
+| 角色 | resource | action |
+|------|----------|--------|
+| `admin` | `*` | `*` |
+| `observer` | `*` | `read` |
+| `soul` | `entity` | `read` |
+| `soul` | `entity` | `interact` |
+| `soul` | `soul` | `self-action` |
 
-## 6. 审计日志（Logger）
+示例：
 
-来源：`src/reliability/Logger.ts`。
+```ts
+import { PermissionSystem } from './security/PermissionSystem.js';
 
-- 零依赖结构化 **JSON** 日志：`{ time, level, module, message, ...meta }`。
-- `Logger.for(module)` 子 logger，支持 `(message, meta?)` 与 `(bindings, message)` 两种重载。
-- 同时输出到控制台与 `logs/seed.log`；级别由 `SEED_LOG_LEVEL`（默认 `info`）控制。
-- 日志写入失败被静默吞掉，不会拖垮模拟——这是有意的「日志绝不影响仿真」。
-- 灵魂动作（如 `speak`）会被记录，作为审计线索。
+const perms = new PermissionSystem();
+perms.grant({ role: 'moderator', resource: 'entity', action: 'delete' });
 
----
+perms.isAllowed('soul', 'entity', 'interact'); // true
+perms.ensure('soul', 'entity', 'interact');    // ok
+perms.ensure('anonymous', 'entity', 'interact'); // throws "permission denied"
+```
 
-## 7. 输入清洗（sanitize）
-
-来源：`src/security/sanitize.ts`。
-
-- **`sanitizeString(input, maxLen=500)`**：删除控制字符（`\u0000-\u001F\u007F`），把 `< > & " '`
-  转义为 `\u00xx`，超长截断。用于自由文本（灵魂说话、聊天、物体名）。
-- **`looksInjective(input)`**：识别 `<script>`、`DROP TABLE`、`; rm -rf`、模板插值 `${...}`、
-  反引号命令 `` `...` `` 等注入特征。
-- `InputValidator.sanitize()` 会同时调用二者，返回 `{ clean, injected }`。
+> 角色集合来自 `types/index.ts`：`admin/moderator/soul/observer/anonymous`。当前默认只授权了其中 admin/observer/soul 三者；`moderator`/`anonymous` 需自行 `grant`。
 
 ---
 
-## 8. 当前安全状态总结
+## 4. 限流 `RateLimiter`（`src/security/RateLimiter.ts`）
 
-| 控制项 | 状态 |
-|--------|------|
-| API Key 认证 | 已实现，`SEED_AUTH` 开关 |
-| 输入校验（Ajv） | 已实现 5 个 schema；与 server.ts 调用尚未对齐 |
-| 令牌桶限流 | 已实现；server.ts 仍在迁移到配置对象/consume |
-| RBAC | 已实现 5 角色；`Role` 类型需扩展 |
-| 输出清洗 | 已实现 |
-| 审计日志 | 已实现结构化 JSON |
-| 紧急快照 | `ExceptionHandler` 已实现 |
+> **与早期设想不同**：构造为 `(qps, windowMs)`，方法为 `check(clientId, now?)` / `reset()`，**没有** `consume/resetAll/getStats`。但 `check` 返回值**确实包含** `retryAfterMs`。
 
-> 因编译未通过，上述控制层在 `server.ts` 中的接线尚未全部生效；对齐计划见 `docs/ROADMAP.md`。
+```ts
+interface RateLimitResult { allowed: boolean; remaining: number; retryAfterMs: number; }
+
+class RateLimiter {
+  constructor(qps: number, windowMs?: number); // default windowMs = 1000
+  check(clientId: string, now?: number): RateLimitResult;
+  reset(): void; // clear all windows
+}
+```
+
+语义：固定窗口，每个 `clientId` 在 `windowMs` 内最多 `qps` 次；超限返回 `allowed=false` 与剩余窗口 `retryAfterMs`。
+
+`server.ts` 中按 `req.ip` 使用：
+
+```ts
+import { RateLimiter } from './security/RateLimiter.js';
+
+const limiter = new RateLimiter(100); // 100 requests / second / ip
+const rl = limiter.check(req.ip ?? 'anonymous');
+if (!rl.allowed) {
+  // respond 429 with rl.retryAfterMs
+}
+```
+
+---
+
+## 5. API Key 中间件 `apiKeyAuth`（`src/security/ApiKeyAuth.ts`）
+
+```ts
+interface ApiKeyAuthOptions {
+  enabled: boolean;          // false => allow all (dev mode)
+  validKeys: string[];
+}
+function apiKeyAuth(opts: ApiKeyAuthOptions):
+  (req: Request, res: Response, next: NextFunction) => void;
+```
+
+- 开启时校验请求头 `x-api-key` 是否在 `validKeys` 中；缺失/不匹配返回 `401 { error: 'unauthorized', ... }`。
+- `server.ts` 的接线：`enabled = process.env.SEED_AUTH === 'on'`，`validKeys = (process.env.SEED_API_KEYS ?? 'dev-seed-key').split(',')`。
+
+```ts
+import { apiKeyAuth } from './security/ApiKeyAuth.js';
+
+app.use(apiKeyAuth({
+  enabled: process.env.SEED_AUTH === 'on',
+  validKeys: (process.env.SEED_API_KEYS ?? 'dev-seed-key').split(','),
+}));
+```
+
+---
+
+## 6. 文本清洗 `sanitize`（`src/security/sanitize.ts`）
+
+```ts
+// Strip control chars + HTML-escape < > & " ', cap length.
+function sanitizeString(input: string, maxLen?: number): string; // maxLen default 500
+
+// Heuristic: reject strings that look like shell / SQL / HTML injection.
+function looksInjective(input: string): boolean;
+```
+
+- `sanitizeString`：移除 `\u0000-\u001F` / `\u007F` 控制字符，把 `< > & " '` 转义为 `\uXXXX`，超长截断。用于灵魂发言、聊天、对象名等自由文本（`server.ts` 的 `speak` 动作即调用它）。
+- `looksInjective`：命中 `<script`、`DROP TABLE`、`rm -rf`、`${...}`、反引号等模式即判为疑似注入。
+
+> 这是第二道防线；第一道是 `InputValidator` 的 pattern/枚举白名单。
+
+---
+
+## 7. 在 API 中的实际装配（`server.ts`）
+
+一个请求穿过的安全链路：
+
+```
+HTTP request
+  → express.json({ limit: '256kb' })      // body 体积上限
+  → apiKeyAuth(...)                        // X-API-Key（仅 SEED_AUTH=on）
+  → RateLimiter.check(clientId)            // 固定窗口限流
+  → InputValidator.validate(schema, body)  // 字段级校验
+  → PermissionSystem.ensure(role, ...)     // RBAC
+  → sanitizeString(...)                    // 自由文本清洗（speak）
+```
+
+---
+
+## 8. 安全建议与已知限制
+
+1. **生产务必开启鉴权**：`SEED_AUTH=on` 并配置强随机 `SEED_API_KEYS`；当前默认 key `dev-seed-key` 仅限本地。
+2. **限流粒度**：当前按 `req.ip` 固定窗口，未按灵魂 id 区分；反代后需正确透传 `X-Forwarded-For` 否则所有请求会被算成同一 IP。
+3. **RBAC 较粗**：`PermissionSystem` 仅支持 `(role, resource, action)` 三元组通配，无数据级/条件级权限；`moderator`/`anonymous` 角色无默认授权。
+4. **`InputValidator` 无内置 schema**：常用 schema（ActionRequest、PerceptionFrameConfig 等）需调用方自行定义，建议后续内置。
+5. **`looksInjective` 是启发式**：仅作辅助，不能替代参数化/白名单；当前无数据库，SQL 注入风险暂不适用，但未来接入存储时需复查。
+6. **输入校验与桥接不兼容**：`SoulBridge` 期望 `validateInline(schema, data)`，而 `InputValidator` 是 `validate(schema, input)`，需要适配层（见 `DEVLOG.md` K10）。
+7. **无 CORS / CSRF / Helmet 配置**：当前未装配，浏览器直接接入时需补充。
+8. **WebSocket `/ws` 无鉴权**：当前握手后任意客户端可发消息，需在生产前加 token 校验。
