@@ -337,3 +337,19 @@ export {
   BuildingRepairedEvent,
 } from '../building/BuildingEvents.js';
 export { BuildingSystem } from '../building/BuildingSystem.js';
+
+// --- Territory System (M8) ---
+export type {
+  TerritoryBoundary,
+  Territory,
+  TerritoryResult,
+  TerritoryPosition,
+} from '../territory/TerritoryTypes.js';
+export {
+  TerritoryClaimedEvent,
+  TerritoryAbandonedEvent,
+  TerritoryExpandedEvent,
+  TerritoryEnteredEvent,
+  TerritoryLeftEvent,
+} from '../territory/TerritoryEvents.js';
+export { TerritorySystem } from '../territory/TerritorySystem.js';

@@ -6448,3 +6448,112 @@ BuildingSystem
 - 测试文件：71个
 - SDK版本：v2.3.0（M7完成），M8目标v2.4.0
 
+
+
+---
+
+## 2026-09-06 M8阶段2：领地系统（第79轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- ba1cfc0（M8阶段1建筑系统）+ seed-sdk-v2.3.0 tag推送成功（GitHub网络恢复）
+- 0待推送，971个单元测试全部通过
+
+#### 2. 领地系统 (`src/territory/`)
+
+**TerritoryTypes** (`TerritoryTypes.ts`)
+- TerritoryBoundary：minX/maxX/minZ/maxZ（x/z平面AABB边界）
+- Territory：id/name/ownerId/boundary/claimedTick/metadata
+- TerritoryResult：success/territoryId/error
+- TerritoryPosition：x/z
+
+**TerritoryEvents** (`TerritoryEvents.ts`) — 5个事件类
+- TerritoryClaimedEvent：领地声明
+- TerritoryAbandonedEvent：领地放弃
+- TerritoryExpandedEvent：领地扩展（含oldBoundary/newBoundary）
+- TerritoryEnteredEvent：实体进入领地
+- TerritoryLeftEvent：实体离开领地
+
+**TerritorySystem** (`TerritorySystem.ts`) — WorldSystem
+- claimTerritory()：声明领地（边界验证+重叠检测）
+- abandonTerritory()：放弃领地（仅owner，清理实体追踪）
+- expandTerritory()：扩展/收缩边界（仅owner，重叠检测）
+- updateEntityPosition()：更新实体位置，自动触发enter/leave事件
+- getTerritory/getTerritoriesByOwner/getTerritoryAtPosition/getTerritories
+- isPositionInTerritory/isPositionInSpecificTerritory
+- entityTerritory：Map<entityId, territoryId>追踪实体当前所在领地
+- serialize/deserialize（含entityTerritory状态）
+
+#### 3. SDK导出 (`src/sdk/index.ts`)
+- territory模块全部导出（TerritoryBoundary/Territory+5事件类+TerritorySystem）
+
+#### 4. 测试 (`tests/territory-system.test.ts`)
+- 23个新测试，覆盖：
+  - 声明领地：5个（正常/重叠检测/无效边界/事件/默认名字）
+  - 放弃领地：3个（owner放弃/非owner拒绝/事件）
+  - 扩展领地：4个（owner扩展/非owner拒绝/重叠检测/事件）
+  - 实体进入/离开：4个（进入事件/离开事件/领地内移动不触发/跨领地left+entered）
+  - 查询：4个（byOwner/atPosition/isPositionInTerritory/isPositionInSpecificTerritory）
+  - 序列化：1个
+  - WorldSystem：2个（添加到world/stop清理）
+
+### 架构设计
+
+**领地系统模型**：
+```
+TerritorySystem
+  ├── territories: Map<territoryId, Territory>
+  ├── entityTerritory: Map<entityId, territoryId>
+  ├── claimTerritory (边界验证+AABB重叠检测)
+  ├── abandonTerritory (仅owner，清理实体追踪)
+  ├── expandTerritory (仅owner，重叠检测)
+  ├── updateEntityPosition (自动enter/leave事件)
+  └── 查询 (byOwner/atPosition/isInTerritory)
+       → 应用层注入领地规则（税收/权限/建造限制）
+       → Seed只管理领地状态+边界检测+事件发射
+```
+
+**与SoulArena分工**：
+- SoulArena：领地决策（声明哪块地/是否放弃/扩展范围）、领地规则（税收/权限/建造限制）
+- Seed：领地状态管理（声明/放弃/扩展）+AABB边界重叠检测+实体进入/离开追踪+事件发射
+
+### 关键特性
+
+- **AABB边界重叠检测**：声明/扩展领地时自动检测与已有领地的x/z平面重叠
+- **实体进入/离开自动追踪**：updateEntityPosition()自动比较当前位置与已有领地，触发enter/leave事件
+- **跨领地移动**：实体从一个领地移动到另一个领地时，同时触发left（旧领地）+entered（新领地）
+- **owner权限控制**：放弃/扩展仅owner可操作
+- **边界验证**：min必须小于max，防止无效边界
+- **序列化完整**：territories + entityTerritory + counter全部持久化
+
+### 验证结果
+
+- **单元测试**：994/994 全绿（M8阶段1结束971，+23）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M8里程碑进度：40%
+
+- ✅ 阶段1：建筑系统（25测试）
+- ✅ 阶段2：领地系统（23测试）
+- ⬜ 阶段3：建筑+领地事件感知集成（SoulPerceptionSystem监听10个事件）
+- ⬜ 阶段4：建筑效果集成（生产→资源系统/防御→伤害减免）
+- ⬜ 阶段5：端到端验证+SDK v2.4.0发布
+
+### 下一轮计划
+
+1. M8阶段3：建筑+领地事件感知集成
+   - SoulPerceptionSystem新增10个事件监听器：
+     - 建筑：building.placed(low)/building.upgraded(medium)/building.destroyed(high)/building.damaged(low)/building.repaired(low)
+     - 领地：territory.claimed(low)/territory.abandoned(medium)/territory.expanded(low)/territory.entered(low)/territory.left(low)
+   - 10个unsubscribe字段+stop()清理
+   - 12+测试
+
+### 迭代统计
+
+- 总迭代轮数：79轮
+- 单元测试：994个（M8阶段1结束971，+23）
+- 测试文件：72个
+- SDK版本：v2.3.0（M7完成），M8目标v2.4.0
+
