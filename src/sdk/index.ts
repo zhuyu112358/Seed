@@ -252,3 +252,20 @@ export {
   TaskStatusChangedEvent,
 } from '../task/TaskEvents.js';
 export { TaskSystem } from '../task/TaskSystem.js';
+
+// --- Narrative System (M6) ---
+export { NarrativeChainInstance } from '../narrative/NarrativeTypes.js';
+export type {
+  NarrativeStatus,
+  NarrativeContext,
+  NarrativeNode,
+  NarrativeChainDefinition,
+} from '../narrative/NarrativeTypes.js';
+export {
+  NarrativeStartedEvent,
+  NarrativeNodeEnteredEvent,
+  NarrativeNodeExitedEvent,
+  NarrativeBranchEvent,
+  NarrativeCompletedEvent,
+} from '../narrative/NarrativeEvents.js';
+export { NarrativeSystem } from '../narrative/NarrativeSystem.js';

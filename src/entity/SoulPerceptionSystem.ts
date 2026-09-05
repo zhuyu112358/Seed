@@ -31,6 +31,13 @@ import {
   TaskStatusChangedEvent,
 } from "../task/TaskEvents.js";
 import {
+  NarrativeStartedEvent,
+  NarrativeNodeEnteredEvent,
+  NarrativeNodeExitedEvent,
+  NarrativeBranchEvent,
+  NarrativeCompletedEvent,
+} from "../narrative/NarrativeEvents.js";
+import {
   EntityArrivedEvent,
   CollisionEvent,
   CollisionEnterEvent,
@@ -147,6 +154,16 @@ export class SoulPerceptionSystem implements WorldSystem {
   private taskFailedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for task.status_changed event, set on first tick. */
   private taskStatusChangedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for narrative.started event, set on first tick. */
+  private narrativeStartedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for narrative.node_entered event, set on first tick. */
+  private narrativeNodeEnteredUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for narrative.node_exited event, set on first tick. */
+  private narrativeNodeExitedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for narrative.branch event, set on first tick. */
+  private narrativeBranchUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for narrative.completed event, set on first tick. */
+  private narrativeCompletedUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -515,6 +532,81 @@ export class SoulPerceptionSystem implements WorldSystem {
       });
     }
 
+    // Listen for narrative started events.
+    if (!this.narrativeStartedUnsubscribe) {
+      this.narrativeStartedUnsubscribe = events.on("narrative.started", (evt: NarrativeStartedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `narrative_started_${p.chainId}_${evt.timestamp}`,
+          "narrative.started",
+          `Narrative started: ${p.chainName}`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for narrative node entered events.
+    if (!this.narrativeNodeEnteredUnsubscribe) {
+      this.narrativeNodeEnteredUnsubscribe = events.on("narrative.node_entered", (evt: NarrativeNodeEnteredEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `narrative_node_entered_${p.chainId}_${p.nodeId}_${evt.timestamp}`,
+          "narrative.node_entered",
+          `Narrative node: ${p.nodeName}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for narrative node exited events.
+    if (!this.narrativeNodeExitedUnsubscribe) {
+      this.narrativeNodeExitedUnsubscribe = events.on("narrative.node_exited", (evt: NarrativeNodeExitedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `narrative_node_exited_${p.chainId}_${p.nodeId}_${evt.timestamp}`,
+          "narrative.node_exited",
+          `Narrative node left: ${p.nodeName}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for narrative branch events.
+    if (!this.narrativeBranchUnsubscribe) {
+      this.narrativeBranchUnsubscribe = events.on("narrative.branch", (evt: NarrativeBranchEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `narrative_branch_${p.chainId}_${p.fromNodeId}_${p.toNodeId}_${evt.timestamp}`,
+          "narrative.branch",
+          `Narrative branch: ${p.fromNodeId} -> ${p.toNodeId}`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for narrative completed events.
+    if (!this.narrativeCompletedUnsubscribe) {
+      this.narrativeCompletedUnsubscribe = events.on("narrative.completed", (evt: NarrativeCompletedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `narrative_completed_${p.chainId}_${evt.timestamp}`,
+          "narrative.completed",
+          `Narrative completed: ${p.chainName} (${p.nodesEntered} nodes)`,
+          "high",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
     // Lazy-locate WeatherSimulator.
     if (!this.weather || !world.systems.includes(this.weather)) {
       this.weather = world.systems.find(s => s instanceof WeatherSimulator) as WeatherSimulator | null ?? null;
@@ -814,6 +906,31 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.taskStatusChangedUnsubscribe) {
       this.taskStatusChangedUnsubscribe();
       this.taskStatusChangedUnsubscribe = null;
+    }
+
+    if (this.narrativeStartedUnsubscribe) {
+      this.narrativeStartedUnsubscribe();
+      this.narrativeStartedUnsubscribe = null;
+    }
+
+    if (this.narrativeNodeEnteredUnsubscribe) {
+      this.narrativeNodeEnteredUnsubscribe();
+      this.narrativeNodeEnteredUnsubscribe = null;
+    }
+
+    if (this.narrativeNodeExitedUnsubscribe) {
+      this.narrativeNodeExitedUnsubscribe();
+      this.narrativeNodeExitedUnsubscribe = null;
+    }
+
+    if (this.narrativeBranchUnsubscribe) {
+      this.narrativeBranchUnsubscribe();
+      this.narrativeBranchUnsubscribe = null;
+    }
+
+    if (this.narrativeCompletedUnsubscribe) {
+      this.narrativeCompletedUnsubscribe();
+      this.narrativeCompletedUnsubscribe = null;
     }
   }
 }

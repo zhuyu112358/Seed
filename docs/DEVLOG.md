@@ -5610,3 +5610,122 @@ TaskSystem（状态变化）
 - 测试文件：63个
 - SDK版本：v2.1.0（M5完成），M6目标v2.2.0
 
+
+
+---
+
+## 2026-09-06 M6阶段4：世界叙事链（第71轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- 5c719e7（M6阶段3任务感知）已在GitHub，0待推送
+- 817个单元测试全部通过
+
+#### 2. 世界叙事系统 (`src/narrative/`)
+
+**NarrativeTypes** (`NarrativeTypes.ts`)
+- NarrativeStatus：idle/active/paused/completed
+- NarrativeContext：chainId/nodeId/world/blackboard
+- NarrativeNode：id/name/description/entryConditions/onEnter/exitConditions/onExit/branches/terminal
+- NarrativeChainDefinition：id/name/nodes/repeatable/autoStartConditions
+- NarrativeChainInstance：chainId/status/currentNodeIndex/blackboard/startedAt/completedAt/nodesEntered
+  - getCurrentNodeId()/getProgress()/serialize()
+
+**NarrativeEvents** (`NarrativeEvents.ts`) — 5个事件类
+- NarrativeStartedEvent：叙事链开始
+- NarrativeNodeEnteredEvent：进入叙事节点
+- NarrativeNodeExitedEvent：退出叙事节点
+- NarrativeBranchEvent：叙事分支（非顺序跳转）
+- NarrativeCompletedEvent：叙事链完成
+
+**NarrativeSystem** (`NarrativeSystem.ts`) — WorldSystem
+- registerChain/unregisterChain/getChainDefinition/getChainIds
+- startChain()：开始叙事链（进入第一个节点，发射started+node_entered）
+- pauseChain()/resumeChain()/resetChain()
+- tick()：推进活跃叙事链（检查exitConditions→执行onExit→确定下一节点（分支优先/顺序）→检查entryConditions→执行onEnter→terminal节点自动完成）
+- 分支系统：节点可定义branches（condition→targetNodeId），满足条件时跳转到指定节点
+- 条件系统：entryConditions（进入前检查）/exitConditions（退出条件，任一满足即退出）
+- 动作系统：onEnter/onExit回调数组，按顺序执行
+- getInstance/getActiveChains/serialize
+
+#### 3. SoulPerceptionSystem叙事事件集成 (`src/entity/SoulPerceptionSystem.ts`)
+
+新增5个叙事事件监听器（懒加载，首次tick设置，stop()清理）：
+
+| 事件类型 | 严重度 | 感知内容 |
+|----------|--------|----------|
+| narrative.started | medium | 叙事链开始（含链名称） |
+| narrative.node_entered | low | 进入叙事节点（含节点名称） |
+| narrative.node_exited | low | 退出叙事节点 |
+| narrative.branch | medium | 叙事分支跳转（from→to） |
+| narrative.completed | high | 叙事链完成（含节点数） |
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- narrative模块全部导出（NarrativeChainInstance+所有类型+5事件类+NarrativeSystem）
+
+#### 5. 测试
+- `tests/narrative-system.test.ts`：20个测试（注册4/开始与进度6/条件退出1/分支2/动作1/暂停恢复1/重置重复2/完成2/序列化1）
+- `tests/narrative-perception.test.ts`：5个测试（started感知/completed感知/node_entered感知/链名称/stop清理）
+
+### 关键修复
+
+- **叙事感知测试系统顺序**：world.step()按添加顺序运行系统。如果perception在narrative之前添加，perception先生成帧，narrative后发射completed事件，帧不包含。修复：测试中narrative在perception之前添加。
+
+### 架构设计
+
+**叙事链状态机**：
+```
+idle → active (node 0) → [exit condition met] → exit node → [branch/next] → enter node → ... → terminal node → completed
+                ↑                                                          |
+                └──────────── pause/resume ──────────────────────────────┘
+```
+
+**叙事推进流程**：
+```
+NarrativeSystem.tick()
+  → 对每个active链：
+    → 检查当前节点exitConditions
+    → 满足：执行onExit动作 → 发射node_exited
+      → 检查branches（条件→目标节点）
+      → 无分支：顺序下一节点
+      → 检查目标节点entryConditions
+      → 满足：执行onEnter动作 → 发射node_entered
+        → terminal节点：发射completed → 链状态completed
+```
+
+**与SoulArena分工**：
+- SoulArena：叙事内容设计（节点/条件/动作/分支）、叙事链的启动决策
+- Seed：叙事状态机管理（节点推进/条件检查/动作执行/事件发射）
+
+### 验证结果
+
+- **单元测试**：842/842 全绿（817+20+5新）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M6里程碑进度：80%
+
+- ✅ 阶段1：行为树基础设施（43测试）
+- ✅ 阶段2：动态任务系统（26测试）
+- ✅ 阶段3：任务事件感知集成（10测试）
+- ✅ 阶段4：世界叙事链（25测试）
+- ⬜ 阶段5：玩家影响世界反馈+端到端验证+SDK v2.2.0发布
+
+### 下一轮计划
+
+1. M6阶段5：端到端验证+SDK v2.2.0发布
+   - 创建examples/m6-demo.ts（行为树+任务+叙事全链路演示）
+   - 运行集成测试确认无回归
+   - 更新CHANGELOG.md（v2.1.0→v2.2.0）
+   - package.json版本2.1.0→2.2.0
+   - 打git tag seed-sdk-v2.2.0
+   - commit并推送
+
+### 迭代统计
+
+- 总迭代轮数：71轮
+- 单元测试：842个（M6阶段3结束817，+25）
+- 测试文件：65个
+- SDK版本：v2.1.0（M5完成），M6目标v2.2.0
+
