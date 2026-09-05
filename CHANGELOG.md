@@ -5,6 +5,68 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-06
+
+### Milestone M3: Resource System & Economy
+
+Seed v1.2.0 introduces a complete abstract resource system: harvestable resource nodes,
+crafting/production, consumption rules, and experience/level growth. All resource types,
+recipes, consumption rules, and growth rules are registered at runtime — no hardcoded
+game-specific content in the engine kernel. Application layers (e.g., SoulGame) configure
+their own resource economy.
+
+### Added
+
+#### Resource System (M3 Core)
+- **ResourceType & Registry** — Runtime-registered resource type definitions (id/name/maxStackSize/renewable). No hardcoded resource types.
+- **ResourceNode** — Harvestable resource node component (resourceTypeId/currentAmount/maxAmount/regenRate/harvestTime/harvestAmount/renewable). Tracks harvest state, supports regeneration, provides state snapshots.
+- **ResourceInventory** — Entity resource inventory with add/remove/has/getAmount/getTotal/getAll/clear. Configurable maxCapacity.
+- **HarvestSystem** — WorldSystem for resource harvesting. Distance detection (configurable harvestRange, default 3m), harvest countdown, auto-add to inventory, regeneration processing, 4 events (start/complete/depleted/regenerated).
+
+#### Crafting / Production
+- **CraftingRecipe & Registry** — Runtime-registered crafting recipes (inputs→output, craftTime, outputAmount). No hardcoded recipes.
+- **CraftingSystem** — WorldSystem for production. registerSoul inventory, canCraft() validation (resources + concurrency), startCraft() (consumes inputs immediately), tick-based countdown, output on completion. maxConcurrentPerSoul config (default 1). Partial add when inventory near capacity. 3 events (start/complete/fail).
+- **SoulActionSystem craft action** — `craft` action type with recipeId from parameters or targetId. Shares inventory from HarvestSystem to CraftingSystem automatically. Returns detailed failure reasons.
+
+#### Consumption Rules
+- **ConsumptionRule & Registry** — Runtime-registered consumption rules (resourceTypeId/amount/intervalTicks). No hardcoded survival mechanics.
+- **ConsumptionSystem** — WorldSystem for resource consumption over time. registerSoul/unregisterSoul, per-rule tick counters, independent consumption per rule. On success: consume + ResourceConsumedEvent. On failure: partial consume + ResourceConsumptionFailedEvent. enabled flag.
+
+#### Growth / Experience
+- **GrowthRule & Registry** — Runtime-registered growth rules (triggerEventType/soulIdField/xpPerEvent/baseXP/growthMultiplier/maxLevel). Configurable geometric level curves. No hardcoded skill types.
+- **GrowthSystem** — WorldSystem for XP/level tracking. registerSoul/unregisterSoul, grantXP() with auto level-up, getXP/getLevel/getSoulGrowth. Event-driven: listens to trigger event types, grants XP automatically. soulIdField config supports different event payload structures (harvesterId vs soulId). 2 events (xp_gained/level_up).
+
+#### Perception Integration
+- **nearbyResources in PerceptionFrame** — SoulPerceptionSystem now includes nearby harvestable resource nodes in the perception frame: id/name/resourceType/currentAmount/maxAmount/position/distance/isAvailable/isBeingHarvested. Filtered by viewDistance, sorted by distance, capped by maxVisibleEntities.
+- **Harvest & Craft event perception** — SoulPerceptionSystem listens for resource.harvest.complete (low), resource.node.depleted (medium), and crafting.complete (low) events.
+
+#### Action Integration
+- **harvest action** — SoulActionSystem `harvest` action type. Validates target/resource node/availability/distance. Calls HarvestSystem.startHarvest(). Returns detailed failure reasons.
+- **craft action** — SoulActionSystem `craft` action type. See Crafting section above.
+
+#### Type Extensions
+- **ActionRequest** — action type union now includes 'harvest' and 'craft'.
+- **PerceptionFrame** — optional `nearbyResources` field.
+
+#### Examples & Demos
+- **resource-system-demo.ts** — End-to-end demo of the complete M3 resource pipeline: harvest → craft → consume → grow → perceive. Verifies all systems work together.
+
+### SDK Exports
+- Resource system: ResourceType/Registry, ResourceNode, ResourceInventory, HarvestSystem
+- Crafting: CraftingRecipe/Registry, CraftingSystem
+- Consumption: ConsumptionRule/Registry, ConsumptionSystem
+- Growth: GrowthRule/Registry, GrowthSystem
+- Events: HarvestStart/Complete, ResourceDepleted/Regenerated, CraftStart/Complete/Fail, ResourceConsumed/ConsumptionFailed, XPGained/LevelUp
+
+### Tests
+- 86 new tests since v1.1.0 (550 → 636)
+- resource-system.test.ts (24), harvest-action.test.ts (14), crafting-system.test.ts (13), craft-action.test.ts (7), consumption-system.test.ts (12), growth-system.test.ts (16)
+
+### Architecture Principles
+- **No hardcoded world content** — All resource types, recipes, consumption rules, and growth rules are registered at runtime via configuration.
+- **No game logic in kernel** — Seed only executes resource mechanics and emits events. Consequences (death, debuffs, unlocks) are decided by the application layer.
+- **Abstract & configurable** — Every system accepts configuration via constructor/options. No magic numbers or game-specific values in the engine.
+
 ## [1.1.0] - 2026-09-06
 
 ### Milestone M2: Physics & Perception Deepening

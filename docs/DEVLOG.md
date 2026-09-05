@@ -4400,3 +4400,87 @@ HarvestSystem和CraftingSystem各自维护库存Map。SoulActionSystem.doCraft()
 - 单元测试：636个（M3启动时550个，+86）
 - 测试文件：52个
 
+
+
+---
+
+## 2026-09-06 M3阶段7：端到端集成验证+SDK v1.2.0发布（第58轮迭代）
+
+### 本轮完成
+
+#### 1. 资源系统端到端演示 (`examples/resource-system-demo.ts`)
+- 完整M3资源系统流水线验证：采集→生产→消耗→成长→感知
+- 设置：1灵魂+2棵树+采集系统+生产系统+消耗系统+成长系统
+- 配方：2 wood → 4 plank（craftTime=2）
+- 消耗规则：每10tick消耗1 food
+- 成长规则：采集+25 XP（woodcutting），生产+50 XP（crafting）
+- 验证结果：
+  - 采集3次：wood=3
+  - 生产plank：wood=1, plank=4
+  - 消耗12tick：food=4（消耗1）
+  - 成长：Woodcutting Lv.2（75 XP），Crafting Lv.1（50 XP）
+  - 感知：2个附近资源点，4个近期事件
+  - 共10个事件发射
+
+#### 2. Bug修复：getOrCreateInventory参数类型
+- `HarvestSystem.getOrCreateInventory()`接受`GameObject`实体，不是字符串ID
+- 演示中误传字符串导致inventory key为undefined，与harvesterId不匹配
+- 修复：传入soul实体而非字符串ID
+
+#### 3. SDK v1.2.0发布准备
+- package.json版本更新：1.0.0 → 1.2.0
+- CHANGELOG.md添加v1.2.0完整条目（M3资源系统全部新增/变更）
+- SDK构建通过
+- 636测试全绿
+
+### 验证结果
+
+- **单元测试**：636/636 全绿
+- **端到端演示**：✅ 通过（采集→生产→消耗→成长→感知全链路）
+- **构建**：0错误（主项目+SDK）
+- **GitHub**：0待推送（上轮commit已同步）
+
+### M3里程碑完成：100%
+
+- ✅ 阶段1：核心资源系统（ResourceType/Node/Inventory/HarvestSystem）
+- ✅ 阶段2：采集动作集成+事件感知
+- ✅ 阶段3：资源点感知+生产系统
+- ✅ 阶段4：craft动作集成+生产感知
+- ✅ 阶段5：消耗规则系统
+- ✅ 阶段6：成长规则系统
+- ✅ 阶段7：端到端集成验证+SDK v1.2.0发布
+
+### SDK v1.2.0发布内容
+
+- **资源系统**：ResourceType/Registry, ResourceNode, ResourceInventory, HarvestSystem
+- **生产系统**：CraftingRecipe/Registry, CraftingSystem
+- **消耗系统**：ConsumptionRule/Registry, ConsumptionSystem
+- **成长系统**：GrowthRule/Registry, GrowthSystem
+- **14个新事件**：HarvestStart/Complete, ResourceDepleted/Regenerated, CraftStart/Complete/Fail, ResourceConsumed/ConsumptionFailed, XPGained/LevelUp
+- **2个新动作**：harvest, craft
+- **感知增强**：nearbyResources感知帧字段
+- **86个新测试**（550→636）
+
+### 架构原则确认
+
+- ✅ 无硬编码世界内容：所有资源类型/配方/消耗规则/成长规则运行时注册
+- ✅ 无游戏逻辑混入内核：Seed只执行资源机制+发射事件，后果由应用层决定
+- ✅ 抽象可配置：每个系统通过构造函数/选项接受配置
+- ✅ SoulBridgeAdapter未修改：格式转换和API编排仍由适配器负责
+
+### 下一轮计划（M4里程碑）
+
+M3完成，SDK v1.2.0发布后进入M4里程碑。M4方向待管理策略文档确认，可能包括：
+- 经济规则（交易/价格/稀缺性）
+- 多世界/多区域支持
+- 持久化/存档系统
+- 网络同步/多人支持
+- 性能优化（ECS/数据导向）
+
+### 迭代统计
+
+- 总迭代轮数：58轮
+- 单元测试：636个（M3启动时550个，+86）
+- 测试文件：52个
+- SDK版本：v1.2.0
+
