@@ -4996,3 +4996,95 @@ M4完成，SDK v2.0.0发布后进入M5里程碑。M5方向待管理策略文档�
 - 测试文件：58个
 - SDK版本：v2.0.0（M4完成），M5目标v2.1.0
 
+
+
+---
+
+## 2026-09-06 M5阶段2：生态循环系统EcosystemSystem（第65轮迭代）
+
+### 本轮完成
+
+#### 1. 上轮推送重试
+- 517d150（WorldRuleEngine）推送成功，0待推送
+
+#### 2. 生态循环系统 (`src/ecosystem/EcosystemSystem.ts`)
+- 管理资源节点动态生命周期（生成/枯竭/再生/移除）
+- **EcosystemZoneConfig**：id/position/radius/resourceTypeIds/spawnRate/maxNodes/minNodes/spawnIntervalTicks/fertility/allowRegrowth/depletionRemovalTicks
+- 核心功能：
+  - addZone/removeZone/getZone/getZoneIds
+  - 周期性生成检查：基于fertility修正spawnRate，在区域内随机位置生成资源节点
+  - minNodes维护：节点数低于最小值时强制生成
+  - maxNodes限制：不超过最大节点数
+  - 枯竭检测：监控currentAmount<=0的节点，发射depleted事件
+  - 枯竭处理：allowRegrowth=true时等待再生，false时超时后移除节点
+  - setFertility：修改区域肥力，发射zone_changed事件（0-1 clamp）
+  - 可选SeededRandom：确定性生成（setRandom）
+- **4个事件**：EcosystemSpawnEvent/EcosystemDepletedEvent/EcosystemRemovedEvent/EcosystemZoneChangedEvent
+- **ISerializable**：serialize()保存区域配置+枯竭跟踪+spawnCounter，deserialize()恢复
+- WorldSystem接口：name/enabled/tick(dt,world,events)/stop
+
+#### 3. 模块导出 (`src/ecosystem/index.ts`)
+- EcosystemSystem + EcosystemZoneConfig + 4个事件类
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- 新增ecosystem模块导出（EcosystemSystem + EcosystemZoneConfig + 4事件）
+
+#### 5. 测试 (`tests/ecosystem-system.test.ts`)
+- 13个新测试：
+  - 添加/移除区域、重复ID异常
+  - 区域内生成资源节点
+  - maxNodes限制
+  - 生成事件发射
+  - 枯竭节点检测+事件
+  - 枯竭节点移除（regrowth禁用）
+  - setFertility+zone_changed事件
+  - fertility 0-1 clamp
+  - minNodes触发生成
+  - serialize/deserialize状态保存恢复
+  - 禁用系统不处理
+  - 生成位置在区域半径内
+
+### 架构设计
+
+**生态系统 vs 灵魂认知决策**：
+- EcosystemSystem是世界层面的环境动态系统（资源生成/枯竭/再生）
+- 不涉及任何灵魂认知/决策/心理/情绪
+- 资源节点的实际采集由HarvestSystem处理，生态系统只管理节点的生命周期
+- 事件可被SoulPerceptionSystem感知，也可触发WorldRuleEngine规则
+
+**无硬编码世界内容**：
+- 资源类型通过zone.resourceTypeIds配置，无硬编码wood/stone等
+- 区域位置/半径/肥力全部可配置
+- 生成概率/间隔/上限全部可配置
+
+**与现有系统集成**：
+- 检测实体上的resourceNode组件（与HarvestSystem的ResourceNode兼容）
+- 生成事件包含entityId/resourceTypeId/position，应用层可据此注册HarvestSystem节点
+- 事件可被WorldRuleEngine用作条件触发
+
+### 验证结果
+
+- **单元测试**：732/732 全绿（719+13新）
+- **构建**：0错误
+- **GitHub**：0待推送（上轮已同步）
+
+### M5里程碑进度：35%
+
+- ✅ 阶段1：世界规则引擎WorldRuleEngine
+- ✅ 阶段2：生态循环系统EcosystemSystem
+- ⬜ 阶段3：动态世界事件深化（生态事件感知集成+规则引擎联动）
+- ⬜ 阶段4：端到端验证+SDK v2.1.0发布
+
+### 下一轮计划
+
+1. M5阶段3：生态事件感知集成（SoulPerceptionSystem感知ecosystem事件）+ WorldRuleEngine联动演示
+2. 或创建生态系统端到端演示（区域配置→节点生成→采集→枯竭→再生循环）
+3. 更新DEVLOG，commit并推送
+
+### 迭代统计
+
+- 总迭代轮数：65轮
+- 单元测试：732个（M4结束时705个，+27）
+- 测试文件：59个
+- SDK版本：v2.0.0（M4完成），M5目标v2.1.0
+

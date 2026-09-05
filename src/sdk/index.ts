@@ -164,6 +164,16 @@ export type {
   RuleAction,
 } from '../rules/WorldRuleEngine.js';
 
+// --- Ecosystem (M5) ---
+export { EcosystemSystem } from '../ecosystem/EcosystemSystem.js';
+export type { EcosystemZoneConfig } from '../ecosystem/EcosystemSystem.js';
+export {
+  EcosystemSpawnEvent,
+  EcosystemDepletedEvent,
+  EcosystemRemovedEvent,
+  EcosystemZoneChangedEvent,
+} from '../ecosystem/EcosystemSystem.js';
+
 export { ConsumptionSystem } from '../resource/ConsumptionSystem.js';
 export type { ConsumptionSystemConfig } from '../resource/ConsumptionSystem.js';
 export { CraftingSystem } from '../resource/CraftingSystem.js';
