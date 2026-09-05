@@ -35,6 +35,8 @@ export interface BridgeConfig {
   worldId?: string;
   /** World name used when calling enter-world. Default: 'Seed Virtual World' */
   worldName?: string;
+  /** Include last action result in perception feedback to SoulArena. Default: true */
+  enableActionFeedback?: boolean;
 }
 
 /** Action format as output by SoulArena. */
@@ -75,6 +77,7 @@ const DEFAULT_CONFIG: Required<BridgeConfig> = {
   webhookPort: 3001,
   worldId: 'seed-default',
   worldName: 'Seed Virtual World',
+  enableActionFeedback: true,
 };
 
 /**
@@ -95,6 +98,8 @@ export class SoulBridgeAdapter implements WorldSystem {
   private actionSystem: unknown = null;
   private tickCount = 0;
   private actionQueue = new Map<string, SoulArenaAction[]>();
+  /** Last action execution result per soul, fed back in next perception. */
+  private lastActionResults = new Map<string, ActionResult>();
   private webhookServer: Server | null = null;
   private enteredSouls = new Set<string>();
   private stats: BridgeStats = {
@@ -164,8 +169,8 @@ export class SoulBridgeAdapter implements WorldSystem {
   async sendPerception(soulId: string, frame: PerceptionFrame): Promise<void> {
     try {
       const payload = this.config.enableSituationMode
-        ? this.buildSituationPayload(frame)
-        : this.buildStructuredPayload(frame);
+        ? this.buildSituationPayload(soulId, frame)
+        : this.buildStructuredPayload(soulId, frame);
 
       const res = await fetch(`${this.config.soulArenaUrl}/api/souls/${soulId}/perceive`, {
         method: 'POST',
@@ -181,6 +186,11 @@ export class SoulBridgeAdapter implements WorldSystem {
       }
 
       this.stats.perceptionsSent++;
+
+      // Action result has been delivered; clear it so it only appears once.
+      if (this.config.enableActionFeedback) {
+        this.lastActionResults.delete(soulId);
+      }
 
       // Try to parse actions from response (SoulArena may return actions directly).
       try {
@@ -231,9 +241,19 @@ export class SoulBridgeAdapter implements WorldSystem {
           const result = executeAction.call(this.actionSystem, request, world);
           if (result.success) this.stats.actionsExecuted++;
           else this.stats.actionsFailed++;
+          // Store last result for feedback in next perception.
+          this.lastActionResults.set(soulId, result);
         } catch (err) {
           this.stats.actionsFailed++;
           log.warn({ err: String(err), soulId, actionType: action.type }, 'action execution threw');
+          // Store a failure result so SoulArena knows the action errored.
+          this.lastActionResults.set(soulId, {
+            soulId,
+            action: request.action,
+            success: false,
+            message: `action execution threw: ${String(err)}`,
+            timestamp: Date.now(),
+          });
         }
       }
     }
@@ -315,19 +335,26 @@ export class SoulBridgeAdapter implements WorldSystem {
   }
 
   /** Build simplified situation-text payload (recommended mode). */
-  private buildSituationPayload(frame: PerceptionFrame): Record<string, unknown> {
+  private buildSituationPayload(soulId: string, frame: PerceptionFrame): Record<string, unknown> {
+    const lastResult = this.config.enableActionFeedback ? this.lastActionResults.get(soulId) : undefined;
     return {
       tick: frame.worldTime,
-      situation: this.generateSituationText(frame),
+      situation: this.generateSituationText(frame, lastResult),
       worldState: {
         position: frame.position,
         environment: frame.environment,
+        ...(lastResult ? { lastActionResult: {
+          action: lastResult.action,
+          success: lastResult.success,
+          message: lastResult.message,
+          data: lastResult.data,
+        } } : {}),
       },
     };
   }
 
   /** Generate a human-readable situation description from PerceptionFrame. */
-  private generateSituationText(frame: PerceptionFrame): string {
+  private generateSituationText(frame: PerceptionFrame, lastResult?: ActionResult): string {
     const parts: string[] = [];
     const env = frame.environment;
 
@@ -369,11 +396,18 @@ export class SoulBridgeAdapter implements WorldSystem {
       parts.push(`World event: ${latest.name} (severity: ${latest.severity}).`);
     }
 
+    // Last action result feedback (closes the perceive->decide->act loop).
+    if (lastResult) {
+      const status = lastResult.success ? 'succeeded' : 'failed';
+      parts.push(`Your last action "${lastResult.action}" ${status}: ${lastResult.message}`);
+    }
+
     return parts.join(' ');
   }
 
   /** Build full structured payload (SoulArena native format). */
-  private buildStructuredPayload(frame: PerceptionFrame): Record<string, unknown> {
+  private buildStructuredPayload(soulId: string, frame: PerceptionFrame): Record<string, unknown> {
+    const lastResult = this.config.enableActionFeedback ? this.lastActionResults.get(soulId) : undefined;
     const visualObjects = [
       ...frame.nearbySouls.map((s) => ({
         type: 'person' as const,
@@ -416,7 +450,15 @@ export class SoulBridgeAdapter implements WorldSystem {
         severity: e.severity === 'extreme' ? 4 : e.severity === 'high' ? 3 : e.severity === 'medium' ? 2 : 1,
         psychologicalEffects: {},
       })),
-      worldState: { position: frame.position, environment: frame.environment },
+      worldState: {
+        position: frame.position,
+        environment: frame.environment,
+        ...(lastResult ? { lastActionResult: {
+          action: lastResult.action,
+          success: lastResult.success,
+          message: lastResult.message,
+        } } : {}),
+      },
       threatLevel: 0,
       complexity: 0.4,
       timePressure: 0.3,

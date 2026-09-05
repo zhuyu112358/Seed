@@ -729,3 +729,70 @@ ActionRequest.action 联合类型扩展：`'move' | 'interact' | 'communicate' |
 6. **动作执行结果反馈给 SoulArena**：SoulArena 不知道动作是否成功/失败，应通过感知或回调反馈（上一轮已列入 backlog，本轮仍未实现）
 7. **网络通信介质**：communicate 除了 acoustic，还应支持 network（无视距离）和 resonance 介质
 
+
+
+---
+
+## 2026-09-05 SoulBridgeAdapter动作结果反馈：闭环perceive→decide→act→feedback（第17轮迭代）
+
+### 本轮目标
+
+上一轮实现了物理移动模式。本轮解决闭环的关键缺失：**SoulArena 发出动作后不知道执行结果**，无法据此调整后续决策。实现动作结果反馈机制，将 ActionResult 回传给 SoulArena。
+
+### 问题分析
+
+当前 perceive→decide→act 流程：
+1. SoulBridgeAdapter 发送 PerceptionFrame 到 SoulArena `/api/souls/:id/perceive`
+2. SoulArena 决策后通过 webhook 推送动作到 SoulBridgeAdapter
+3. SoulBridgeAdapter 调用 SoulActionSystem.executeAction() 执行动作
+4. **ActionResult 仅用于统计计数（actionsExecuted++ / actionsFailed++），从未回传给 SoulArena**
+
+后果：SoulArena 不知道动作是否成功、失败原因、执行后的状态。如果 move 动作因超出范围失败，SoulArena 会反复尝试同一个无效动作。
+
+### 实现方案
+
+采用**感知内联反馈**（perception-inline feedback），无需 SoulArena 新增 API 端点：
+
+1. **存储最后动作结果**：SoulBridgeAdapter 新增 `lastActionResults: Map<string, ActionResult>`，每灵魂存储最近一次动作执行结果。
+2. **融入感知文本**：`generateSituationText()` 在末尾追加 `Your last action "move" succeeded: moved to (3.0, 0.0, 0.0).`（失败时用 `failed`）。SoulArena 的 LLM 可自然读取。
+3. **融入结构化负载**：`buildSituationPayload()` 和 `buildStructuredPayload()` 的 `worldState` 中新增 `lastActionResult` 字段（含 action/success/message/data），供程序化处理。
+4. **一次性反馈**：感知发送成功后清除该灵魂的 lastActionResult，避免重复反馈。如果感知 API 调用失败，结果保留到下一次。
+5. **异常捕获也记录**：动作执行抛出异常时，构造一个 success=false 的 ActionResult 存入，确保 SoulArena 知道动作出错。
+6. **可配置开关**：`enableActionFeedback: boolean`（默认 true），可通过配置关闭。
+
+### 设计决策
+
+1. **为什么不新增独立的反馈 API 端点？** SoulArena 是独立项目，修改其 API 需要协调。感知内联反馈零侵入，SoulArena 的 LLM 直接从 situation 文本中读取结果。未来如果 SoulArena 新增 `/api/souls/:id/action-result` 端点，可在此基础上扩展。
+2. **为什么只存最后一个结果？** 感知每 10 tick 发送一次，期间可能执行多个动作。只存最后一个是因为 SoulArena 最关心最近一次动作的结果。未来可扩展为结果队列。
+3. **为什么发送成功后才清除？** 如果感知 API 失败，结果应保留到下一次感知，确保 SoulArena 最终能收到。这是 at-least-once 语义。
+
+### 新增单元测试（5个）
+
+1. `stores last action result and includes it in situation payload` — 验证成功动作结果出现在 worldState.lastActionResult 和 situation 文本中
+2. `includes failed action result in situation text with 'failed' status` — 验证失败动作结果文本包含 "failed" 和错误消息
+3. `includes last action result in structured payload worldState` — 验证结构化模式下 lastActionResult 字段
+4. `does not include action result when enableActionFeedback is false` — 验证配置开关生效
+5. `does not include action result for a different soul` — 验证灵魂隔离：soul_a 的动作结果不会出现在 soul_b 的感知中
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**288/288 全绿**（从 283 增至 288，+5）
+- SoulBridgeAdapter 测试：21/21（从 16 增至 21）
+- 修复：2 个原有测试因 buildSituationPayload/buildStructuredPayload 签名变更（新增 soulId 参数）而更新
+
+### 需求覆盖
+
+- 需求5（物体交互与灵魂反馈）：动作执行结果回传给灵魂，形成完整的感知→决策→行动→反馈闭环
+- 需求6（底层逻辑抽象、强支持扩展）：反馈机制可配置开关，感知内联方式零侵入 SoulArena
+- 需求7（运行可靠性）：异常捕获也记录为失败结果，确保不丢失反馈
+
+### 后续可扩展方向（列入 backlog）
+
+1. **动作结果队列**：当前只存最后一个结果，可扩展为最近 N 个结果的队列，SoulArena 能看到更多历史
+2. **独立反馈 API**：当 SoulArena 新增 `/api/souls/:id/action-result` 端点时，支持主动推送反馈而非仅感知内联
+3. **动作结果影响感知**：将动作结果（如移动后的新位置）直接反映在 PerceptionFrame 中，而不是仅作为文本附加
+4. **多灵魂场景测试**：2-3 个灵魂同时在世界中，验证灵魂间交互和反馈隔离（本轮已验证单灵魂反馈隔离）
+5. **MovementController 系统**：物理模式下自动检测到达目标并停止（上一轮列入 backlog）
+6. **障碍物对声学传播的遮挡**：当前 AcousticPropagation 不考虑障碍物遮挡
+

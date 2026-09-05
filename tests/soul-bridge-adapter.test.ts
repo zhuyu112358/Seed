@@ -201,8 +201,8 @@ describe("SoulBridgeAdapter", () => {
   it("builds situation payload with tick and situation fields", () => {
     const bridge = new SoulBridgeAdapter();
     const frame = makePerceptionFrame();
-    const build = (bridge as unknown as { buildSituationPayload: (f: PerceptionFrame) => Record<string, unknown> }).buildSituationPayload;
-    const payload = build.call(bridge, frame);
+    const build = (bridge as unknown as { buildSituationPayload: (s: string, f: PerceptionFrame) => Record<string, unknown> }).buildSituationPayload;
+    const payload = build.call(bridge, "test-soul", frame);
     assert.equal(payload.tick, 100);
     assert.ok(typeof payload.situation === "string");
     assert.ok((payload.situation as string).length > 0);
@@ -211,8 +211,8 @@ describe("SoulBridgeAdapter", () => {
   it("builds structured payload with visual/auditory/proprioception", () => {
     const bridge = new SoulBridgeAdapter({ enableSituationMode: false });
     const frame = makePerceptionFrame();
-    const build = (bridge as unknown as { buildStructuredPayload: (f: PerceptionFrame) => Record<string, unknown> }).buildStructuredPayload;
-    const payload = build.call(bridge, frame);
+    const build = (bridge as unknown as { buildStructuredPayload: (s: string, f: PerceptionFrame) => Record<string, unknown> }).buildStructuredPayload;
+    const payload = build.call(bridge, "test-soul", frame);
     assert.ok(payload.perception);
     const perception = payload.perception as Record<string, unknown>;
     assert.ok(perception.visual);
@@ -255,5 +255,129 @@ describe("SoulBridgeAdapter", () => {
     bridge.tick(1 / 60, world, null as never);
     const stats = bridge.getStats();
     assert.equal(stats.actionsExecuted, 0);
+  });
+
+  // --- Action result feedback tests ---
+
+  it("stores last action result and includes it in situation payload", () => {
+    const bridge = new SoulBridgeAdapter();
+    const world = makeMockWorld();
+    const mockActionSystem = {
+      executeAction: (req: ActionRequest) => ({
+        soulId: req.soulId, action: req.action,
+        success: true, message: "moved to (3.0, 0.0, 0.0)",
+        data: { position: { x: 3, y: 0, z: 0 } },
+        timestamp: Date.now(),
+      }),
+    };
+    bridge.bindSystems(null, mockActionSystem);
+    bridge.ingestAction("soul_test", { type: "move", parameters: { x: 3, y: 0, z: 0 } });
+    bridge.tick(1 / 60, world, null as never);
+
+    // Build situation payload and verify lastActionResult is included.
+    const frame = makePerceptionFrame("soul_test");
+    const build = (bridge as unknown as { buildSituationPayload: (s: string, f: PerceptionFrame) => Record<string, unknown> }).buildSituationPayload;
+    const payload = build.call(bridge, "soul_test", frame);
+
+    const ws = payload.worldState as Record<string, unknown>;
+    assert.ok(ws.lastActionResult, "lastActionResult should be in worldState");
+    const lar = ws.lastActionResult as Record<string, unknown>;
+    assert.equal(lar.action, "move");
+    assert.equal(lar.success, true);
+    assert.ok(String(lar.message).includes("moved to"));
+
+    // Situation text should mention the last action result.
+    assert.ok((payload.situation as string).includes('Your last action "move" succeeded'));
+  });
+
+  it("includes failed action result in situation text with 'failed' status", () => {
+    const bridge = new SoulBridgeAdapter();
+    const world = makeMockWorld();
+    const mockActionSystem = {
+      executeAction: (req: ActionRequest) => ({
+        soulId: req.soulId, action: req.action,
+        success: false, message: "target out of range",
+        timestamp: Date.now(),
+      }),
+    };
+    bridge.bindSystems(null, mockActionSystem);
+    bridge.ingestAction("soul_test", { type: "interact", targetId: "far_object" });
+    bridge.tick(1 / 60, world, null as never);
+
+    const frame = makePerceptionFrame("soul_test");
+    const build = (bridge as unknown as { buildSituationPayload: (s: string, f: PerceptionFrame) => Record<string, unknown> }).buildSituationPayload;
+    const payload = build.call(bridge, "soul_test", frame);
+
+    assert.ok((payload.situation as string).includes('Your last action "interact" failed'));
+    assert.ok((payload.situation as string).includes("target out of range"));
+  });
+
+  it("includes last action result in structured payload worldState", () => {
+    const bridge = new SoulBridgeAdapter({ enableSituationMode: false });
+    const world = makeMockWorld();
+    const mockActionSystem = {
+      executeAction: (req: ActionRequest) => ({
+        soulId: req.soulId, action: req.action,
+        success: true, message: "spoke loudly", timestamp: Date.now(),
+      }),
+    };
+    bridge.bindSystems(null, mockActionSystem);
+    bridge.ingestAction("soul_test", { type: "speak", content: "hello" });
+    bridge.tick(1 / 60, world, null as never);
+
+    const frame = makePerceptionFrame("soul_test");
+    const build = (bridge as unknown as { buildStructuredPayload: (s: string, f: PerceptionFrame) => Record<string, unknown> }).buildStructuredPayload;
+    const payload = build.call(bridge, "soul_test", frame);
+
+    const ws = payload.worldState as Record<string, unknown>;
+    assert.ok(ws.lastActionResult);
+    const lar = ws.lastActionResult as Record<string, unknown>;
+    assert.equal(lar.action, "communicate");
+    assert.equal(lar.success, true);
+  });
+
+  it("does not include action result when enableActionFeedback is false", () => {
+    const bridge = new SoulBridgeAdapter({ enableActionFeedback: false });
+    const world = makeMockWorld();
+    const mockActionSystem = {
+      executeAction: (req: ActionRequest) => ({
+        soulId: req.soulId, action: req.action,
+        success: true, message: "ok", timestamp: Date.now(),
+      }),
+    };
+    bridge.bindSystems(null, mockActionSystem);
+    bridge.ingestAction("soul_test", { type: "wait" });
+    bridge.tick(1 / 60, world, null as never);
+
+    const frame = makePerceptionFrame("soul_test");
+    const build = (bridge as unknown as { buildSituationPayload: (s: string, f: PerceptionFrame) => Record<string, unknown> }).buildSituationPayload;
+    const payload = build.call(bridge, "soul_test", frame);
+
+    const ws = payload.worldState as Record<string, unknown>;
+    assert.equal(ws.lastActionResult, undefined);
+    assert.ok(!(payload.situation as string).includes("Your last action"));
+  });
+
+  it("does not include action result for a different soul", () => {
+    const bridge = new SoulBridgeAdapter();
+    const world = makeMockWorld();
+    const mockActionSystem = {
+      executeAction: (req: ActionRequest) => ({
+        soulId: req.soulId, action: req.action,
+        success: true, message: "ok", timestamp: Date.now(),
+      }),
+    };
+    bridge.bindSystems(null, mockActionSystem);
+    // Action for soul_a only.
+    bridge.ingestAction("soul_a", { type: "move", parameters: { x: 1, y: 0, z: 0 } });
+    bridge.tick(1 / 60, world, null as never);
+
+    // Build payload for soul_b — should NOT have lastActionResult.
+    const frame = makePerceptionFrame("soul_b");
+    const build = (bridge as unknown as { buildSituationPayload: (s: string, f: PerceptionFrame) => Record<string, unknown> }).buildSituationPayload;
+    const payload = build.call(bridge, "soul_b", frame);
+
+    const ws = payload.worldState as Record<string, unknown>;
+    assert.equal(ws.lastActionResult, undefined);
   });
 });
