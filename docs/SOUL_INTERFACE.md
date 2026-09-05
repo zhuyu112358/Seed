@@ -1,4 +1,4 @@
-# 灵魂-世界接口约定（SOUL_INTERFACE）
+﻿# 灵魂-世界接口约定（SOUL_INTERFACE）
 
 > 本文档基于 `src/api/server.ts`、`src/api/soulClient.ts` 与 `src/types/index.ts` 中的真实实现编写。
 > 它定义了一个外部「灵魂」（Soul，由 SoulArena 后端托管）如何进入 Seed 世界、感知世界、执行动作、被世界影响并回传反馈。
@@ -188,3 +188,20 @@ targetId?, parameters, timestamp }`；`ActionResult = { soulId, action, success,
 5. `permissions.ensure(...)` 在当前 PermissionSystem 中不存在（新实现用 `hasPermission/checkPermission`），
    动作端点 RBAC 暂未生效。
 6. SoulClient 1.5s 超时硬编码；mock 回退单向。
+
+
+## 7. 感知系统实现（SoulPerceptionSystem）
+
+src/entity/SoulPerceptionSystem.ts 已实现 PerceptionFrame 逐帧汇聚。每 tick 为每个 soul 类型实体生成感知帧，包含：
+
+- **visibleEntities**：视野距离内的非灵魂实体，按距离排序，默认上限 20 个
+- **nearbySouls**：视野距离内的其他灵魂，含元素属性和距离
+- **environment**：从 WeatherSimulator 读取温度/气压/湿度/风速/风向/光照/天气
+- **events**：最近的世界事件（通过 recordEvent 记录），保留 600 tick（10秒）
+- **communications**：最近的通信消息（通过 recordCommunication 记录），保留 300 tick（5秒）
+
+配置项：viewDistance（默认30）、maxVisibleEntities（默认20）、commRetentionTicks（默认300）、eventRetentionTicks（默认600）。
+
+获取感知：perception.getPerception(soulId) 返回最新 PerceptionFrame，getAllPerceptions() 返回全部。
+
+未来扩展：视野锥（FOV cone）、障碍物遮挡、注意力过滤、感官模态阈值。
