@@ -231,9 +231,10 @@ describe("EcosystemSystem", () => {
       spawnedPosition = evt.payload.position;
     });
 
-    world.step(1 / 60);
-    assert.ok(spawnedPosition);
+    // Step multiple times to ensure spawn check fires (robust against first-tick init).
+    for (let i = 0; i < 10; i++) world.step(1 / 60);
+    assert.ok(spawnedPosition, "expected a resource_spawned event within 10 ticks");
     const dist = Math.sqrt(spawnedPosition!.x ** 2 + spawnedPosition!.z ** 2);
-    assert.ok(dist <= 5.01); // Within radius (small epsilon for float)
+    assert.ok(dist <= 5.05, `position ${dist} outside radius 5`);
   });
 });

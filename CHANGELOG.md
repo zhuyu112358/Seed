@@ -5,6 +5,59 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-09-06
+
+### Milestone M5: Dynamic World Events & Ecosystem & World Rules
+
+#### Added
+- **WorldRuleEngine** (`src/rules/`): Generic condition→action rule system for world-level triggers
+  - RuleConfig with id/name/enabled/priority/cooldownTicks/maxFires/condition/action
+  - RuleContext with world/entity/event/data shared Map
+  - register/unregister/enable/disable/evaluate (priority descending)
+  - Cooldown mechanism, max fire count, rule error isolation
+  - Event-driven evaluation via `bindEventBus(events, eventTypes[])`
+  - ISerializable support
+  - 14 unit tests
+- **EcosystemSystem** (`src/ecosystem/`): Dynamic resource node lifecycle (spawn/depletion/regrowth/removal)
+  - EcosystemZoneConfig with id/position/radius/resourceTypeIds/spawnRate/maxNodes/minNodes/spawnIntervalTicks/fertility/allowRegrowth/depletionRemovalTicks
+  - Periodic spawn checks (fertility modifies spawnRate)
+  - minNodes forced spawning, maxNodes limit
+  - Depletion detection + events, regrowth or timeout removal
+  - setFertility + zone_changed event
+  - Optional SeededRandom for deterministic generation
+  - 4 event classes (Spawned/Depleted/Removed/ZoneChanged)
+  - ISerializable support
+  - 13 unit tests
+- **Ecosystem event perception** in SoulPerceptionSystem
+  - 4 new event listeners (lazy-loaded on first tick):
+    - `ecosystem.resource_spawned`: low severity, includes position
+    - `ecosystem.resource_depleted`: medium severity, includes zone ID
+    - `ecosystem.resource_removed`: medium severity, includes zone ID
+    - `ecosystem.zone_changed`: severity by fertility (<0.2=high, <0.5=medium, else=low)
+  - stop() cleanup for all 4 listeners
+  - 6 unit tests
+- **Ecosystem end-to-end demo** (`examples/ecosystem-demo.ts`): Full pipeline demonstration
+  - Zone config → node spawn → harvest → depletion → regrowth → soul perception → rule engine reaction
+- **SDK exports**: rules module (WorldRuleEngine + 4 types) + ecosystem module (EcosystemSystem + EcosystemZoneConfig + 4 events)
+
+#### Fixed
+- Ecosystem event classes now extend `Event<SpecificPayloadType>` (matching WeatherEvent pattern) for typed EventSystem handlers
+- Removed public readonly properties from ecosystem event classes (data already in payload)
+- EcosystemSystem `lastSpawnCheck` initialized to -1 (ensures first tick triggers spawn check)
+- Flaky test "spawned node position is within zone radius" — now steps 10 times to ensure spawn check fires
+
+#### Architecture
+- Perception chain: EcosystemSystem → EventBus → SoulPerceptionSystem → SoulArena
+- Event class design pattern: all events extend Event<SpecificPayloadType>, no additional public properties
+- WorldRuleEngine supports both tick-based and event-driven rule evaluation
+
+### Test Statistics
+- Total: 738 tests (732 + 6 new ecosystem perception tests)
+- Test files: 60
+- All tests passing
+
+---
+
 ## [2.0.0] - 2026-09-06
 
 ### Milestone M4: Persistence & Procedural Generation

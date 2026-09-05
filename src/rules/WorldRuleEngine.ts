@@ -84,6 +84,8 @@ export class WorldRuleEngine {
   private world: World | null = null;
   private currentTick = 0;
   private sharedData = new Map<string, unknown>();
+  /** Unsubscribe functions for event-driven rule evaluation. */
+  private eventUnsubscribes: Array<() => void> = [];
 
   /** Register a new rule. Throws if ID already exists. */
   registerRule(config: RuleConfig): void {
@@ -138,6 +140,19 @@ export class WorldRuleEngine {
   /** Number of registered rules. */
   get size(): number {
     return this.rules.size;
+  }
+
+  /**
+   * Bind to an event bus for event-driven rule evaluation.
+   * Subscribes to the specified event types and evaluates rules with event context.
+   */
+  bindEventBus(events: EventSystem, eventTypes: string[]): void {
+    for (const type of eventTypes) {
+      const unsub = events.on(type, (event: Event) => {
+        this.evaluate(undefined, event);
+      });
+      this.eventUnsubscribes.push(unsub);
+    }
   }
 
   /**
@@ -196,6 +211,10 @@ export class WorldRuleEngine {
   stop(): void {
     this.rules.clear();
     this.sharedData.clear();
+    for (const unsub of this.eventUnsubscribes) {
+      unsub();
+    }
+    this.eventUnsubscribes = [];
   }
 
   /** Serialize rule engine state (fire counts, enabled states). */

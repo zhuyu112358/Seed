@@ -161,7 +161,7 @@ export class EcosystemSystem {
     }
     this.zones.set(config.id, {
       config,
-      lastSpawnCheck: 0,
+      lastSpawnCheck: -1, // -1 ensures first tick triggers a spawn check
       depletedNodes: new Map(),
     });
   }
