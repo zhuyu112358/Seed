@@ -951,3 +951,70 @@ AcousticPropagation 此前只计算距离衰减（inverse-square + medium absorp
 6. **加速/减速曲线**：物理移动的平滑加减速（上一轮列入 backlog）
 7. **路径规划（A*寻路）**：当前直线移动，扩展为避障寻路（上一轮列入 backlog）
 
+
+
+---
+
+## 2026-09-05 EntityArrivedEvent：MovementController到达事件发射与系统间通知（第20轮迭代）
+
+### 本轮目标
+
+上一轮实现了 AcousticPropagation 障碍物遮挡。本轮为 MovementController 添加 **EntityArrivedEvent** 事件发射——当实体到达 moveTarget 时，在事件总线上发射事件，供其他系统（感知、日志、世界事件）监听和响应。这是物理移动模式闭环的重要组成部分。
+
+### 实现方案
+
+**新增 EntityArrivedEvent**（`src/event/Event.ts`）：
+- 事件类型：`movement.arrived`
+- payload 包含：
+  - `entityId`：到达的实体 ID
+  - `targetPosition`：目标坐标
+  - `actualPosition`：实际到达坐标
+  - `stopReason`：停止原因（`arrived` 或 `early-stop`）
+  - `distanceToTarget`：到目标的实际距离（米，保留3位小数）
+- sourceId = entityId，origin = actualPosition
+
+**MovementController 修改**（`src/physics/MovementController.ts`）：
+- `tick()` 方法的 `_events` 参数改为 `events`，实际使用
+- `checkAndStop(body, events)` 传递事件总线
+- `stopBody(body, reason, moveTarget, distanceToTarget, events)` 在停止后发射 EntityArrivedEvent
+- 无论是正常到达（`arrived`）还是早期停止（`early-stop`），都发射事件
+
+### 设计决策
+
+1. **为什么用事件而不是直接回调？** 事件总线是 Seed 的标准通信机制，解耦发送者和接收者。MovementController 不需要知道谁在监听到达事件，任何系统都可以订阅。
+2. **为什么 early-stop 也发射事件？** 早期停止也是一种"到达"状态——实体因摩擦减速到停止，虽然没精确到达目标，但移动已结束。监听者需要知道移动结束了，无论原因。
+3. **为什么 distanceToTarget 保留3位小数？** 避免浮点数精度问题，同时足够精确（毫米级）。
+4. **事件不包含 velocity？** 停止时 velocity 已被零化，不需要包含。如果需要停止前的速度，可以在未来扩展。
+
+### 新增单元测试（5个）
+
+1. `emits EntityArrivedEvent when entity arrives at target` — 验证事件发射、payload 字段正确（entityId/stopReason/targetPosition/actualPosition/distanceToTarget）
+2. `emits EntityArrivedEvent with stopReason early-stop` — 验证早期停止也发射事件，stopReason="early-stop"
+3. `does not emit EntityArrivedEvent when entity does not arrive` — 远离目标时不发射
+4. `does not emit EntityArrivedEvent for entity without moveTarget` — 无 moveTarget 的实体不触发
+5. `emits EntityArrivedEvent during physics integration with PhysicsSystem` — 端到端验证：PhysicsSystem 移动实体，MovementController 检测到达并发射事件
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**317/317 全绿**（从 312 增至 317，+5）
+- MovementController 测试：19/19（从 14 增至 19）
+- 回归验证：所有现有测试通过，事件发射不影响原有行为
+- 积压 commit 推送：上一轮 73edfda（声学遮挡）已成功推送
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界搭建、物体定义与交互）：到达事件让物理移动的结果可被其他系统感知
+- 需求6（底层逻辑抽象、强支持扩展）：事件总线解耦，任何系统可监听到达事件；stopReason 可扩展
+- 需求12（模拟世界事件）：EntityArrivedEvent 是底层世界事件的一种，可被 ConditionEngine 监听触发连锁反应
+
+### 后续可扩展方向（列入 backlog）
+
+1. **SoulPerceptionSystem 监听 EntityArrivedEvent**：将到达事件记录到 PerceptionFrame.events，让灵魂知道自己到达了目标
+2. **基于到达的事件触发**：ConditionEngine 监听 movement.arrived，触发"到达门口时自动开门"等连锁反应
+3. **加速/减速曲线**：当前瞬间设置速度，实现平滑加减速（多轮 backlog）
+4. **路径规划（A*寻路）**：直线移动→避障寻路（多轮 backlog）
+5. **声音衍射（绕射）**：障碍物边缘的声音绕射（上一轮 backlog）
+6. **材质相关透射**：不同材质不同透射系数（上一轮 backlog）
+7. **混响/回声**：封闭空间声音反射（上一轮 backlog）
+

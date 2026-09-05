@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { MovementController } from "../src/physics/MovementController.js";
 import { PhysicsSystem } from "../src/physics/PhysicsSystem.js";
 import { PhysicsConfig } from "../src/physics/PhysicsConfig.js";
+import { EntityArrivedEvent } from "../src/event/Event.js";
 import { World } from "../src/engine/World.js";
 import { GameObject } from "../src/entity/Entity.js";
 import { Vector3 } from "../src/entity/Vector3.js";
@@ -276,5 +277,115 @@ describe("MovementController", () => {
     assert.equal(body.velocity.x, 1);
     assert.equal(body.state.has("moveTarget"), true);
     assert.equal(mc.getStats().entitiesChecked, 0);
+  });
+
+  // --- EntityArrivedEvent emission tests ---
+
+  it("emits EntityArrivedEvent when entity arrives at target", () => {
+    const world = makeWorld();
+    const mc = new MovementController({ arrivalThreshold: 0.2 });
+    world.addSystem(mc);
+
+    let receivedEvent: EntityArrivedEvent | null = null;
+    world.events.on("movement.arrived", (evt: EntityArrivedEvent) => {
+      receivedEvent = evt;
+    });
+
+    const body = makeBody("b1", 0.9, 0, 0);
+    body.velocity = new Vector3(1, 0, 0);
+    body.state.set("moveTarget", { x: 1.0, y: 0, z: 0 });
+    world.addEntity(body);
+
+    world.step(1 / 60);
+
+    assert.ok(receivedEvent, "EntityArrivedEvent should be emitted");
+    assert.equal(receivedEvent!.type, "movement.arrived");
+    assert.equal(receivedEvent!.payload.entityId, "b1");
+    assert.equal(receivedEvent!.payload.stopReason, "arrived");
+    assert.equal(receivedEvent!.payload.targetPosition.x, 1.0);
+    assert.ok(Math.abs(receivedEvent!.payload.actualPosition.x - 0.9) < 0.01);
+    assert.ok(receivedEvent!.payload.distanceToTarget <= 0.2);
+  });
+
+  it("emits EntityArrivedEvent with stopReason early-stop", () => {
+    const world = makeWorld();
+    const mc = new MovementController({ enableEarlyStop: true, minSpeed: 0.1, arrivalThreshold: 0.01 });
+    world.addSystem(mc);
+
+    let receivedEvent: EntityArrivedEvent | null = null;
+    world.events.on("movement.arrived", (evt: EntityArrivedEvent) => {
+      receivedEvent = evt;
+    });
+
+    const body = makeBody("b1", 0, 0, 0);
+    body.velocity = new Vector3(0.03, 0, 0); // Below minSpeed
+    body.state.set("moveTarget", { x: 5, y: 0, z: 0 });
+    world.addEntity(body);
+
+    world.step(1 / 60);
+
+    assert.ok(receivedEvent, "EntityArrivedEvent should be emitted on early stop");
+    assert.equal(receivedEvent!.payload.stopReason, "early-stop");
+    assert.equal(receivedEvent!.payload.targetPosition.x, 5);
+  });
+
+  it("does not emit EntityArrivedEvent when entity does not arrive", () => {
+    const world = makeWorld();
+    const mc = new MovementController({ arrivalThreshold: 0.1, enableEarlyStop: false });
+    world.addSystem(mc);
+
+    let eventCount = 0;
+    world.events.on("movement.arrived", () => { eventCount++; });
+
+    const body = makeBody("b1", 0, 0, 0);
+    body.velocity = new Vector3(5, 0, 0);
+    body.state.set("moveTarget", { x: 10, y: 0, z: 0 });
+    world.addEntity(body);
+
+    world.step(1 / 60);
+
+    assert.equal(eventCount, 0, "no event should be emitted when not arrived");
+  });
+
+  it("does not emit EntityArrivedEvent for entity without moveTarget", () => {
+    const world = makeWorld();
+    const mc = new MovementController();
+    world.addSystem(mc);
+
+    let eventCount = 0;
+    world.events.on("movement.arrived", () => { eventCount++; });
+
+    const body = makeBody("b1", 0.95, 0, 0);
+    body.velocity = new Vector3(1, 0, 0);
+    // No moveTarget set.
+    world.addEntity(body);
+
+    world.step(1 / 60);
+
+    assert.equal(eventCount, 0);
+    assert.equal(body.velocity.x, 1); // Not stopped.
+  });
+
+  it("emits EntityArrivedEvent during physics integration with PhysicsSystem", () => {
+    const world = makeWorld();
+    const physics = new PhysicsSystem({ config: new PhysicsConfig({ gravity: 0 }) });
+    const mc = new MovementController({ arrivalThreshold: 0.2 });
+    world.addSystem(physics);
+    world.addSystem(mc);
+
+    let arrived = false;
+    world.events.on("movement.arrived", () => { arrived = true; });
+
+    const body = makeBody("b1", 0, 0, 0);
+    body.velocity = new Vector3(2, 0, 0);
+    body.state.set("moveTarget", { x: 1.0, y: 0, z: 0 });
+    world.addEntity(body);
+
+    for (let i = 0; i < 120; i++) {
+      world.step(1 / 60);
+      if (arrived) break;
+    }
+
+    assert.ok(arrived, "EntityArrivedEvent should be emitted during physics simulation");
   });
 });

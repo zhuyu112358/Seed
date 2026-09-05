@@ -15,6 +15,7 @@ import type { World, WorldSystem } from '../engine/World.js';
 import type { EventSystem } from '../event/EventSystem.js';
 import { Vector3 } from '../entity/Vector3.js';
 import type { GameObject } from '../entity/Entity.js';
+import { EntityArrivedEvent } from '../event/Event.js';
 import { Logger } from '../reliability/Logger.js';
 
 const log = Logger.for('movement-controller');
@@ -74,7 +75,7 @@ export class MovementController implements WorldSystem {
     this.enabled = true;
   }
 
-  tick(_dt: number, world: World, _events: EventSystem): void {
+  tick(_dt: number, world: World, events: EventSystem): void {
     if (!this.enabled) return;
 
     const bodies = world.bodies();
@@ -82,7 +83,7 @@ export class MovementController implements WorldSystem {
 
     for (let i = 0; i < limit; i++) {
       const body = bodies[i];
-      this.checkAndStop(body);
+      this.checkAndStop(body, events);
     }
   }
 
@@ -90,7 +91,7 @@ export class MovementController implements WorldSystem {
    * Check a single body for arrival and stop it if conditions are met.
    * Returns true if the body was stopped, false otherwise.
    */
-  private checkAndStop(body: GameObject): boolean {
+  private checkAndStop(body: GameObject, events: EventSystem): boolean {
     this.stats.entitiesChecked++;
 
     // Only process bodies with a pending moveTarget.
@@ -108,7 +109,7 @@ export class MovementController implements WorldSystem {
 
     // Arrival check: within threshold of target.
     if (distance <= this.config.arrivalThreshold) {
-      this.stopBody(body, 'arrived');
+      this.stopBody(body, 'arrived', moveTarget, distance, events);
       this.stats.arrivalsStopped++;
       return true;
     }
@@ -118,7 +119,7 @@ export class MovementController implements WorldSystem {
     if (this.config.enableEarlyStop) {
       const speed = body.velocity.length();
       if (speed < this.config.minSpeed) {
-        this.stopBody(body, 'early-stop');
+        this.stopBody(body, 'early-stop', moveTarget, distance, events);
         this.stats.earlyStops++;
         return true;
       }
@@ -127,13 +128,29 @@ export class MovementController implements WorldSystem {
     return false;
   }
 
-  /** Zero velocity and clear moveTarget state. */
-  private stopBody(body: GameObject, reason: string): void {
+  /** Zero velocity, clear moveTarget state, and emit EntityArrivedEvent. */
+  private stopBody(
+    body: GameObject,
+    reason: string,
+    moveTarget: { x: number; y: number; z: number },
+    distanceToTarget: number,
+    events: EventSystem,
+  ): void {
+    const actualPosition = { x: body.position.x, y: body.position.y, z: body.position.z };
     body.velocity = new Vector3(0, 0, 0);
     body.state.delete('moveTarget');
     body.state.set('movementMode', 'stopped');
     body.state.set('stopReason', reason);
-    log.debug({ entityId: body.id, reason, position: body.position.toObject() }, 'entity stopped by movement controller');
+    log.debug({ entityId: body.id, reason, position: actualPosition }, 'entity stopped by movement controller');
+
+    // Emit arrival event so other systems (perception, logging, world events) can react.
+    events.emit(new EntityArrivedEvent(
+      body.id,
+      moveTarget,
+      actualPosition,
+      reason,
+      Math.round(distanceToTarget * 1000) / 1000,
+    ));
   }
 
   /** Get controller statistics. */

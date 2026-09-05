@@ -92,3 +92,27 @@ export class WeatherEvent extends Event<{ kind: string; strength: number }> {
     super({ type: 'world.weather', payload: { kind, strength }, sourceId: 'engine' });
   }
 }
+
+/** Emitted by MovementController when an entity reaches its moveTarget. */
+export class EntityArrivedEvent extends Event<{
+  entityId: string;
+  targetPosition: { x: number; y: number; z: number };
+  actualPosition: { x: number; y: number; z: number };
+  stopReason: string;
+  distanceToTarget: number;
+}> {
+  constructor(
+    entityId: string,
+    targetPosition: { x: number; y: number; z: number },
+    actualPosition: { x: number; y: number; z: number },
+    stopReason: string,
+    distanceToTarget: number,
+  ) {
+    super({
+      type: 'movement.arrived',
+      payload: { entityId, targetPosition, actualPosition, stopReason, distanceToTarget },
+      sourceId: entityId,
+      origin: actualPosition,
+    });
+  }
+}
