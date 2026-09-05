@@ -252,4 +252,113 @@ describe("PathfinderSystem", () => {
     pathfinder.findPath(0, 0, 10, 10, world); // should trigger rebuild
     assert.ok(pathfinder.blockedCellCount > 0, "grid should be rebuilt with new obstacle");
   });
+
+  // --- PathSmoother integration tests ---
+
+  it("enableSmoothing reduces waypoint count on straight paths", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinder = new PathfinderSystem({
+      width: 30, height: 30, cellSize: 1,
+      enableSmoothing: true,
+    });
+    world.addSystem(pathfinder);
+
+    const result = pathfinder.findPath(2.5, 15.5, 27.5, 15.5, world);
+    assert.ok(result, "should find a path");
+    // Straight path should be smoothed to just 2 waypoints (start + goal).
+    assert.ok(result!.waypoints.length <= 3,
+      `smoothed straight path should have <=3 waypoints, got ${result!.waypoints.length}`);
+  });
+
+  it("smoothing disabled (default) returns raw A* waypoints", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinder = new PathfinderSystem({ width: 30, height: 30, cellSize: 1 });
+    world.addSystem(pathfinder);
+
+    const result = pathfinder.findPath(2.5, 15.5, 27.5, 15.5, world);
+    assert.ok(result, "should find a path");
+    // Without smoothing, straight path has one waypoint per cell (~25).
+    assert.ok(result!.waypoints.length >= 10,
+      `unsmoothed path should have >=10 waypoints, got ${result!.waypoints.length}`);
+  });
+
+  it("smoothed path preserves goal and first waypoint near start", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinder = new PathfinderSystem({
+      width: 30, height: 30, cellSize: 1,
+      enableSmoothing: true,
+    });
+    world.addSystem(pathfinder);
+
+    const start = { x: 2.5, z: 5.5 };
+    const goal = { x: 27.5, z: 25.5 };
+    const result = pathfinder.findPath(start.x, start.z, goal.x, goal.z, world);
+    assert.ok(result, "should find a path");
+    // A* waypoints exclude start, include goal. First waypoint should be near start.
+    const firstWp = result!.waypoints[0];
+    const distToStart = Math.sqrt(Math.pow(firstWp.x - start.x, 2) + Math.pow(firstWp.z - start.z, 2));
+    assert.ok(distToStart <= 1.5, `first waypoint should be near start (dist=${distToStart.toFixed(2)})`);
+    // Last waypoint should be the goal.
+    const lastWp = result!.waypoints[result!.waypoints.length - 1];
+    assert.equal(lastWp.x, goal.x);
+    assert.equal(lastWp.z, goal.z);
+  });
+
+  it("smoothed path length is <= raw path length", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinderRaw = new PathfinderSystem({ width: 30, height: 30, cellSize: 1 });
+    const pathfinderSmooth = new PathfinderSystem({
+      width: 30, height: 30, cellSize: 1,
+      enableSmoothing: true,
+    });
+    world.addSystem(pathfinderRaw);
+    world.addSystem(pathfinderSmooth);
+
+    const raw = pathfinderRaw.findPath(2.5, 5.5, 27.5, 25.5, world);
+    const smooth = pathfinderSmooth.findPath(2.5, 5.5, 27.5, 25.5, world);
+    assert.ok(raw && smooth);
+    assert.ok(smooth!.length <= raw!.length + 0.01,
+      `smoothed length (${smooth!.length.toFixed(2)}) should be <= raw (${raw!.length.toFixed(2)})`);
+  });
+
+  it("smoothPath method works manually", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinder = new PathfinderSystem({ width: 20, height: 20, cellSize: 1 });
+    world.addSystem(pathfinder);
+
+    const waypoints = [
+      { x: 0.5, z: 0.5 },
+      { x: 1.5, z: 0.5 },
+      { x: 2.5, z: 0.5 },
+      { x: 3.5, z: 0.5 },
+    ];
+    const result = pathfinder.smoothPath(waypoints);
+    assert.equal(result.waypoints.length, 2);
+    assert.equal(result.removed, 2);
+  });
+
+  it("smoothing works around obstacles (preserves necessary turns)", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinder = new PathfinderSystem({
+      width: 30, height: 30, cellSize: 1,
+      enableSmoothing: true,
+    });
+    world.addSystem(pathfinder);
+
+    // Add a wall that forces the path to turn.
+    const wall = new GameObject({
+      id: "wall", name: "Wall", type: "static",
+      position: { x: 15, y: 0, z: 10 },
+      halfExtents: { x: 0.5, y: 0.5, z: 5 },
+      mass: 100,
+    });
+    world.addEntity(wall);
+    world.step(1 / 60); // trigger grid rebuild
+
+    const result = pathfinder.findPath(5.5, 10.5, 25.5, 10.5, world);
+    assert.ok(result, "should find a path around the wall");
+    // Path around a wall should have at least 3 waypoints (start, turn, goal).
+    assert.ok(result!.waypoints.length >= 3,
+      `path around wall should have >=3 waypoints, got ${result!.waypoints.length}`);
+  });
 });

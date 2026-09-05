@@ -15,6 +15,7 @@ import type { World, WorldSystem } from "../engine/World.js";
 import type { EventSystem } from "../event/EventSystem.js";
 import { GridMap, type GridMapConfig } from "./GridMap.js";
 import { AStarPathfinder, type PathResult } from "./AStarPathfinder.js";
+import { PathSmoother } from "./PathSmoother.js";
 import { GameObject } from "../entity/Entity.js";
 
 export interface PathfinderSystemConfig extends GridMapConfig {
@@ -24,6 +25,9 @@ export interface PathfinderSystemConfig extends GridMapConfig {
   blockingTypes?: string[];
   /** If true, entities with state.blocksPath=true block paths. Default true. */
   respectBlocksPathFlag?: boolean;
+  /** If true, automatically smooth A* paths using PathSmoother (string-pulling).
+   *  Default false (backward compatible). */
+  enableSmoothing?: boolean;
 }
 
 export class PathfinderSystem implements WorldSystem {
@@ -32,6 +36,7 @@ export class PathfinderSystem implements WorldSystem {
 
   readonly grid: GridMap;
   private readonly pathfinder: AStarPathfinder;
+  private readonly smoother: PathSmoother;
   private readonly config: Required<PathfinderSystemConfig>;
   private dirty = true;
 
@@ -46,6 +51,7 @@ export class PathfinderSystem implements WorldSystem {
       autoUpdate: config?.autoUpdate ?? true,
       blockingTypes: config?.blockingTypes ?? ["static"],
       respectBlocksPathFlag: config?.respectBlocksPathFlag ?? true,
+      enableSmoothing: config?.enableSmoothing ?? false,
     };
     this.grid = new GridMap({
       cellSize: this.config.cellSize,
@@ -56,6 +62,7 @@ export class PathfinderSystem implements WorldSystem {
       allowDiagonal: this.config.allowDiagonal,
     });
     this.pathfinder = new AStarPathfinder();
+    this.smoother = new PathSmoother(this.grid);
   }
 
   /** Mark the grid as dirty so it will be rebuilt on next tick or findPath call. */
@@ -91,12 +98,33 @@ export class PathfinderSystem implements WorldSystem {
   /**
    * Find a path from (startX, startZ) to (goalX, goalZ) in world space.
    * Returns waypoints or null if unreachable. Rebuilds grid if dirty.
+   * If enableSmoothing is true, the path is automatically smoothed using
+   * string-pulling (PathSmoother).
    */
   findPath(startX: number, startZ: number, goalX: number, goalZ: number, world?: World): PathResult | null {
     if (this.dirty && world) {
       this.rebuildGrid(world);
     }
-    return this.pathfinder.findPath(startX, startZ, goalX, goalZ, this.grid);
+    const result = this.pathfinder.findPath(startX, startZ, goalX, goalZ, this.grid);
+    if (!result) return null;
+
+    if (this.config.enableSmoothing && result.waypoints.length > 2) {
+      const smoothed = this.smoother.smooth(result.waypoints);
+      return {
+        waypoints: smoothed.waypoints,
+        length: smoothed.length,
+        cellsExplored: result.cellsExplored,
+      };
+    }
+    return result;
+  }
+
+  /**
+   * Manually smooth a list of waypoints using the configured PathSmoother.
+   * Useful when you want to smooth a path obtained outside of findPath.
+   */
+  smoothPath(waypoints: Array<{ x: number; z: number }>) {
+    return this.smoother.smooth(waypoints);
   }
 
   /** WorldSystem tick: rebuild grid if dirty and autoUpdate is on. */

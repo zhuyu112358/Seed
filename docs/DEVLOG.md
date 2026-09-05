@@ -1738,3 +1738,72 @@ Soul A executeAction(communicate)
 7. **漏斗算法（Funnel）**：更精确的路径平滑（当前用 string-pulling，Funnel 可产生更优结果）
 8. **SDK准备**：API文档、类型定义、CHANGELOG、打 tag
 
+
+
+---
+
+## 2026-09-05 PathSmoother 集成到 PathfinderSystem：路径规划后自动平滑（第30轮迭代）
+
+### 本轮目标
+
+上一轮创建了独立的 PathSmoother 工具类（string-pulling + DDA 网格射线）。本轮将其集成到 PathfinderSystem，使路径规划后可自动平滑，减少路径点数量，产生更自然的移动路径。
+
+### 实现
+
+**PathfinderSystem 新增配置**：
+- `enableSmoothing?: boolean`（默认 false，向后兼容）——启用后 findPath 自动平滑路径
+
+**PathfinderSystem 新增方法**：
+- `smoothPath(waypoints)`——手动平滑任意路径点数组，返回 SmoothedPathResult
+
+**findPath 集成逻辑**：
+1. A* 寻路得到原始 PathResult
+2. 如果 enableSmoothing 为 true 且路径点 > 2，调用 PathSmoother.smooth()
+3. 返回新的 PathResult：waypoints（平滑后）、length（平滑后长度）、cellsExplored（保留原始搜索统计）
+
+### 关键设计
+
+- **向后兼容**：enableSmoothing 默认 false，原有行为完全不变
+- **不修改原始路径**：平滑后返回新的 PathResult 对象
+- **保留搜索统计**：cellsExplored 保留 A* 搜索的 cell 数量，便于性能分析
+- **独立 smoothPath 方法**：可手动平滑任意路径，不限于 findPath 的结果
+- **平滑后路径长度 <= 原始长度**：string-pulling 算法只能缩短路径
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**407/407 全绿**（从 401 增至 407，+6）
+- PathfinderSystem 测试：30/30（从 24 增至 30）
+- 直线路径平滑：25 个路径点 → ≤3 个
+- 未平滑（默认）：直线路径保留 ≥10 个路径点
+- 平滑后路径终点 = 目标点
+- 平滑后路径长度 <= 原始路径长度
+- 绕墙路径：保留必要拐点（≥3 个路径点）
+- smoothPath 手动方法：4 个共线点 → 2 个
+
+### 新增测试（6个，在 pathfinding.test.ts 中）
+
+1. enableSmoothing 减少直线路径点数量（25→≤3）
+2. 未平滑（默认）返回原始 A* 路径点（≥10）
+3. 平滑后路径第一个路径点靠近起点，最后一个 = 目标点
+4. 平滑后路径长度 <= 原始路径长度
+5. smoothPath 手动方法工作正常（4→2）
+6. 绕障碍路径保留必要拐点（≥3）
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界搭建）：路径平滑使灵魂移动更自然
+- 需求10（性能优化）：减少路径点数量，PathFollowerSystem 处理更少的路径点
+- 需求11（向现实世界逼近）：平滑转弯模拟真实移动路径
+
+### 后续可扩展方向（列入 backlog）
+
+1. **重试 git push**（2 个 commit 待推送：93a67ff PathSmoother + 本轮集成，GitHub 间歇性不可达）
+2. **PathSmoother 集成到 SoulActionSystem**：pathfinding 模式下自动平滑路径（当前只在 PathfinderSystem 层集成）
+3. **3灵魂集成测试**：更多灵魂同时存在的性能和独立性（任务描述第一优先级）
+4. **空间哈希/四叉树宽相**：大规模世界碰撞性能优化（当前 O(n²)）
+5. **动态障碍局部重规划**：执行中遇新障碍重新规划
+6. **声音衍射（绕射）**：障碍物边缘声音绕射（多轮 backlog）
+7. **漏斗算法（Funnel）**：更精确的路径平滑（当前用 string-pulling）
+8. **SDK准备**：API文档、类型定义、CHANGELOG、打 tag
+
