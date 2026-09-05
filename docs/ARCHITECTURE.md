@@ -1,4 +1,4 @@
-# 架构文档（ARCHITECTURE）
+﻿# 架构文档（ARCHITECTURE）
 
 > 严格基于 `src/` 真实源码。TypeScript ESM（`NodeNext`，`strict`），源码约 50 个文件。
 > 文档中文，代码注释英文。
@@ -266,3 +266,8 @@ WorldEngine.start() → setInterval(1000/tickRate)
 3. **集成缺口**：`server.ts` 依赖 `WorldEngine.currentWorld` 等不存在的成员；`runEval.ts` / 示例使用了不存在的 `WorldBuilder` 方法与 `WorldEngine.load()/runTicks()`。
 4. **`npm run build` 当前失败**（约 14 个错误），错误清单见 `build_errors.txt` 与 `DEVLOG.md`。
 5. `evaluator/index.ts` 导出了 `WorldEvaluator` 中并不存在的 `EvaluatorConfig` / `EvalActivityCounters` 类型。
+
+
+### 风力系统（WindForceSystem）
+
+物理层新增 WindForceSystem，将天气模拟（WeatherSimulator）的风速风向与物理模拟桥接。每 tick 读取当前风速和方向，对动态物体施加与风速平方、迎风面积（AABB x-z 投影）成正比、与质量成反比的力。静态/触发器/区域物体不受影响，灵魂默认不受影响（可配置 affectSouls）。支持最小有效风速阈值，低于阈值不产生力。未来可扩展：湍流、阵风、障碍物风影、升力气动外形。
