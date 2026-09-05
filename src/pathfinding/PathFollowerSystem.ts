@@ -19,6 +19,7 @@
 
 import type { World, WorldSystem } from "../engine/World.js";
 import type { EventSystem } from "../event/EventSystem.js";
+import { PathReplannedEvent, PathCompletedEvent } from "../event/Event.js";
 import { Vector3 } from "../entity/Vector3.js";
 import { GameObject } from "../entity/Entity.js";
 import type { PathfinderSystem } from "./PathfinderSystem.js";
@@ -85,7 +86,7 @@ export class PathFollowerSystem implements WorldSystem {
       // Dynamic obstacle check: if the segment to the next waypoint is blocked,
       // replan from current position to the final goal.
       if (shouldCheckObstacles && moveTarget) {
-        this.checkAndReplanning(entity, movePath, moveTarget, world);
+        this.checkAndReplanning(entity, movePath, moveTarget, world, events);
       }
 
       if (moveTarget) {
@@ -107,11 +108,7 @@ export class PathFollowerSystem implements WorldSystem {
         entity.state.delete("movementMode");
         entity.state.delete("replanningCount");
         if (this.config.emitCompletionEvent) {
-          events.emit({
-            type: "movement.path_completed",
-            payload: { entityId: entity.id, waypoints: movePath.length },
-            timestamp: Date.now(),
-          } as never);
+          events.emit(new PathCompletedEvent(entity.id, movePath.length));
         }
         continue;
       }
@@ -135,6 +132,7 @@ export class PathFollowerSystem implements WorldSystem {
     movePath: Array<{ x: number; z: number }>,
     moveTarget: { x: number; y: number; z: number },
     world: World,
+    events: EventSystem,
   ): void {
     if (!this.pathfinder) return;
 
@@ -170,6 +168,11 @@ export class PathFollowerSystem implements WorldSystem {
     });
     entity.state.set("replanningCount", attempts + 1);
     this.aimVelocity(entity, result.waypoints[0].x, result.waypoints[0].z);
+
+    // Emit path replanned event for perception systems and debugging.
+    events.emit(new PathReplannedEvent(
+      entity.id, movePath.length, result.waypoints.length, goal, attempts + 1,
+    ));
   }
 
   /**

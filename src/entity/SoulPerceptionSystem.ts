@@ -22,6 +22,7 @@ import {
   CollisionExitEvent,
   TriggerEnterEvent,
   TriggerExitEvent,
+  PathReplannedEvent,
 } from "../event/Event.js";
 import { Vector3 } from "../entity/Vector3.js";
 import type { GameObject } from "../entity/Entity.js";
@@ -96,6 +97,8 @@ export class SoulPerceptionSystem implements WorldSystem {
   private triggerEnterUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for physics.trigger.exit event, set on first tick. */
   private triggerExitUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for movement.path_replanned event, set on first tick. */
+  private pathReplannedUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -224,6 +227,21 @@ export class SoulPerceptionSystem implements WorldSystem {
           `Exited zone: ${p.triggerId} (${p.contactDurationTicks} ticks)`,
           "low",
           p.lastContactPoint,
+          true,
+        );
+      });
+    }
+
+    // Lazily subscribe to path replanned event (dynamic obstacle replanning).
+    if (!this.pathReplannedUnsubscribe) {
+      this.pathReplannedUnsubscribe = events.on("movement.path_replanned", (evt: PathReplannedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `path_replanned_${p.entityId}_${evt.timestamp}`,
+          "movement.path_replanned",
+          `Path replanned: ${p.oldPathLength}→${p.newPathLength} waypoints (attempt ${p.attempt})`,
+          "medium",
+          { x: p.goal.x, y: 0, z: p.goal.z },
           true,
         );
       });
@@ -430,6 +448,10 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.triggerExitUnsubscribe) {
       this.triggerExitUnsubscribe();
       this.triggerExitUnsubscribe = null;
+    }
+    if (this.pathReplannedUnsubscribe) {
+      this.pathReplannedUnsubscribe();
+      this.pathReplannedUnsubscribe = null;
     }
   }
 }

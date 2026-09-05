@@ -250,3 +250,41 @@ export class EntityArrivedEvent extends Event<{
     });
   }
 }
+
+/** Emitted when PathFollowerSystem successfully replans a path around a new obstacle. */
+export class PathReplannedEvent extends Event<{
+  entityId: string;
+  oldPathLength: number;
+  newPathLength: number;
+  goal: { x: number; z: number };
+  attempt: number;
+}> {
+  constructor(
+    entityId: string,
+    oldPathLength: number,
+    newPathLength: number,
+    goal: { x: number; z: number },
+    attempt: number,
+  ) {
+    super({
+      type: 'movement.path_replanned',
+      payload: { entityId, oldPathLength, newPathLength, goal, attempt },
+      sourceId: entityId,
+      origin: { x: goal.x, y: 0, z: goal.z },
+    });
+  }
+}
+
+/** Emitted when PathFollowerSystem completes following a path. */
+export class PathCompletedEvent extends Event<{
+  entityId: string;
+  waypoints: number;
+}> {
+  constructor(entityId: string, waypoints: number) {
+    super({
+      type: 'movement.path_completed',
+      payload: { entityId, waypoints },
+      sourceId: entityId,
+    });
+  }
+}
