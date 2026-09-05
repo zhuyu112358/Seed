@@ -101,7 +101,7 @@ growth.registerSoul("soul_demo");
 // --- Create Resource Nodes ---
 function makeTree(id: string, x: number, z: number): { entity: GameObject; node: ResourceNode } {
   const entity = new GameObject({
-    id, type: "resource", name: id,
+    id, type: "interactive", name: id,
     position: { x, y: 0, z },
     halfExtents: { x: 0.5, y: 0.5, z: 0.5 },
   });

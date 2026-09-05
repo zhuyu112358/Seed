@@ -133,6 +133,16 @@ export { GrowthRule, GrowthRuleRegistry } from '../resource/GrowthRule.js';
 export type { GrowthRuleConfig } from '../resource/GrowthRule.js';
 export { GrowthSystem } from '../resource/GrowthSystem.js';
 export type { GrowthSystemConfig } from '../resource/GrowthSystem.js';
+
+// --- Persistence (M4) ---
+export { WorldSerializer } from '../persistence/WorldSerializer.js';
+export type {
+  SerializedEntity,
+  SerializedSystems,
+  SerializedWorld,
+  ISerializable,
+} from '../persistence/WorldSerializer.js';
+export { isSerializable } from '../persistence/WorldSerializer.js';
 export { ConsumptionSystem } from '../resource/ConsumptionSystem.js';
 export type { ConsumptionSystemConfig } from '../resource/ConsumptionSystem.js';
 export { CraftingSystem } from '../resource/CraftingSystem.js';

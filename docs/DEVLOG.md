@@ -4484,3 +4484,93 @@ M3完成，SDK v1.2.0发布后进入M4里程碑。M4方向待管理策略文档�
 - 测试文件：52个
 - SDK版本：v1.2.0
 
+
+
+---
+
+## 2026-09-06 M4阶段1：世界序列化系统（第59轮迭代）
+
+### 本轮完成
+
+#### 1. M3收尾：SDK v1.2.0推送成功
+- 上轮待推送的commit dc1a120和tag seed-sdk-v1.2.0成功推送到GitHub
+- M3里程碑正式完成发布
+
+#### 2. M4里程碑确认
+- 读取MANAGEMENT_STRATEGY.md第八节，确认M4目标：**持久化世界+世界存档+世界生成器**（SDK v2.0.0）
+- 完成标准：世界序列化+程序化生成+种子系统
+- M4阶段1：世界序列化系统
+
+#### 3. WorldSerializer (`src/persistence/WorldSerializer.ts`)
+- 世界状态序列化/反序列化核心类
+- **SerializedWorld格式**：version/name/tickRate/worldTime/tick/entities/systems/metadata
+- **SerializedEntity格式**：id/name/type/position/velocity/mass/material/active/state/properties/children
+- **实体序列化**：泛型序列化所有实体（位置/速度/状态Map/属性Map/子实体层级）
+- **系统序列化**：两种方式
+  - ISerializable接口：系统实现serialize()/deserialize()方法
+  - 外部注册器：registerSystemSerializer()为不实现接口的系统注册序列化函数
+- **toJSON/fromJSON**：序列化为JSON字符串/从JSON字符串反序列化
+- **版本检查**：反序列化时验证version，不支持的版本抛出异常
+- **反序列化**：恢复worldTime/tick，清空现有实体，通过entityFactory创建实体，恢复系统状态
+
+#### 4. persistence模块 (`src/persistence/index.ts`)
+- WorldSerializer + 类型导出（SerializedEntity/SerializedSystems/SerializedWorld/ISerializable）
+- isSerializable类型守卫导出
+
+#### 5. Bug修复
+- examples/resource-system-demo.ts：EntityType不包含"resource"，改为"interactive"
+
+#### 6. SDK导出 (`src/sdk/index.ts`)
+- 新增persistence模块导出：WorldSerializer + 4个类型 + isSerializable
+
+#### 7. 测试 (`tests/world-serializer.test.ts`)
+- 12个新测试：
+  - 基本世界元数据序列化
+  - 实体位置/速度序列化
+  - 实体state/properties Map序列化
+  - 子实体层级序列化
+  - 反序列化到新世界
+  - 往返一致性验证
+  - toJSON有效JSON
+  - pretty格式化
+  - 版本不支持抛出异常
+  - ISerializable系统序列化
+  - 外部注册器序列化
+  - 反序列化前清空现有实体
+
+### 架构抽象原则（用户强调）
+
+序列化系统严格遵循抽象原则：
+- **无硬编码世界内容**：序列化器是泛型的，适用于任何世界配置
+- **插件式系统序列化**：系统通过ISerializable接口或外部注册器提供状态，序列化器不关心具体系统
+- **版本化格式**：SerializedWorld带version字段，支持未来格式演进
+- **实体工厂解耦**：反序列化通过entityFactory回调创建实体，不绑定具体实体类
+
+### 验证结果
+
+- **单元测试**：648/648 全绿（636+12）
+- **构建**：0错误（主项目+SDK）
+- **GitHub**：0待推送
+
+### M4里程碑进度：15%
+
+- ✅ 阶段1：世界序列化系统（WorldSerializer）
+- ⬜ 阶段2：世界存档/读档（文件I/O + 存档管理）
+- ⬜ 阶段3：程序化世界生成器（地形/资源/实体生成）
+- ⬜ 阶段4：种子系统（确定性生成）
+- ⬜ 阶段5：端到端验证+SDK v2.0.0发布
+
+### 下一轮计划
+
+1. 世界存档/读档系统（WorldSaveManager：保存到文件/从文件加载/存档列表管理）
+2. HarvestSystem/CraftingSystem等实现ISerializable接口
+3. 程序化世界生成器设计
+4. 继续M4里程碑开发
+
+### 迭代统计
+
+- 总迭代轮数：59轮
+- 单元测试：648个（M4启动时636个，+12）
+- 测试文件：53个
+- SDK版本：v1.2.0（M3完成），M4目标v2.0.0
+
