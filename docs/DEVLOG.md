@@ -4244,3 +4244,76 @@ HarvestSystem和CraftingSystem各自维护库存Map。SoulActionSystem.doCraft()
 - 单元测试：608个（M3启动时550个，+58）
 - 测试文件：50个
 
+
+
+---
+
+## 2026-09-06 M3阶段5：消耗规则系统（第56轮迭代）
+
+### 本轮完成
+
+#### 1. ConsumptionRule (`src/resource/ConsumptionRule.ts`)
+- 消耗规则定义：resourceTypeId（消耗什么资源）、amount（每次消耗量）、intervalTicks（消耗间隔）
+- 运行时注册（ConsumptionRuleRegistry），不硬编码food/water等具体资源类型
+- 应用层定义消耗规则，Seed只执行规则
+
+#### 2. ConsumptionSystem (`src/resource/ConsumptionSystem.ts`)
+- WorldSystem实现，处理灵魂资源消耗
+- registerSoul(soulId, inventory)：注册灵魂进行消耗跟踪
+- unregisterSoul(soulId)：取消注册
+- tick()：每个规则独立计时，达到intervalTicks时消耗资源
+- consume()：库存充足时消耗+发射ResourceConsumedEvent；不足时部分消耗+发射ResourceConsumptionFailedEvent
+- enabled开关，可全局暂停消耗
+- registerSoul幂等（重复注册不重复添加）
+
+#### 3. 2个新事件 (`src/event/Event.ts`)
+- ResourceConsumedEvent（resource.consumed）：消耗成功，含soulId/ruleId/resourceTypeId/amount/remaining
+- ResourceConsumptionFailedEvent（resource.consumption_failed）：消耗失败，含soulId/ruleId/resourceTypeId/required/available
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- 新增ConsumptionRule/ConsumptionRuleRegistry/ConsumptionSystem导出
+- 新增ResourceConsumedEvent/ResourceConsumptionFailedEvent导出
+
+#### 5. 测试 (`tests/consumption-system.test.ts`)
+- 12个新测试：
+  - ConsumptionRule：2个（默认值/自定义值）
+  - ConsumptionRuleRegistry：3个（注册/获取全部/删除清空）
+  - ConsumptionSystem：7个（间隔消耗/成功事件/失败事件+部分消耗/多规则独立/取消注册/禁用系统/幂等注册）
+
+### 架构抽象原则（用户强调）
+
+消耗系统严格遵循抽象原则：
+- **不硬编码资源类型**：food/water等由应用层通过ConsumptionRule注册
+- **不实现生存机制**：Seed只消耗资源+发射事件，饥饿/脱水等后果由应用层监听事件决定
+- **规则可配置**：消耗量、消耗间隔、资源类型全部可配置
+- **多规则独立**：一个灵魂可同时受多个消耗规则影响（饥饿+口渴+疲劳等）
+
+### 验证结果
+
+- **单元测试**：620/620 全绿（608+12）
+- **构建**：0错误（主项目+SDK）
+- **GitHub**：上轮2个commit已推送成功（c679cc8..cdedd00），0待推送
+
+### M3里程碑进度：65%
+
+- ✅ 阶段1：核心资源系统
+- ✅ 阶段2：采集动作集成+事件感知
+- ✅ 阶段3：资源点感知+生产系统
+- ✅ 阶段4：craft动作集成+生产感知
+- ✅ 阶段5：消耗规则系统
+- ⬜ 阶段6：成长规则（GrowthRule）
+- ⬜ 阶段7：集成测试验证+SDK发布
+
+### 下一轮计划
+
+1. 成长规则（GrowthRule）：采集/生产获得经验，等级提升
+2. 集成测试添加采集+生产+消耗场景
+3. M3完成标准核对
+4. 如M3完成，准备SDK v1.2.0发布
+
+### 迭代统计
+
+- 总迭代轮数：56轮
+- 单元测试：620个（M3启动时550个，+70）
+- 测试文件：51个
+

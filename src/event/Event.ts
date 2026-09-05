@@ -416,3 +416,49 @@ export class CraftFailEvent extends Event<{
     });
   }
 }
+
+/** Emitted when a soul consumes resources (e.g., eating food, drinking water). */
+export class ResourceConsumedEvent extends Event<{
+  soulId: string;
+  ruleId: string;
+  resourceTypeId: string;
+  amount: number;
+  remaining: number;
+}> {
+  constructor(
+    soulId: string,
+    ruleId: string,
+    resourceTypeId: string,
+    amount: number,
+    remaining: number,
+  ) {
+    super({
+      type: 'resource.consumed',
+      payload: { soulId, ruleId, resourceTypeId, amount, remaining },
+      sourceId: soulId,
+    });
+  }
+}
+
+/** Emitted when a soul fails to consume resources due to insufficient inventory. */
+export class ResourceConsumptionFailedEvent extends Event<{
+  soulId: string;
+  ruleId: string;
+  resourceTypeId: string;
+  required: number;
+  available: number;
+}> {
+  constructor(
+    soulId: string,
+    ruleId: string,
+    resourceTypeId: string,
+    required: number,
+    available: number,
+  ) {
+    super({
+      type: 'resource.consumption_failed',
+      payload: { soulId, ruleId, resourceTypeId, required, available },
+      sourceId: soulId,
+    });
+  }
+}

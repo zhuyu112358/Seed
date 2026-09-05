@@ -127,6 +127,10 @@ export { HarvestSystem } from '../resource/HarvestSystem.js';
 export type { HarvestSystemConfig } from '../resource/HarvestSystem.js';
 export { CraftingRecipe, CraftingRecipeRegistry } from '../resource/CraftingRecipe.js';
 export type { CraftingRecipeConfig, RecipeInput } from '../resource/CraftingRecipe.js';
+export { ConsumptionRule, ConsumptionRuleRegistry } from '../resource/ConsumptionRule.js';
+export type { ConsumptionRuleConfig } from '../resource/ConsumptionRule.js';
+export { ConsumptionSystem } from '../resource/ConsumptionSystem.js';
+export type { ConsumptionSystemConfig } from '../resource/ConsumptionSystem.js';
 export { CraftingSystem } from '../resource/CraftingSystem.js';
 export type { CraftingSystemConfig } from '../resource/CraftingSystem.js';
 
@@ -139,6 +143,8 @@ export {
   CraftStartEvent,
   CraftCompleteEvent,
   CraftFailEvent,
+  ResourceConsumedEvent,
+  ResourceConsumptionFailedEvent,
 } from '../event/Event.js';
 
 // --- Core Types (PerceptionFrame, ActionRequest, ActionResult, etc.) ---
