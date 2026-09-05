@@ -1,67 +1,61 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WorldBuilder } from '../../src/sdk/WorldBuilder.js';
+import { EntityFactory } from '../../src/sdk/EntityFactory.js';
+import { PhysicsConfig } from '../../src/physics/PhysicsConfig.js';
 
-test('createWorld applies options and fluent chaining returns this', () => {
+test('constructor creates a World with default name and tickRate', () => {
+  const builder = new WorldBuilder('test-world');
+  const world = builder.build();
+  assert.equal(world.config.name, 'test-world');
+  assert.equal(world.config.tickRate, 60);
+});
+
+test('setConfig updates world config and returns this for chaining', () => {
   const builder = new WorldBuilder();
-  const result = builder.createWorld({ name: 'demo', tickRate: 30 });
+  const result = builder.setConfig({ name: 'renamed', tickRate: 30 });
   assert.equal(result, builder);
-  builder.setTickRate(60);
-  builder.enableClock(120);
-  builder.enableWeather('rain');
-  builder.enableEvents(7);
-  const config = builder.build();
-  assert.equal(config.name, 'demo');
-  assert.equal(config.tickRate, 60);
-  assert.equal(config.clock.dayLengthSeconds, 120);
-  assert.equal(config.weather.enabled, true);
-  assert.equal(config.weather.initialState, 'rain');
-  assert.equal(config.events.maxActiveEvents, 7);
+  const world = builder.build();
+  assert.equal(world.config.name, 'renamed');
+  assert.equal(world.config.tickRate, 30);
 });
 
-test('build() produces a complete WorldConfig with defaults', () => {
-  const config = new WorldBuilder().createWorld({ name: 'c' }).build();
-  assert.ok(config.id);
-  assert.ok(config.bounds.min && config.bounds.max);
-  assert.equal(config.physics.gravity.y, -9.8);
-  assert.equal(config.maxEntities, 10000);
-  assert.ok(config.snapshot.directory);
+test('addEntity adds entity to world and returns this', () => {
+  const builder = new WorldBuilder('e');
+  const box = EntityFactory.dynamicBox({ name: 'box', position: { x: 0, y: 0, z: 0 } });
+  const result = builder.addEntity(box);
+  assert.equal(result, builder);
+  const world = builder.build();
+  assert.equal(world.entities.size, 1);
+  assert.equal(world.getEntity(box.id)?.name, 'box');
 });
 
-test('addEntity stores pending entities and returns ids', () => {
-  const builder = new WorldBuilder().createWorld({ name: 'e' });
-  const id1 = builder.addEntity({ type: 'static', name: 'a' });
-  const id2 = builder.addEntity({ type: 'dynamic', name: 'b' });
-  assert.ok(id1);
-  assert.ok(id2);
-  assert.notEqual(id1, id2);
-  const ids = builder.addEntities([
-    { type: 'dynamic', name: 'c' },
-    { type: 'dynamic', name: 'd' },
-  ]);
-  assert.equal(ids.length, 2);
+test('usePhysics adds PhysicsSystem and returns this', () => {
+  const builder = new WorldBuilder('p');
+  const config = PhysicsConfig.builder().gravity(9.8).build();
+  const result = builder.usePhysics(config);
+  assert.equal(result, builder);
+  assert.ok(builder.physicsSystem);
+  const world = builder.build();
+  assert.equal(world.systems.length, 1);
 });
 
-test('setPhysicsConfig merges overrides over defaults', () => {
-  const config = new WorldBuilder()
-    .createWorld({ name: 'p' })
-    .setPhysicsConfig({ gravity: { x: 0, y: -1.62, z: 0 } })
+test('build returns the World instance', () => {
+  const builder = new WorldBuilder('b');
+  const world = builder.build();
+  assert.equal(world.constructor.name, 'World');
+  assert.equal(world.state, 'created');
+});
+
+test('fluent chaining works across multiple methods', () => {
+  const world = new WorldBuilder('chain')
+    .setConfig({ tickRate: 120 })
+    .addEntity(EntityFactory.staticBox('ground', { x: 0, y: -0.5, z: 0 }, { x: 10, y: 0.5, z: 10 }))
+    .addEntity(EntityFactory.dynamicBox({ name: 'ball', position: { x: 0, y: 5, z: 0 } }))
+    .usePhysics(PhysicsConfig.defaults())
     .build();
-  assert.equal(config.physics.gravity.y, -1.62);
-  assert.equal(config.physics.substeps, 2);
-});
-
-test('registerSoul queues a soul anchor for startup', async () => {
-  const builder = new WorldBuilder()
-    .createWorld({ name: 'soul' })
-    .registerSoul('alpha', { x: 1, y: 2, z: 3 });
-  const world = await builder.buildAndStart();
-  try {
-    const soul = world.getEntity('soul_alpha');
-    assert.ok(soul);
-    assert.equal(soul?.position.x, 1);
-    assert.equal(world.getStats().entityCount, 1);
-  } finally {
-    world.destroy();
-  }
+  assert.equal(world.config.name, 'chain');
+  assert.equal(world.config.tickRate, 120);
+  assert.equal(world.entities.size, 2);
+  assert.equal(world.systems.length, 1);
 });
