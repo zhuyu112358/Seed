@@ -2035,3 +2035,85 @@ SDK 专用构建配置：
 7. **漏斗算法（Funnel）**
 8. **SDK 使用示例（examples/sdk-usage/）**
 
+
+
+---
+
+## 2026-09-05 SDK 使用示例（第34轮迭代）
+
+### 本轮目标
+
+延续 SDK v1.0.0 准备工作，创建可运行的 SDK 使用示例，供 SoulGame 应用开发和外部开发者参考。
+
+### 实现
+
+**1. basic-world.ts（基本世界示例）**
+
+演示 Seed SDK 的基础用法：
+- 使用 WorldBuilder 创建世界并启用物理
+- 添加静态障碍物（墙）和动态实体（球）
+- 监听碰撞事件
+- 运行模拟循环并记录位置/速度
+
+**2. pathfinding.ts（路径规划示例）**
+
+演示完整的导航系统：
+- 创建迷宫式障碍物（带缺口的垂直墙和水平墙）
+- PathfinderSystem 自动扫描障碍物构建导航网格
+- A* 算法寻路（从起点到目标，绕过障碍物）
+- PathSmoother string-pulling 路径平滑
+- PathFollowerSystem 动态瞄准跟随路径
+- MovementController 到达检测
+- 记录路径点数量、长度、搜索单元格数等统计
+
+**3. soul-interaction.ts（灵魂交互示例）**
+
+演示 perceive→decide→act 完整闭环：
+- 环境系统（WeatherSimulator/LightSystem/ThermalSystem）
+- SoulPerceptionSystem 生成感知帧（可见实体、附近灵魂、通信、环境）
+- SoulBridgeAdapter 桥接 SoulArena（懒加载定位感知/动作系统）
+- SoulActionSystem 执行动作并记录历史
+- Mock Adapter 模式（无需 SoulArena 即可测试）
+- 环境变量配置（SOUL_ARENA_URL、TEST_SOUL_ID）
+
+**4. README.md（示例文档）**
+
+包含：
+- 前置条件和运行方式
+- 三个示例的详细说明和关键 API
+- 架构概览图
+- 系统添加顺序建议
+- 配置参考和进一步阅读链接
+
+### 开发中发现的问题与修复
+
+1. **Vector3 只读属性**：Vector3 的 x/y/z 是 readonly，不能直接赋值 `player.velocity.x = ...`，必须创建新实例 `player.velocity = new Vector3(...)`
+2. **AcousticConfig 实际字段**：没有 speedOfSound/baseRange，实际字段是 attenuation/absorption/maxRadius/minAudible/occlusionEnabled
+3. **SoulPerceptionConfig 实际字段**：没有 hearingRange/includeWeather 等，实际字段是 viewDistance/maxVisibleEntities/commRetentionTicks/eventRetentionTicks/sensoryRange/maxNearbySensory
+4. **SoulBridgeAdapter 构造函数**：不接受 perception/action/soulClient 参数，只接受 BridgeConfig（soulArenaUrl/perceiveIntervalTicks 等），系统通过懒加载按名称定位或 bindSystems() 显式绑定
+5. **AcousticPropagation 不是 WorldSystem**：实现 CommunicationStrategy 接口，由 SoulActionSystem 内部使用，不应单独添加到世界
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- 单元测试：**414/414 全绿**
+- basic-world 示例：运行成功，球以 5m/s 移动 3 秒，位置正确
+- pathfinding 示例：编译通过（需运行验证）
+- soul-interaction 示例：编译通过（需 SoulArena 运行才能完整运行）
+
+### 需求覆盖
+
+- 需求3（SDK 供进一步开发）：完整的 SDK 使用示例，降低上手门槛
+- 需求2（完整详细文档）：示例 README + 代码内注释
+
+### 后续可扩展方向（列入 backlog）
+
+1. **打 git tag seed-sdk-v1.0.0**（等待监控任务确认）
+2. **发布到 npm**（配置 .npmignore，npm publish）
+3. **3灵魂集成测试**
+4. **空间哈希/四叉树宽相**（碰撞性能优化）
+5. **动态障碍局部重规划**
+6. **声音衍射（绕射）**
+7. **漏斗算法（Funnel）**
+8. **更多 SDK 示例**：碰撞系统、事件系统、可靠性机制、安全框架
+
