@@ -18,6 +18,9 @@ export class Entity {
   public readonly type: EntityType;
   public position: Vector3;
   public velocity: Vector3;
+  /** Position at the start of the current tick (before physics integration).
+   *  Used for continuous collision detection (CCD) swept AABB tests. */
+  public prevPosition: Vector3;
   public mass: number;
   public material: string;
   /** Physical material properties (restitution, friction) for collision response. */
@@ -44,6 +47,7 @@ export class Entity {
     this.type = opts.type;
     this.position = Vector3.from(opts.position ?? { x: 0, y: 0, z: 0 });
     this.velocity = Vector3.from(opts.velocity ?? { x: 0, y: 0, z: 0 });
+    this.prevPosition = new Vector3(this.position.x, this.position.y, this.position.z);
     this.mass = opts.mass ?? 1;
     this.material = opts.material ?? 'default';
     this.physicsMaterial = opts.physicsMaterial ?? PhysicsMaterials.DEFAULT;

@@ -62,6 +62,14 @@ export interface CollisionSystemConfig {
    *  overlap without physical response (no separation, no bounce) and emit
    *  TriggerEnter/Stay/Exit events. Default true. */
   enableTriggers?: boolean;
+  /** Enable continuous collision detection (CCD) using swept AABB tests.
+   *  Prevents fast-moving bodies from tunneling through thin obstacles.
+   *  Bodies moving faster than ccdSpeedThreshold use a swept AABB that
+   *  encompasses both their previous and current positions. Default false. */
+  enableCCD?: boolean;
+  /** Speed threshold (in world units per second) for CCD swept AABB tests.
+   *  Only bodies with speed above this threshold use swept AABB. Default 5.0. */
+  ccdSpeedThreshold?: number;
 }
 
 const DEFAULT_CONFIG: Required<CollisionSystemConfig> = {
@@ -75,6 +83,8 @@ const DEFAULT_CONFIG: Required<CollisionSystemConfig> = {
   broadPhase: 'brute-force',
   spatialHashCellSize: 5,
   enableTriggers: true,
+  enableCCD: false,
+  ccdSpeedThreshold: 5.0,
 };
 
 /** Statistics for CollisionSystem. */
@@ -317,6 +327,48 @@ export class CollisionSystem implements WorldSystem {
   }
 
   /**
+   * Compute AABB minimum bounds for a body.
+   * If CCD is enabled and the body is moving faster than ccdSpeedThreshold,
+   * uses a swept AABB encompassing both previous and current positions.
+   */
+  private getAABBMins(body: GameObject): { x: number; y: number; z: number } {
+    if (this.config.enableCCD && this.isFastMoving(body)) {
+      return {
+        x: Math.min(body.prevPosition.x, body.position.x) - body.halfExtents.x,
+        y: Math.min(body.prevPosition.y, body.position.y) - body.halfExtents.y,
+        z: Math.min(body.prevPosition.z, body.position.z) - body.halfExtents.z,
+      };
+    }
+    return body.aabbMin();
+  }
+
+  /**
+   * Compute AABB maximum bounds for a body.
+   * If CCD is enabled and the body is moving faster than ccdSpeedThreshold,
+   * uses a swept AABB encompassing both previous and current positions.
+   */
+  private getAABBMaxs(body: GameObject): { x: number; y: number; z: number } {
+    if (this.config.enableCCD && this.isFastMoving(body)) {
+      return {
+        x: Math.max(body.prevPosition.x, body.position.x) + body.halfExtents.x,
+        y: Math.max(body.prevPosition.y, body.position.y) + body.halfExtents.y,
+        z: Math.max(body.prevPosition.z, body.position.z) + body.halfExtents.z,
+      };
+    }
+    return body.aabbMax();
+  }
+
+  /** Check if a body is moving faster than the CCD speed threshold. */
+  private isFastMoving(body: GameObject): boolean {
+    const speed = Math.sqrt(
+      body.velocity.x * body.velocity.x +
+      body.velocity.y * body.velocity.y +
+      body.velocity.z * body.velocity.z,
+    );
+    return speed > (this.config.ccdSpeedThreshold ?? 5.0);
+  }
+
+  /**
    * Check AABB overlap between two bodies and resolve collision if detected.
    * Returns true if a collision was detected and resolved.
    */
@@ -325,10 +377,13 @@ export class CollisionSystem implements WorldSystem {
     // Default both to 0xFFFF so existing behavior is unchanged.
     if (!a.canCollideWith(b)) return false;
 
-    const aMin = a.aabbMin();
-    const aMax = a.aabbMax();
-    const bMin = b.aabbMin();
-    const bMax = b.aabbMax();
+    // Compute AABB bounds. If CCD is enabled and a body is moving fast,
+    // use a swept AABB that encompasses both previous and current positions
+    // to prevent tunneling through thin obstacles.
+    const aMin = this.getAABBMins(a);
+    const aMax = this.getAABBMaxs(a);
+    const bMin = this.getAABBMins(b);
+    const bMax = this.getAABBMaxs(b);
 
     // AABB overlap test (x and z always, y optional).
     const overlapX = aMin.x <= bMax.x && aMax.x >= bMin.x;
@@ -349,6 +404,34 @@ export class CollisionSystem implements WorldSystem {
     }
 
     this.stats.collisionsDetected++;
+
+    // CCD tunneling check: if swept AABB overlaps but current (non-swept) AABB does not,
+    // the fast body has tunneled through the other. Rewind the fast body to prevPosition
+    // to prevent it from passing through obstacles.
+    if (this.config.enableCCD) {
+      const aCurMin = a.aabbMin();
+      const aCurMax = a.aabbMax();
+      const bCurMin = b.aabbMin();
+      const bCurMax = b.aabbMax();
+      const curOverlapX = aCurMin.x <= bCurMax.x && aCurMax.x >= bCurMin.x;
+      const curOverlapZ = aCurMin.z <= bCurMax.z && aCurMax.z >= bCurMin.z;
+      const curOverlapY = !this.config.checkYAxis ||
+        (aCurMin.y <= bCurMax.y && aCurMax.y >= bCurMin.y);
+
+      if (!curOverlapX || !curOverlapZ || !curOverlapY) {
+        // Tunneling detected — rewind fast bodies to their previous positions.
+        // This prevents the body from passing through thin obstacles. Velocity
+        // is preserved; the next tick will handle the collision normally.
+        if (this.isFastMoving(a) && a.type !== 'static' && a.mass > 0) {
+          a.position = new Vector3(a.prevPosition.x, a.prevPosition.y, a.prevPosition.z);
+        }
+        if (this.isFastMoving(b) && b.type !== 'static' && b.mass > 0) {
+          b.position = new Vector3(b.prevPosition.x, b.prevPosition.y, b.prevPosition.z);
+        }
+        this.stats.collisionsResolved++;
+        return true;
+      }
+    }
 
     // Compute penetration depths on x and z axes.
     const penX = Math.min(aMax.x - bMin.x, bMax.x - aMin.x);

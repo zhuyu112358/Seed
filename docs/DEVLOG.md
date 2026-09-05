@@ -3059,3 +3059,131 @@ world.step(1 / 60);
 7. **静摩擦 vs 动摩擦**（当前统一摩擦系数，可区分静/动）
 8. **各向异性摩擦**（不同方向摩擦系数不同，如传送带）
 
+
+
+---
+
+## 2026-09-05 连续碰撞检测（CCD, Continuous Collision Detection）（第43轮迭代）
+
+### 本轮目标
+
+实现连续碰撞检测（CCD），防止高速移动的实体穿透薄障碍物（"tunneling"问题）。当前碰撞检测是离散的（每帧检查一次），当实体在一帧内移动的距离超过障碍物厚度时，会直接穿过障碍物而不被检测到。CCD 通过扫掠 AABB（Swept AABB）检测实体在一帧内扫过的体积，确保即使实体已经穿过障碍物，碰撞仍能被检测到。
+
+### 实现
+
+**1. Entity 扩展（src/entity/Entity.ts）**
+
+- 新增 `prevPosition: Vector3` 属性——记录当前 tick 开始时（物理积分前）的位置
+- 构造函数中初始化为与 position 相同
+- 用于 CCD 扫掠 AABB 计算（从 prevPosition 到 position 的 AABB 并集）
+
+**2. PhysicsSystem 修改（src/physics/PhysicsSystem.ts）**
+
+- 导入 Vector3
+- 在 `tick()` 方法中，调用 `backend.step()` 物理积分前，保存每个实体的 `prevPosition`
+- 确保 prevPosition 始终是积分前的位置，position 是积分后的位置
+
+**3. CollisionSystem 扩展（src/physics/CollisionSystem.ts）**
+
+**配置新增**：
+- `enableCCD: boolean`——是否启用连续碰撞检测（默认 false，向后兼容）
+- `ccdSpeedThreshold: number`——CCD 速度阈值（m/s），只有速度超过此阈值的实体才使用扫掠 AABB（默认 5.0）
+
+**新增方法**：
+- `getAABBMins(body)`——计算实体的 AABB 最小边界。如果 CCD 启用且实体高速移动，使用扫掠 AABB（prevPosition 和 position 的最小值）
+- `getAABBMaxs(body)`——计算实体的 AABB 最大边界。如果 CCD 启用且实体高速移动，使用扫掠 AABB（prevPosition 和 position 的最大值）
+- `isFastMoving(body)`——检查实体速度是否超过 ccdSpeedThreshold
+
+**checkAndResolve 修改**：
+- AABB 检测使用 `getAABBMins/getAABBMaxs` 替代直接调用 `aabbMin/aabbMax`
+- 新增**隧道检测和回退**：碰撞检测后，计算当前（非扫掠）AABB 是否实际重叠。如果扫掠 AABB 重叠但当前 AABB 不重叠，说明发生了隧道穿透——将快速移动的实体位置回退到 prevPosition（积分前位置），防止穿过障碍物。速度保留，下一帧正常处理碰撞。
+
+### 测试
+
+**tests/ccd.test.ts（7 个新测试）**：
+
+- 扫掠 AABB 隧道防护：
+  - CCD 检测到高速实体穿透薄墙的碰撞（实体从墙左侧移动到右侧，离散检测会漏掉）
+  - 离散检测（CCD 关闭）漏掉隧道碰撞（实体保持在穿透位置）
+  - CCD 不影响慢速移动实体（使用普通 AABB）
+  - CCD 扫掠 AABB 在 z 方向也有效（墙沿 x 轴，实体沿 z 轴穿透）
+- CCD 配置：
+  - ccdSpeedThreshold 控制哪些实体使用扫掠 AABB（低于阈值的实体会穿透）
+  - CCD 默认禁用（向后兼容）
+- 多实体 CCD：
+  - CCD 检测两个高速移动实体互相穿过的碰撞
+
+### 验证结果
+
+- 常规构建（tsc -p tsconfig.json）：0 错误
+- SDK 构建（tsc -p tsconfig.sdk.json）：0 错误
+- 单元测试：**522/522 全绿**（从 515 提升 7 个）
+  - CCD 测试：7/7
+  - 原有碰撞系统测试：19/19（无回归）
+  - 碰撞层测试：17/17（无回归）
+  - 碰撞回调测试：10/10（无回归）
+  - 触发器体积测试：12/12（无回归）
+  - 物理材质测试：14/14（无回归）
+  - 碰撞摩擦测试：7/7（无回归）
+  - 所有其他测试：无回归
+- GitHub：所有 commit 已同步（0 待推送）
+
+### 技术细节
+
+**扫掠 AABB 原理**：
+```
+普通 AABB：[position - halfExtents, position + halfExtents]
+扫掠 AABB：[min(prevPosition, position) - halfExtents, max(prevPosition, position) + halfExtents]
+```
+扫掠 AABB 包含了实体在一帧内扫过的整个体积，即使实体已经穿过障碍物，扫掠 AABB 仍会与障碍物重叠。
+
+**隧道回退**：
+- 检测到扫掠 AABB 重叠但当前 AABB 不重叠 → 隧道穿透
+- 将快速实体位置回退到 prevPosition（积分前位置）
+- 速度保留，下一帧实体在 prevPosition 处与障碍物正常碰撞
+
+**性能考虑**：
+- 只有速度超过 ccdSpeedThreshold 的实体才使用扫掠 AABB（默认 5 m/s）
+- 慢速实体使用普通 AABB，无性能开销
+- CCD 默认禁用，需显式启用
+
+### 使用示例
+
+```typescript
+import { CollisionSystem } from 'seed-system';
+
+// Enable CCD with a speed threshold of 3 m/s.
+const collision = new CollisionSystem({
+  enableCCD: true,
+  ccdSpeedThreshold: 3.0,
+  collidableTypes: ['dynamic', 'static'],
+});
+world.addSystem(collision);
+
+// Fast-moving projectile (10 m/s) will no longer tunnel through thin walls.
+const projectile = new GameObject({
+  id: 'proj', name: 'Projectile', type: 'dynamic',
+  position: { x: 0, y: 0, z: 0 },
+  halfExtents: { x: 0.1, y: 0.1, z: 0.1 },
+  mass: 0.1,
+});
+projectile.velocity = new Vector3(10, 0, 0);
+world.addEntity(projectile);
+```
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界）：物理系统完善，CCD 防止高速穿透
+- 需求10（性能问题）：CCD 仅对高速实体启用，慢速实体无开销
+- 需求11（向现实世界逼近）：连续碰撞检测更接近真实物理
+
+### 后续可扩展方向（列入 backlog）
+
+1. **发布到 npm**
+2. **空间哈希性能基准测试**
+3. **动态障碍局部重规划**
+4. **精确时间冲击（TOI, Time of Impact）**：当前回退到 prevPosition，未来可计算精确碰撞时间点并停在碰撞处
+5. **CCD 速度反射**：当前回退后速度保留，未来可在回退时应用法向速度反射
+6. **SoulPerceptionSystem 集成碰撞/触发器生命周期事件**
+7. **扫掠球体 vs 扫掠 AABB**：当前使用扫掠 AABB，未来可支持扫掠球体（更精确的圆形实体）
+

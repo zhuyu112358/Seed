@@ -2,6 +2,7 @@
 // and publishes CollisionEvent / zone-enter events onto the event bus.
 
 import { GameObject } from '../entity/Entity.js';
+import { Vector3 } from '../entity/Vector3.js';
 import type { World } from '../engine/World.js';
 import { CollisionEvent, EntityEnterZone } from '../event/Event.js';
 import type { EventSystem } from '../event/EventSystem.js';
@@ -41,7 +42,11 @@ export class PhysicsSystem {
     if (!this.enabled) return;
     const bodies = world.bodies();
     const before = new Map<string, number>();
-    for (const b of bodies) before.set(b.id, b.position.length());
+    for (const b of bodies) {
+      before.set(b.id, b.position.length());
+      // Save previous position for continuous collision detection (CCD).
+      b.prevPosition = new Vector3(b.position.x, b.position.y, b.position.z);
+    }
 
     const { collisions } = this.backend.step(dt, bodies, this.config);
     for (const c of collisions) {
