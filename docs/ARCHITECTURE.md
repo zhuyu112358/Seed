@@ -149,6 +149,15 @@ class GameObject extends Entity {        // adds physical/interaction properties
 - `NetworkPacket`（`medium='network'`，**stub**）：当前无衰减广播给所有 active 实体。
 - `WorldResonance`（`medium='resonance'`，**stub**）：当前只让 `soul-proxy` 实体以满强度接收。
 
+### 3.8 性能工具（`src/utils/`）
+
+- `ObjectPool<T>`（`src/utils/ObjectPool.ts`）：通用对象池，复用频繁创建/销毁的对象以减少 GC 压力。泛型设计，可池化任何类型。
+  - 配置：`factory`（创建函数）、`reset`（重置函数，可选）、`validate`（验证函数，可选）、`initialSize`（预分配数）、`maxSize`（最大池容量）
+  - API：`acquire()` 获取对象（池空则新建）、`release(obj)` 归还对象（自动重置）、`preallocate(count)` 预分配、`clear()` 清空空闲对象、`getStats()` 获取统计
+  - 防双释放：通过 `activeSet` 追踪活跃对象，重复 release 同一对象被忽略
+  - 统计：createdCount / acquiredCount / releasedCount / activeCount / poolSize
+  - 适用场景：Vector3 临时计算、粒子、投射物、临时实体、事件对象等短生命周期对象
+
 ---
 
 ## 4. 运行时 / SDK 层（runtime）

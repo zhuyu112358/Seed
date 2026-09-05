@@ -138,3 +138,22 @@
 **文档：** SOUL_INTERFACE.md 新增第 9 节「世界事件系统」，包含内置事件表、条件评估、事件效果、灵魂感知集成、API 说明。
 
 **需求覆盖：** 需求12（模拟世界事件）增强——事件现在能影响灵魂感知，形成完整的"天气条件→事件触发→物体影响→灵魂感知"链路。
+
+---
+
+## 2026-09-05 对象池 ObjectPool（第6轮迭代）
+
+**新增内容：**
+
+- src/utils/ObjectPool.ts：通用泛型对象池，复用频繁创建/销毁的对象以减少 GC 压力
+- 配置项：factory（创建函数）、reset（重置函数）、validate（验证函数）、initialSize（预分配）、maxSize（最大容量）
+- API：acquire() 获取对象（池空则新建）、release(obj) 归还对象（自动重置）、preallocate(count) 预分配、clear() 清空空闲对象、getStats() 统计
+- 防双释放：通过 activeSet 追踪活跃对象，重复 release 被忽略
+- 超容量丢弃：release 时池已满则对象被丢弃（等待 GC）
+- 验证机制：acquire 时可通过 validate 函数检查对象有效性，无效则丢弃并新建
+
+**测试：** 新增 12 个单元测试（预分配、获取/归还、复用、双释放、maxSize、preallocate、clear、统计、validate、无reset），完整测试套件 161/161 通过。
+
+**文档：** ARCHITECTURE.md 新增 3.8 节「性能工具」，描述 ObjectPool 设计与适用场景。
+
+**需求覆盖：** 需求10（性能问题，参考大型游戏方案）——对象池是游戏引擎标准性能优化组件，可用于 Vector3 临时计算、粒子、投射物、临时实体等短生命周期对象。
