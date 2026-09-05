@@ -1,168 +1,105 @@
 # 开发日志（DEVLOG）
 
-> 版本：**v0.1.0**（`package.json` `name: seed-system, version: 0.1.0`）
-> 记录方式：基于对 `src/` 源码的实际阅读与 `npm run build` 的真实输出。
-> 快照时间：2026-09-05（Asia/Shanghai）。
+> 版本 v0.1.0。本日志记录本次文档重写时对 `src/` 的**真实代码核对**结果、已落地能力，以及**必须跟踪的已知问题清单**。
+> 文档中文，代码注释英文。
 
 ---
 
-## 1. 项目初始化
+## 1. 本次核对结论
 
-- 项目定位：Seed System —— 运行在 SoulArena 之下的虚拟物理世界引擎，提供可配置世界容器、
-  物理、事件、通信与灵魂交互层。
-- 技术栈：TypeScript（`strict`）+ ESM（NodeNext），运行时 Express 4 + `ws`，校验用 Ajv。
-- 入口脚本：`dev`(tsx) / `start`(node dist) / `test` / `eval` / `test-world`（见 DEPLOYMENT）。
+本次重写全部文档前，逐文件阅读了 `src/` 源码。核心事实：
 
----
-
-## 2. 核心模块清单（按目录分组）
-
-> 源码在本次记录期间处于持续重构中，文件数从初读时的 39 个演化为约 43 个。以下为当前确认存在的分组。
-
-- **api/（2）**：`server.ts`（REST+WS 主入口）、`soulClient.ts`（访问 SoulArena）。
-- **communication/（5）**：`CommunicationStrategy.ts`、`Message.ts`、`AcousticPropagation.ts`、
-  `NetworkPacket.ts`、`WorldResonance.ts`。
-- **systems/（4 + strategies/3）**：`index.ts`（barrel，当前断裂）、`strategies/AcousticPropagation.ts`、
-  `strategies/NetworkPacket.ts`、`strategies/WorldResonance.ts`（新一代 `ICommunicationStrategy` 实现）；
-  另有 `EventSystem.ts / ConditionEngine.ts / event-types.ts / logger.ts`（部分为新补齐）。
-- **engine/（约 6）**：`World.ts`（容器）、`WorldEngine.ts`（主循环）、`Entity.ts`、`ObjectPool.ts`、
-  `Vector3.ts` 等。
-- **entity/（3）**：`Entity.ts`（Entity/GameObject 层次）、`EntityFactory.ts`、`Vector3.ts`。
-- **event/（4）**：`Event.ts`、`EventSystem.ts`、`EventPropagation.ts`、`ConditionEngine.ts`。
-- **physics/（4）**：`PhysicsSystem.ts`、`IPhysicsBackend.ts`、`SimplePhysics2D.ts`、`PhysicsConfig.ts`。
-- **security/（5）**：`ApiKeyAuth.ts`、`InputValidator.ts`、`RateLimiter.ts`、`PermissionSystem.ts`、
-  `sanitize.ts`。
-- **reliability/（4）**：`Logger.ts`、`SnapshotManager.ts`、`Transaction.ts`、`ExceptionHandler.ts`。
-- **evaluator/（3）**：`runEval.ts`、`WorldEvaluator.ts`、`index.ts`。
-- **sdk/（3）**：`index.ts`（barrel）、`WorldBuilder.ts`、`PhysicsConfig.ts`（预设）。
-- **types/（1）**：`index.ts`（跨模块共享类型契约）。
+- 项目存在**两条并行实现栈**（核心模拟层 / 运行时-SDK 层），通过 `types/index.ts` 的接口耦合，但**尚未完全收敛**。
+- 此前部分文档/示例描述的 API（`WorldBuilder.setConfig/usePhysics/build()→World`、`WorldEngine.load()/runTicks()`、`InputValidator.registerSchema/validateInline`、`PermissionSystem.defineRole/checkPermission` 等）**在当前源码中并不存在**。本次文档一律以源码真实签名为准，并在下面“已知问题”中记录落差。
+- `build_errors.txt` 记录的是**某次历史快照**的 14 个 `tsc` 错误；其中若干处已被部分修复（见下文对照），但整体 `npm run build` 仍未通过。
 
 ---
 
-## 3. 编译验证结果（重要）
+## 2. 已落地、可正常工作的部分
 
-**`npm run build` 当前失败，退出码 2，共 24 个 TypeScript 错误。**
-
-完整错误清单（按文件）：
-
-### 3.1 `examples/test-world/index.ts`（10 个）
-
-```text
-(143,19)  Type 'Entity | undefined' is not assignable to type 'GameObject | undefined'
-(192,66)  Tuple type '[]' of length 0 has no element at index 0
-(192,69)  Property 'worldEngine' does not exist on type 'undefined'
-(193,37)  Expected 0 arguments, but got 1
-(194,15)  '"eventTriggers"' is not assignable to parameter of type 'keyof EvalCounters'
-(195,15)  '"communications"' is not assignable to parameter of type 'keyof EvalCounters'
-(196,21)  Property 'setActiveSouls' does not exist on type 'WorldEvaluator'
-(196,57)  Property 'setActiveSouls' does not exist on type 'WorldEvaluator'
-(197,10)  Property 'printReport' does not exist on type 'WorldEvaluator'
-(200,16)  Property 'saveReport' does not exist on type 'WorldEvaluator'
-```
-
-### 3.2 `src/api/server.ts`（9 个）
-
-```text
-(17,33)   Argument of type 'number' is not assignable to parameter of type 'RateLimitConfig'
-(25,200)  schema object is not assignable to parameter of type 'string'   // validate(name, data) 误用
-(25,395)  Property 'ok' does not exist on type 'ValidationResult'
-(26,331)  Property 'retryAfterMs' does not exist on type '{ allowed; remaining }'
-(26,388)  schema object is not assignable to parameter of type 'string'
-(26,559)  Property 'ok' does not exist on type 'ValidationResult'
-(26,832)  Property 'ensure' does not exist on type 'PermissionSystem'
-(26,900)  Property 'value' does not exist on type 'ValidationResult'
-(26,1007) Property 'value' does not exist on type 'ValidationResult'
-```
-
-### 3.3 `src/evaluator/index.ts`（2 个）
-
-```text
-(6,15)  Module './WorldEvaluator.js' has no exported member 'EvaluatorConfig'
-(6,32)  Module './WorldEvaluator.js' has no exported member 'EvalActivityCounters'
-```
-
-### 3.4 `src/security/PermissionSystem.ts`（3 个）
-
-```text
-(21,21) Argument of type '"moderator"' is not assignable to parameter of type 'Role'
-(31,21) Argument of type '"anonymous"' is not assignable to parameter of type 'Role'
-(44,35) Argument of type 'Role | "anonymous"' is not assignable to parameter of type 'Role'
-```
+- `entity/`：`Entity` / `GameObject` / `Vector3`（不可变）/ `EntityFactory`（静态方法）。
+- `physics/`：`PhysicsConfig`（类 + Builder）、`IPhysicsBackend`、`SimplePhysics2D`、`PhysicsSystem`（生命周期系统）、`aabbOverlap`。
+- `event/`：`Event` 信封与子类、`EventSystem`（优先级/取消/错误隔离）、`ConditionEngine`（谓词联合）、`EventPropagation`（空间衰减）。
+- `communication/`：`Message`、`CommunicationStrategy`、`AcousticPropagation`（真实衰减）、`NetworkPacket` / `WorldResonance`（stub）。
+- `reliability/`：`Logger`、`SnapshotManager`、`WorldTransaction`、`ExceptionHandler`。
+- `evaluator/WorldEvaluator.ts`：无参构造，`recordTick/bump/buildReport/flush`。
+- `api/soulClient.ts`、`bridge/SoulBridge.ts`：与 SoulArena 的对接契约。
 
 ---
 
-## 4. 评估结果
+## 3. 已知问题清单（必须修复）
 
-- `npm run eval`（`tsx src/evaluator/runEval.ts`）与 `npm run test-world` 依赖上述仍在漂移的 API。
-- 由于 `tsc` 编译未通过、且 `runEval.ts` 调用的 `WorldEvaluator` API（`bump('collisions'/'events'/
-  'messages')`、`recordTick`、`flush`）与当前 `WorldEvaluator.ts` 的 `EvalCounters` 键集不一致，
-- **当前无法产出可信的评估报告**；`WorldEvaluator.flush()` 已能写 `logs/eval-*.json` 的形态已就绪，
-  待入口与计数器键对齐后即可运行。
+### P0 — 构建失败 / 运行时崩溃
+
+**K1. `npm run build` 失败（约 14 个错误）**
+- `examples/test-world/index.ts`：
+  - 用 `new WorldEngine({ name, tickRate })` 构造，但真实构造函数要求完整 `WorldConfig`（含 `bounds`、`physics`）。
+  - 调用 `engine.getAllEntities()`，该方法在 `WorldEngine` 上**不存在**（存在于 `EntitySystem`）。
+  - `build_errors.txt` 还记录了与 `GameObject` 类型、`WorldEvaluator` 不存在的字段（`eventTriggers/communications/setActiveSouls/printReport/saveReport`）相关的错误。
+- `src/evaluator/runEvaluation.ts`：`package.json` 的 `npm run evaluate` 指向它，但**文件不存在**。
+- `src/evaluator/runEval.ts`：使用了设想中的 API（`new WorldBuilder('eval-world').setConfig().usePhysics().addEntity(...).build()` 后接 `world.events.on/world.step/world.bodies/world.getEntity`），与真实 `WorldBuilder`（`createWorld/addEntity(config)=>id/build():WorldConfig`）不符。
+- `src/evaluator/index.ts`：`export type { EvaluatorConfig, EvalActivityCounters }`，但 `WorldEvaluator.ts` **没有导出这两个类型** → TS 报错（`build_errors.txt` 第 19–20 行）。
+
+**K2. `server.ts` 与 `WorldEngine` 未接通**
+- 所有处理器读取 `deps.engine.currentWorld`（getter），但 `WorldEngine` **没有 `currentWorld`**，也没有 `entities/tick/worldTime` 字段 → 运行时退化为“无世界”分支，类型检查失败。
+- `POST /api/entities` 只校验不落库；`/ws` 仅回显。
+
+> 说明：`build_errors.txt` 中提到的 `permissions.ensure() 不存在`、`limiter.check() 无 retryAfterMs`、`InputValidator.validate() 签名错误`，在**当前** `server.ts` 中已部分修正（当前代码确为 `permissions.ensure(...)`、`limiter.check(clientId).retryAfterMs`、`actionValidator.validate(schema, req.body)`）。这些旧报错以 `build_errors.txt` 记录为准，当前残留的真正阻断点是 `currentWorld` 缺失。
+
+### P1 — 重复 / 双份实现
+
+**K3. 重复模块（与 `entity/` 重复）**
+- `engine/Entity.ts`（实现 `IEntity`，可变 `Vector3` 全套）与 `entity/Entity.ts`（`GameObject` 体系）是**两个不同的 `Entity`**。
+- `engine/Vector3.ts`（可变，`addInPlace/mulInPlace`）与 `entity/Vector3.ts`（不可变）是**两个不同的 `Vector3`**。
+- `engine/ObjectPool.ts`、`engine/SpatialIndex.ts`（`Quadtree`）无对应 `entity/` 同名文件，但与核心层无共享。
+
+**K4. 重复事件模块（与 `event/` 重复）**
+- `systems/EventSystem.ts`（带 `EventDefinition`/条件的玩法事件系统）与 `event/EventSystem.ts`（通用总线）类名相同、API 不同。
+- `systems/ConditionEngine.ts`（`evaluate(conditions[], logic, ctx)`）与 `event/ConditionEngine.ts`（`evaluate(pred, ctx)`）类名相同、API 不同。
+
+**K5. 两套 `PhysicsConfig`**
+- `physics/PhysicsConfig.ts`：**类**，`gravity` 为标量（9.8），字段 `friction/airResistance/restitution/fixedDt/enabled`。
+- `types/index.ts`：**接口** `PhysicsConfig`，`gravity` 为向量，字段 `airDensity/frictionCoefficient/restitutionCoefficient/timeScale/maxVelocity/collisionEnabled/substeps`。
+- `sdk/PhysicsConfig.ts` 又提供了基于后者的预设。三者字段名互不通用。
+
+**K6. 两套通信策略接口**
+- `communication/CommunicationStrategy.ts`：`{ medium; transmit(message, source, world: WorldView): ReceivedMessage[] }`（core，`Message` 形状）。
+- `types/index.ts` 的 `ICommunicationStrategy`：`{ medium; name; initialize; send(...): CommunicationResult; canReach; getPropagationDelay; update; destroy }`（runtime，`CommunicationMessage` 形状）。
+- `AcousticPropagation` 实现的是前者；`WorldBuilder.addCommunicationStrategy` 期望的是后者。
+
+### P2 — 孤立 / 未接线文件
+
+**K7. 孤立 SDK 文件（未被 `sdk/index.ts` 引用）**
+- `sdk/EntityFactory.ts`（`IEntityFactory` 实现，`createGround/createBox/...`）。
+- `sdk/PhysicsConfig.ts`（预设与材质密度/摩擦/弹性表）。
+- `sdk/WorldEventListener.ts`（`createListener()`）。
+- `RunningWorld` 类未从桶导出。
+
+**K8. `evaluator/index.ts` 内容未对齐**：见 K1，导出了不存在的类型。
+
+### P3 — 已知落差（文档已据实标注）
+
+**K9. `WorldEngine` 无 `load()` / `runTicks()`**：示例/旧文档使用了这两个方法，源码不存在。当前 `WorldEngine` 提供 `start()/stop()/tick(dt)/getStats()`。
+
+**K10. 安全模块 API 与早期设想不同**（以源码为准）：
+- `InputValidator`：构造无参，仅 `validate(schema, input)`；**无** `registerSchema/validate(name,data)/validateInline/sanitize/getRegisteredSchemas`，也**无内置 schema**。
+- `PermissionSystem`：`grant/isAllowed/ensure`；**无** `defineRole/assignRole/hasPermission/checkPermission/addPermissionToRole`。默认仅授权 admin `*`、observer `read`、soul 对 entity `read/interact` + soul `self-action`。
+- `RateLimiter`：`constructor(qps, windowMs=1000)`、`check(clientId, now?)`、`reset()`；**无** `consume/resetAll/getStats`。
+
+**K11. 动作枚举不一致**：`server.ts` 允许 `move/speak/interact/attack/use`；`types/ActionRequest` 允许 `move/interact/communicate/use/attack/wait/custom`。
 
 ---
 
-## 5. 已知问题（代码审查发现）
+## 4. 修复优先级建议
 
-### 5.1 server.ts ↔ 安全层签名不一致（最高优先级）
-
-1. **`RateLimiter` 构造**：真实实现要求 `RateLimitConfig` 对象（`enabled/maxRequests/windowMs/
-   perSoul/perIP/burstMultiplier`），server.ts 仍按旧的数字 QPS 调用 → TS 错误。
-2. **`InputValidator` 调用**：真实 API 为 `validate(name, data)` 与 `validateInline(schema, data)`，
-   返回 `ValidationResult { valid, errors }`；server.ts 仍有「把 schema 当 name 传字符串」「读
-   `result.ok` / `result.value`」的旧写法。
-3. **`RateLimiter.check()` 无 `retryAfterMs`**：`check(key)` 只返回 `{allowed, remaining}`；需要
-   `retryAfterMs` 应用 `consume(key)`。server.ts 的 429 分支读错了方法。
-4. **`PermissionSystem.ensure()` 不存在**：新实现只有 `hasPermission(entityId, resource, action)` /
-   `checkPermission(...)`，没有 `ensure(role,...)`，动作端点 RBAC 未真正生效。
-
-### 5.2 PermissionSystem 的角色与类型不一致
-
-5. `types/index.ts` 的 `Role = 'admin' | 'soul' | 'observer'`，但 `PermissionSystem` 新增了
-   `moderator`、`anonymous` 两个默认角色 → 3 个 TS 错误。需要把 `Role` 扩展为
-   `admin | moderator | soul | observer | anonymous`。
-
-### 5.3 物理配置两套不兼容
-
-6. `physics/PhysicsConfig.ts` 是**类、标量 gravity（number）**；`types/index.ts` 的 `PhysicsConfig`
-   是**接口、向量 gravity（IVector3）**。`sdk/PhysicsConfig.ts` 的预设用后者，`PhysicsSystem` /
-   `SimplePhysics2D` 用前者。
-
-### 5.4 通信策略两代接口并存
-
-7. `communication/CommunicationStrategy.ts`（`medium + transmit(Message, GameObject, WorldView)`）
-   与 `types/index.ts` 的 `ICommunicationStrategy`（`medium + name + initialize/send/canReach/
-   getPropagationDelay/update/destroy`）互不兼容；`systems/strategies/*` 实现的是后者。
-
-### 5.5 barrel / 入口断裂
-
-8. `src/systems/index.ts` 引用 `./EventSystem.js`、`./CommunicationSystem.js`、`./ClockSystem.js`、
-   `./WeatherSystem.js`、`./event-types.js` 等当前不存在的模块。
-9. `evaluator/index.ts` 导出 `EvaluatorConfig` / `EvalActivityCounters`，但当前 `WorldEvaluator.ts`
-   只导出 `EvalCounters` 与 `WorldEvaluator`（且 `WorldEvaluator` 构造不接受 config）。
-10. `runEval.ts` 经 barrel 导入 `PhysicsConfig` / `AcousticPropagation`，与 barrel 当前导出状态耦合，
-    易因上游漂移失败。
-
-### 5.6 演示/示例与实现漂移
-
-11. `examples/test-world/index.ts` 使用了与当前 `WorldEvaluator` / `WorldEngine` 不符的 API
-    （`worldEngine`、`setActiveSouls`、`printReport`、`saveReport`、`bump('eventTriggers'/'communications')`）。
-
-### 5.7 架构层遗留
-
-12. 早期 `WorldEngine` 设计依赖 `engine/` 下的 `EntitySystem/SpatialIndex/ObjectPool`，当前已收敛为
-    直接持有 `World + PhysicsSystem`；旧文件/引用需清理。
-13. 两套服务端并存：`api/server.ts`（主入口）与 `server/index.ts`（更完整但未接线），接口不统一。
+1. 先解决 **K1/K2**：统一 `WorldEngine` 与 `World` 的关系（让 `server.ts` 能拿到当前世界），并修掉 `evaluator/index.ts` 的错误导出，使 `npm run build` 转绿。
+2. 收敛 **K5/K6**：选定一套 `PhysicsConfig` 与 `CommunicationStrategy`，删除/别名另一套。
+3. 去重 **K3/K4**：合并 `engine/` 与 `entity/`、`systems/` 与 `event/`。
+4. 处理 **K7**：决定孤立 SDK 文件是接入桶导出还是删除。
+5. 对齐 **K10/K11**：安全模块与动作枚举。
 
 ---
 
-## 6. 下一步计划
+## 5. 变更记录
 
-1. **统一安全层调用**：把 `server.ts` 改为 `validateInline(schema, data)` + `result.valid`；
-   `RateLimiter` 用配置对象构造、429 用 `consume()`；权限检查改用 `checkPermission(...)`。
-2. **扩展 `Role` 联合类型**为五角色，消除 PermissionSystem 的 3 个错误。
-3. **统一物理配置**：决定保留标量类还是向量接口，迁移另一处。
-4. **统一通信策略接口**：让 `communication/` 与 `systems/strategies/` 收敛到一套。
-5. **修复 barrel**：补齐 `systems/index.ts` 缺失文件，或删掉断裂的再导出。
-6. **对齐评估入口**：`runEval.ts` / `test-world` 改用真实 `WorldEvaluator` API（`EvalCounters`
-   键、`buildReport/flush`）。
-7. 跑通 `npm run build`（0 错误）→ `npm run eval` 出第一份真实报告 → 补齐 `server.ts` 的世界装配 main。
+- 本次：重写全部 9 份 `docs/`（新增 `SECURITY.md`），全部以 `src/` 真实签名为准；把上述落差显式记录在本日志与各文档“已知问题”节。
