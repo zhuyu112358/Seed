@@ -38,6 +38,19 @@ import {
   NarrativeCompletedEvent,
 } from "../narrative/NarrativeEvents.js";
 import {
+  SocialRelationChangedEvent,
+  SocialTrustChangedEvent,
+  SocialInteractionEvent,
+} from "../social/SocialEvents.js";
+import {
+  TradeOfferedEvent,
+  TradeAcceptedEvent,
+  TradeRejectedEvent,
+  TradeCancelledEvent,
+  TradeCompletedEvent,
+  TradeExpiredEvent,
+} from "../trade/TradeEvents.js";
+import {
   EntityArrivedEvent,
   CollisionEvent,
   CollisionEnterEvent,
@@ -164,6 +177,24 @@ export class SoulPerceptionSystem implements WorldSystem {
   private narrativeBranchUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for narrative.completed event, set on first tick. */
   private narrativeCompletedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for social.relation_changed event, set on first tick. */
+  private socialRelationChangedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for social.trust_changed event, set on first tick. */
+  private socialTrustChangedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for social.interaction event, set on first tick. */
+  private socialInteractionUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for trade.offered event, set on first tick. */
+  private tradeOfferedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for trade.accepted event, set on first tick. */
+  private tradeAcceptedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for trade.rejected event, set on first tick. */
+  private tradeRejectedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for trade.cancelled event, set on first tick. */
+  private tradeCancelledUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for trade.completed event, set on first tick. */
+  private tradeCompletedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for trade.expired event, set on first tick. */
+  private tradeExpiredUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -607,6 +638,141 @@ export class SoulPerceptionSystem implements WorldSystem {
       });
     }
 
+    // Listen for social relation changed events.
+    if (!this.socialRelationChangedUnsubscribe) {
+      this.socialRelationChangedUnsubscribe = events.on("social.relation_changed", (evt: SocialRelationChangedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `social_relation_changed_${p.entityA}_${p.entityB}_${evt.timestamp}`,
+          "social.relation_changed",
+          `Social relation changed: ${p.entityA}↔${p.entityB} (${p.oldType}→${p.newType})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for social trust changed events.
+    if (!this.socialTrustChangedUnsubscribe) {
+      this.socialTrustChangedUnsubscribe = events.on("social.trust_changed", (evt: SocialTrustChangedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `social_trust_changed_${p.entityA}_${p.entityB}_${evt.timestamp}`,
+          "social.trust_changed",
+          `Social trust changed: ${p.entityA}↔${p.entityB} (${p.oldTrust}→${p.newTrust})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for social interaction events.
+    if (!this.socialInteractionUnsubscribe) {
+      this.socialInteractionUnsubscribe = events.on("social.interaction", (evt: SocialInteractionEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `social_interaction_${p.entityA}_${p.entityB}_${p.interactionType}_${evt.timestamp}`,
+          "social.interaction",
+          `Social interaction: ${p.entityA}↔${p.entityB} (${p.interactionType}, trust ${p.trustDelta >= 0 ? "+" : ""}${p.trustDelta})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for trade offered events.
+    if (!this.tradeOfferedUnsubscribe) {
+      this.tradeOfferedUnsubscribe = events.on("trade.offered", (evt: TradeOfferedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `trade_offered_${p.offerId}_${evt.timestamp}`,
+          "trade.offered",
+          `Trade offered: ${p.offererId}→${p.responderId}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for trade accepted events.
+    if (!this.tradeAcceptedUnsubscribe) {
+      this.tradeAcceptedUnsubscribe = events.on("trade.accepted", (evt: TradeAcceptedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `trade_accepted_${p.offerId}_${evt.timestamp}`,
+          "trade.accepted",
+          `Trade accepted: ${p.offererId}↔${p.responderId}`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for trade rejected events.
+    if (!this.tradeRejectedUnsubscribe) {
+      this.tradeRejectedUnsubscribe = events.on("trade.rejected", (evt: TradeRejectedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `trade_rejected_${p.offerId}_${evt.timestamp}`,
+          "trade.rejected",
+          `Trade rejected: ${p.responderId}${p.reason ? ` (${p.reason})` : ""}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for trade cancelled events.
+    if (!this.tradeCancelledUnsubscribe) {
+      this.tradeCancelledUnsubscribe = events.on("trade.cancelled", (evt: TradeCancelledEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `trade_cancelled_${p.offerId}_${evt.timestamp}`,
+          "trade.cancelled",
+          `Trade cancelled: ${p.offererId}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for trade completed events.
+    if (!this.tradeCompletedUnsubscribe) {
+      this.tradeCompletedUnsubscribe = events.on("trade.completed", (evt: TradeCompletedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `trade_completed_${p.offerId}_${evt.timestamp}`,
+          "trade.completed",
+          `Trade completed: ${p.offererId}↔${p.responderId}`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for trade expired events.
+    if (!this.tradeExpiredUnsubscribe) {
+      this.tradeExpiredUnsubscribe = events.on("trade.expired", (evt: TradeExpiredEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `trade_expired_${p.offerId}_${evt.timestamp}`,
+          "trade.expired",
+          `Trade expired: ${p.offererId}→${p.responderId}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
     // Lazy-locate WeatherSimulator.
     if (!this.weather || !world.systems.includes(this.weather)) {
       this.weather = world.systems.find(s => s instanceof WeatherSimulator) as WeatherSimulator | null ?? null;
@@ -931,6 +1097,42 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.narrativeCompletedUnsubscribe) {
       this.narrativeCompletedUnsubscribe();
       this.narrativeCompletedUnsubscribe = null;
+    }
+    if (this.socialRelationChangedUnsubscribe) {
+      this.socialRelationChangedUnsubscribe();
+      this.socialRelationChangedUnsubscribe = null;
+    }
+    if (this.socialTrustChangedUnsubscribe) {
+      this.socialTrustChangedUnsubscribe();
+      this.socialTrustChangedUnsubscribe = null;
+    }
+    if (this.socialInteractionUnsubscribe) {
+      this.socialInteractionUnsubscribe();
+      this.socialInteractionUnsubscribe = null;
+    }
+    if (this.tradeOfferedUnsubscribe) {
+      this.tradeOfferedUnsubscribe();
+      this.tradeOfferedUnsubscribe = null;
+    }
+    if (this.tradeAcceptedUnsubscribe) {
+      this.tradeAcceptedUnsubscribe();
+      this.tradeAcceptedUnsubscribe = null;
+    }
+    if (this.tradeRejectedUnsubscribe) {
+      this.tradeRejectedUnsubscribe();
+      this.tradeRejectedUnsubscribe = null;
+    }
+    if (this.tradeCancelledUnsubscribe) {
+      this.tradeCancelledUnsubscribe();
+      this.tradeCancelledUnsubscribe = null;
+    }
+    if (this.tradeCompletedUnsubscribe) {
+      this.tradeCompletedUnsubscribe();
+      this.tradeCompletedUnsubscribe = null;
+    }
+    if (this.tradeExpiredUnsubscribe) {
+      this.tradeExpiredUnsubscribe();
+      this.tradeExpiredUnsubscribe = null;
     }
   }
 }

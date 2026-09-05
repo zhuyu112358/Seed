@@ -6033,3 +6033,97 @@ createOffer (offerer发起)
 - 测试文件：67个
 - SDK版本：v2.2.0（M6完成），M7目标v2.3.0
 
+
+
+---
+
+## 2026-09-06 M7阶段3：社交+交易事件感知集成（第75轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- 731483f（M7阶段2交易系统）已在GitHub，0待推送
+- 898个单元测试全部通过
+
+#### 2. 社交+交易事件感知集成 (`src/entity/SoulPerceptionSystem.ts`)
+
+**新增9个事件监听器**（懒加载，首次tick设置）：
+
+社交事件（3个）：
+- `social.relation_changed` → 严重度 low（关系类型变化：oldType→newType）
+- `social.trust_changed` → 严重度 low（信任值变化：oldTrust→newTrust）
+- `social.interaction` → 严重度 low（社交交互：interactionType+trustDelta）
+
+交易事件（6个）：
+- `trade.offered` → 严重度 low（交易发起：offerer→responder）
+- `trade.accepted` → 严重度 medium（交易接受）
+- `trade.rejected` → 严重度 low（交易拒绝，含reason）
+- `trade.cancelled` → 严重度 low（交易取消）
+- `trade.completed` → 严重度 medium（交易完成）
+- `trade.expired` → 严重度 low（交易过期）
+
+**新增9个unsubscribe字段** + stop()清理
+
+**imports新增**：SocialEvents（3个事件类）+ TradeEvents（6个事件类）
+
+#### 3. 测试 (`tests/social-trade-perception.test.ts`)
+- 12个新测试，覆盖：
+  - 社交关系变化感知：2个（事件出现/包含实体名）
+  - 社交信任变化感知：1个
+  - 社交交互感知：1个（含interactionType）
+  - 交易发起感知：1个
+  - 交易接受感知：1个（medium严重度）
+  - 交易完成感知：1个（medium严重度）
+  - 交易拒绝感知：1个
+  - 交易取消感知：1个
+  - 交易过期感知：1个
+  - 多事件共存：1个（社交+交易同时出现在感知帧）
+  - stop清理：1个（stop后不再记录事件）
+
+**关键修复**：测试模式需匹配现有perception测试——必须先创建GameObject(type="soul")并addEntity到world，SoulPerceptionSystem不需要soulId配置参数，getPerception用实体ID。
+
+### 感知事件总览（M7阶段3后）
+
+SoulPerceptionSystem现在监听以下事件类别：
+- 移动/物理：movement.arrived, physics.collision, collision.enter/exit, trigger.enter/exit
+- 路径：path.replanned
+- 天气：weather.changed
+- 资源：harvest.complete, resource.depleted, craft.complete
+- 生态：ecosystem.resource_spawned/depleted/removed/zone_changed（4个）
+- 任务：task.available/accepted/progress/completed/failed/status_changed（6个）
+- 叙事：narrative.started/node_entered/node_exited/branch/completed（5个）
+- **社交：social.relation_changed/trust_changed/interaction（3个，M7新增）**
+- **交易：trade.offered/accepted/rejected/cancelled/completed/expired（6个，M7新增）**
+
+总计：38+个事件监听器
+
+### 验证结果
+
+- **单元测试**：910/910 全绿（M7阶段2结束898，+12）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M7里程碑进度：60%
+
+- ✅ 阶段1：社交关系图（29测试）
+- ✅ 阶段2：交易系统（27测试）
+- ✅ 阶段3：社交+交易事件感知集成（12测试）
+- ⬜ 阶段4：组队系统（组队/离队/队伍共享/队伍事件）
+- ⬜ 阶段5：端到端验证+SDK v2.3.0发布
+
+### 下一轮计划
+
+1. M7阶段4：组队系统
+   - Party（id/leaderId/memberIds[]/maxSize/createdTick/metadata）
+   - PartySystem（WorldSystem，创建/解散/加入/离开/踢人/转让队长/查询）
+   - PartyEvent：party.created/party.disbanded/party.member_joined/party.member_left/party.leader_changed
+   - 队伍共享：经验共享/物品共享（可选回调）
+   - 15+测试
+
+### 迭代统计
+
+- 总迭代轮数：75轮
+- 单元测试：910个（M7阶段2结束898，+12）
+- 测试文件：68个
+- SDK版本：v2.2.0（M6完成），M7目标v2.3.0
+
