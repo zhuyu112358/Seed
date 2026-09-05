@@ -6328,3 +6328,123 @@ PartySystem
 - SDK版本：v2.3.0（M7完成）
 - 已发布tag：7个（v1.0.0/v1.1.0/v1.2.0/v2.0.0/v2.1.0/v2.2.0/v2.3.0）
 
+
+
+---
+
+## 2026-09-06 M8阶段1：建筑系统（第78轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- b658521（M7 SDK v2.3.0发布）已推送（0待推送），但tag seed-sdk-v2.3.0因GitHub 443超时未推送，下轮重试
+- 946个单元测试全部通过
+
+#### 2. M8里程碑定义（管理策略更新）
+- M8：建筑系统+领地系统+建造与破坏（SDK v2.4.0）
+- 完成标准：建筑放置/升级/破坏+领地声明/边界/所有权+建筑效果（生产/防御/居住）+建造事件感知+建筑与物理/资源系统集成
+- 管理策略文档MANAGEMENT_STRATEGY.md已更新：M7标记完成，M8添加
+
+#### 3. 建筑系统 (`src/building/`)
+
+**BuildingTypes** (`BuildingTypes.ts`)
+- BuildingType：structure/defense/production/residential/storage/custom（6种）
+- BuildingPosition：x/z（俯视平面）
+- BuildingSize：width/depth
+- Building：id/type/name/position/size/ownerId/health/maxHealth/level/active/createdTick/metadata
+- BuildingResult：success/buildingId/error
+- BuildingProductionHandler：生产回调（应用层定义产出）
+- BuildingDefenseHandler：防御回调（应用层定义防御值）
+
+**BuildingEvents** (`BuildingEvents.ts`) — 5个事件类
+- BuildingPlacedEvent：建筑放置
+- BuildingUpgradedEvent：建筑升级（含oldLevel/newLevel）
+- BuildingDestroyedEvent：建筑破坏（含reason）
+- BuildingDamagedEvent：建筑受损（含damage/oldHealth/newHealth）
+- BuildingRepairedEvent：建筑修复（含repairAmount/oldHealth/newHealth）
+
+**BuildingSystem** (`BuildingSystem.ts`) — WorldSystem
+- placeBuilding()：放置建筑（AABB重叠检测，不能占用已有建筑位置）
+- upgradeBuilding()：升级建筑（level+1，maxHealth+25，满血恢复）
+- destroyBuilding()：破坏建筑
+- damageBuilding()：造成伤害（health<=0自动破坏）
+- repairBuilding()：修复建筑（不超过maxHealth）
+- setBuildingActive()：切换建筑激活状态
+- getBuilding/getBuildingsByOwner/getBuildingsByType/getBuildingAtPosition/getBuildings
+- getTotalProduction()：汇总所有激活生产建筑的产出（调用productionHandler）
+- getTotalDefense()：汇总所有激活防御建筑的防御值（调用defenseHandler）
+- serialize/deserialize
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- building模块全部导出（BuildingType/Building+5事件类+BuildingSystem）
+
+#### 5. 测试 (`tests/building-system.test.ts`)
+- 25个新测试，覆盖：
+  - 放置建筑：4个（正常/占用检测/事件/默认名字）
+  - 升级：3个（level增加/maxHealth+满血/事件）
+  - 伤害破坏：5个（减血/0血破坏/手动破坏/damaged事件/destroyed事件）
+  - 修复：3个（加血/不超过上限/事件）
+  - 查询：4个（byOwner/byType/atPosition/全部类型）
+  - 生产防御：3个（总产出/总防御/不激活不产出）
+  - 序列化：1个
+  - WorldSystem：2个（添加到world/stop清理）
+
+### 架构设计
+
+**建筑系统模型**：
+```
+BuildingSystem
+  ├── buildings: Map<buildingId, Building>
+  ├── placeBuilding (AABB重叠检测)
+  ├── upgradeBuilding (level+1, health full)
+  ├── damageBuilding / repairBuilding (health管理)
+  ├── destroyBuilding (移除+事件)
+  ├── getTotalProduction (调用productionHandler汇总)
+  └── getTotalDefense (调用defenseHandler汇总)
+       → 应用层注入生产/防御逻辑
+       → Seed只管理建筑状态+事件发射
+```
+
+**与SoulArena分工**：
+- SoulArena：建造决策（建什么/在哪建/是否升级）、生产/防御逻辑（回调）、资源消耗
+- Seed：建筑状态管理（放置/升级/破坏/伤害/修复）+AABB碰撞检测+事件发射+产出/防御汇总框架
+
+### 关键特性
+
+- **AABB重叠检测**：放置建筑时自动检测与已有建筑的x/z平面重叠
+- **建筑生命周期**：放置→升级→伤害→修复→破坏（完整状态机）
+- **升级奖励**：每次升级maxHealth+25并满血恢复
+- **生产/防御框架**：回调注入，Seed不实现具体产出/防御逻辑
+- **激活状态**：inactive建筑不参与生产/防御汇总
+- **位置查询**：getBuildingAtPosition支持点命中检测
+
+### 验证结果
+
+- **单元测试**：971/971 全绿（M7结束946，+25）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M8里程碑进度：20%
+
+- ✅ 阶段1：建筑系统（25测试）
+- ⬜ 阶段2：领地系统（领地声明/边界/所有权/领地事件）
+- ⬜ 阶段3：建筑+领地事件感知集成（SoulPerceptionSystem监听10个事件）
+- ⬜ 阶段4：建筑效果集成（生产→资源系统/防御→伤害减免）
+- ⬜ 阶段5：端到端验证+SDK v2.4.0发布
+
+### 下一轮计划
+
+1. 重试推送seed-sdk-v2.3.0 tag
+2. M8阶段2：领地系统
+   - Territory（id/name/ownerId/boundary(minX,maxX,minZ,maxZ)/claimedTick/metadata）
+   - TerritorySystem（WorldSystem，声明领地/放弃领地/扩展边界/查询领地/领地冲突检测）
+   - TerritoryEvent：territory.claimed/territory.abandoned/territory.expanded/territory.entered/territory.left
+   - 15+测试
+
+### 迭代统计
+
+- 总迭代轮数：78轮
+- 单元测试：971个（M7结束946，+25）
+- 测试文件：71个
+- SDK版本：v2.3.0（M7完成），M8目标v2.4.0
+

@@ -318,3 +318,22 @@ export {
   PartyLeaderChangedEvent,
 } from '../party/PartyEvents.js';
 export { PartySystem } from '../party/PartySystem.js';
+
+// --- Building System (M8) ---
+export type {
+  BuildingType,
+  BuildingPosition,
+  BuildingSize,
+  Building,
+  BuildingResult,
+  BuildingProductionHandler,
+  BuildingDefenseHandler,
+} from '../building/BuildingTypes.js';
+export {
+  BuildingPlacedEvent,
+  BuildingUpgradedEvent,
+  BuildingDestroyedEvent,
+  BuildingDamagedEvent,
+  BuildingRepairedEvent,
+} from '../building/BuildingEvents.js';
+export { BuildingSystem } from '../building/BuildingSystem.js';
