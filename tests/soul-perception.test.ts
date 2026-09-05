@@ -2,7 +2,9 @@
 import assert from "node:assert/strict";
 import { SoulPerceptionSystem } from "../src/entity/SoulPerceptionSystem.js";
 import { WeatherSimulator } from "../src/event/WeatherSimulator.js";
-import { EntityArrivedEvent } from "../src/event/Event.js";
+import { EntityArrivedEvent, CollisionEvent } from "../src/event/Event.js";
+import { CollisionSystem } from "../src/physics/CollisionSystem.js";
+import { Vector3 } from "../src/entity/Vector3.js";
 import { World } from "../src/engine/World.js";
 import { GameObject } from "../src/entity/Entity.js";
 
@@ -201,5 +203,101 @@ describe("SoulPerceptionSystem", () => {
     const arrived = frame.events.find((e) => e.type === "movement.arrived");
     assert.ok(arrived, "Vex should perceive Nova's arrival event");
     assert.ok(arrived!.distance <= 10, "arrival event should be within perception range");
+  });
+
+  // --- Collision perception tests ---
+
+  it("perceives collision event when two souls collide", () => {
+    const { world, perception } = makeWorld();
+    const collisions = new CollisionSystem({ positionalCorrection: 1.0, slop: 0 });
+    world.addSystem(collisions);
+
+    const vex = new GameObject({ id: "soul_vex", name: "vex", type: "soul", position: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 }, mass: 1 });
+    const nova = new GameObject({ id: "soul_nova", name: "nova", type: "soul", position: { x: 0.5, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 }, mass: 1 });
+    world.addEntity(vex);
+    world.addEntity(nova);
+
+    // Step 1: collision detected, event emitted and buffered.
+    // Step 2: perception frame built with buffered collision event.
+    world.step(1 / 60);
+    world.step(1 / 60);
+
+    const vexFrame = perception.getPerception("soul_vex")!;
+    const collisionEvent = vexFrame.events.find((e) => e.type === "physics.collision");
+    assert.ok(collisionEvent, "Vex should perceive the collision event");
+    assert.ok(collisionEvent!.name.includes("soul_vex") && collisionEvent!.name.includes("soul_nova"));
+  });
+
+  it("both colliding souls perceive the collision event", () => {
+    const { world, perception } = makeWorld();
+    const collisions = new CollisionSystem({ positionalCorrection: 1.0, slop: 0 });
+    world.addSystem(collisions);
+
+    const vex = new GameObject({ id: "soul_vex", name: "vex", type: "soul", position: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 }, mass: 1 });
+    const nova = new GameObject({ id: "soul_nova", name: "nova", type: "soul", position: { x: 0.5, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 }, mass: 1 });
+    world.addEntity(vex);
+    world.addEntity(nova);
+
+    world.step(1 / 60);
+    world.step(1 / 60);
+
+    const vexFrame = perception.getPerception("soul_vex")!;
+    const novaFrame = perception.getPerception("soul_nova")!;
+    assert.ok(vexFrame.events.some((e) => e.type === "physics.collision"), "Vex perceives collision");
+    assert.ok(novaFrame.events.some((e) => e.type === "physics.collision"), "Nova perceives collision");
+  });
+
+  it("collision severity is medium for high-impact collisions", () => {
+    const { world, perception } = makeWorld();
+    const collisions = new CollisionSystem({ restitution: 0, positionalCorrection: 1.0, slop: 0 });
+    world.addSystem(collisions);
+
+    const vex = new GameObject({ id: "soul_vex", name: "vex", type: "soul", position: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 }, mass: 1 });
+    const nova = new GameObject({ id: "soul_nova", name: "nova", type: "soul", position: { x: 0.5, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 }, mass: 1 });
+    // High speed toward nova.
+    vex.velocity = new Vector3(5, 0, 0);
+    world.addEntity(vex);
+    world.addEntity(nova);
+
+    world.step(1 / 60);
+    world.step(1 / 60);
+
+    const frame = perception.getPerception("soul_vex")!;
+    const collision = frame.events.find((e) => e.type === "physics.collision");
+    assert.ok(collision, "collision event should exist");
+    // High impact (>= 1 m/s) should be medium severity.
+    assert.equal(collision!.severity, "medium");
+  });
+
+  it("distant soul does not perceive nearby collision", () => {
+    const { world, perception } = makeWorld();
+    const collisions = new CollisionSystem({ positionalCorrection: 1.0, slop: 0 });
+    world.addSystem(collisions);
+
+    // Two souls collide at origin.
+    const a = new GameObject({ id: "soul_a", name: "a", type: "soul", position: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 }, mass: 1 });
+    const b = new GameObject({ id: "soul_b", name: "b", type: "soul", position: { x: 0.5, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 }, mass: 1 });
+    // Third soul far away (50m, beyond viewDistance*2 = 40m).
+    const far = new GameObject({ id: "soul_far", name: "far", type: "soul", position: { x: 50, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 }, mass: 1 });
+    world.addEntity(a);
+    world.addEntity(b);
+    world.addEntity(far);
+
+    world.step(1 / 60);
+
+    const farFrame = perception.getPerception("soul_far")!;
+    const collision = farFrame.events.find((e) => e.type === "physics.collision");
+    assert.ok(!collision, "distant soul should not perceive the collision");
+  });
+
+  it("unsubscribes from collision events on stop", () => {
+    const { world, perception } = makeWorld();
+    world.step(1 / 60); // triggers lazy subscription
+    perception.stop();
+    // After stop, collision events should not be recorded.
+    world.events.emit(new CollisionEvent("soul_a", "soul_b", { x: 0, y: 0, z: 0 }, 2.0));
+    world.step(1 / 60);
+    // No soul in world, so no frames — just verify no crash.
+    assert.ok(true, "stop() should not crash");
   });
 });

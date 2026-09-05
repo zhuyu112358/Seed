@@ -1581,3 +1581,81 @@ Soul A executeAction(communicate)
 7. **重试 git push**（73c607c + 本轮 commit 待推送，GitHub 网络不可达）
 8. **SDK准备**：API文档、类型定义、CHANGELOG、打 tag
 
+
+
+---
+
+## 2026-09-05 碰撞事件发射与灵魂感知集成：灵魂能"感受"到物理碰撞（第28轮迭代）
+
+### 本轮目标
+
+上一轮创建了 CollisionSystem（位置分离+速度响应），但只记录了碰撞状态（lastCollisionAt/lastCollidedWith），没有发射事件，灵魂也感知不到碰撞。本轮：
+1. CollisionSystem 发射 CollisionEvent（type: 'physics.collision'）
+2. SoulPerceptionSystem 监听碰撞事件，记录到感知帧
+3. 碰撞严重程度基于冲击速度（<1m/s 为 low，>=1m/s 为 medium）
+
+### 实现
+
+**CollisionSystem 事件发射**：
+- 碰撞解析后发射 CollisionEvent（复用 Event.ts 中已有的 CollisionEvent 类，type: 'physics.collision'）
+- 事件 payload：a（实体ID）、b（实体ID）、point（碰撞点，两实体位置中点）、relativeSpeed（相对速度，x/z 平面）
+- 事件供感知系统、日志、世界事件系统等监听
+
+**SoulPerceptionSystem 碰撞感知集成**：
+- 新增 collisionUnsubscribe 字段（与 arrivedUnsubscribe 并列）
+- 首次 tick 时懒订阅 'physics.collision' 事件（与 'movement.arrived' 订阅并列）
+- 碰撞事件记录到 eventBuffer：
+  - id: `collision_{a}_{b}_{timestamp}`
+  - type: 'physics.collision'
+  - name: `Collision between {a} and {b} (impact: {speed} m/s)`
+  - severity: 冲击速度 >=1m/s 为 'medium'，否则 'low'
+  - position: 碰撞点
+  - affectsSoul: true
+- 感知帧构建时按距离过滤事件（viewDistance * 2），与其他事件统一处理
+- stop() 中取消碰撞事件订阅
+
+### 关键设计
+
+- **复用已有 CollisionEvent**：Event.ts 中已有 CollisionEvent 类（原 SimplePhysics2D 后端使用），直接复用，不重复定义
+- **懒订阅模式**：与 EntityArrivedEvent 监听一致，首次 tick 时订阅，避免无感知系统时的无效订阅
+- **严重程度分级**：基于冲击速度，轻微碰撞（<1m/s）为 low，较硬碰撞（>=1m/s）为 medium，为后续灵魂决策提供物理反馈
+- **距离过滤**：碰撞事件与其他事件统一按距离过滤，远处的灵魂感知不到附近的碰撞
+
+### 开发中发现并修复的问题
+
+1. **系统顺序导致事件延迟一帧**：SoulPerceptionSystem 在 makeWorld 中先添加，CollisionSystem 后添加。碰撞事件在 CollisionSystem.tick() 中发射，但感知帧已在同 tick 的 SoulPerceptionSystem.tick() 中构建。解决方案：测试中多 step 一次，让下一 tick 的感知帧包含缓冲的碰撞事件。这是正确的行为——事件在发射后的下一帧被感知。
+
+### 新增测试（5个，在 soul-perception.test.ts 中）
+
+1. **两个灵魂碰撞时感知到碰撞事件**：验证感知帧包含 type='physics.collision' 的事件，名称包含两个灵魂ID
+2. **两个碰撞的灵魂都感知到碰撞**：验证碰撞双方的感知帧都包含碰撞事件
+3. **高冲击碰撞严重程度为 medium**：5m/s 速度碰撞，验证 severity='medium'
+4. **远处灵魂感知不到附近碰撞**：50m 外的灵魂（超出 viewDistance*2=40m）感知不到碰撞
+5. **stop() 取消碰撞事件订阅**：验证 stop 后不崩溃
+
+### 验证结果
+
+- 构建：0 错误
+- 单元测试：**391/391 全绿**（从 386 增至 391，+5）
+- SoulPerceptionSystem 测试：17/17（从 12 增至 17）
+- CollisionSystem 测试：13/13（不变）
+- 回归验证：所有现有测试通过
+- 碰撞感知链路完整验证：碰撞 → 事件发射 → 感知缓冲 → 感知帧包含碰撞事件
+
+### 需求覆盖
+
+- 需求5（虚拟物理世界搭建）：灵魂能感知到物理碰撞，形成完整的物理交互反馈
+- 需求6（底层逻辑抽象）：碰撞事件通过事件总线传播，感知系统统一处理，可扩展其他事件类型
+- 需求11（向现实世界逼近）：碰撞严重程度基于冲击速度，模拟真实物理感受
+
+### 后续可扩展方向（列入 backlog）
+
+1. **重试 git push**（3 个 commit 待推送：73c607c 加速/减速 + 486519f 碰撞系统 + 本轮碰撞感知，GitHub 网络持续不可达）
+2. **3灵魂集成测试**：更多灵魂同时存在的性能和独立性（任务描述第一优先级）
+3. **空间哈希/四叉树宽相**：大规模世界碰撞性能优化（当前 O(n²)）
+4. **路径平滑**：漏斗算法（Funnel）平滑网格折线（多轮 backlog）
+5. **动态障碍局部重规划**：执行中遇新障碍重新规划
+6. **声音衍射（绕射）**：障碍物边缘声音绕射（多轮 backlog）
+7. **碰撞影响灵魂状态**：当前只感知碰撞，后续可让碰撞影响灵魂的情绪/状态（需 SoulArena 侧支持）
+8. **SDK准备**：API文档、类型定义、CHANGELOG、打 tag
+

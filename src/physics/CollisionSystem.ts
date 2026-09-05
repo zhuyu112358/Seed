@@ -20,6 +20,7 @@ import type { World, WorldSystem } from '../engine/World.js';
 import type { EventSystem } from '../event/EventSystem.js';
 import { Vector3 } from '../entity/Vector3.js';
 import { GameObject } from '../entity/Entity.js';
+import { CollisionEvent } from '../event/Event.js';
 import { Logger } from '../reliability/Logger.js';
 
 const log = Logger.for('collision-system');
@@ -225,6 +226,18 @@ export class CollisionSystem implements WorldSystem {
     b.state.set('lastCollisionAt', now);
     a.state.set('lastCollidedWith', b.id);
     b.state.set('lastCollidedWith', a.id);
+
+    // Emit collision event so perception and other systems can react.
+    const collisionPoint = {
+      x: (a.position.x + b.position.x) / 2,
+      y: (a.position.y + b.position.y) / 2,
+      z: (a.position.z + b.position.z) / 2,
+    };
+    const relSpeed = Math.sqrt(
+      Math.pow(a.velocity.x - b.velocity.x, 2) +
+      Math.pow(a.velocity.z - b.velocity.z, 2),
+    );
+    events.emit(new CollisionEvent(a.id, b.id, collisionPoint, relSpeed));
 
     log.debug({ a: a.id, b: b.id, penetration: penetration.toFixed(3) }, 'collision resolved');
 

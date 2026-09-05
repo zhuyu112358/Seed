@@ -15,7 +15,7 @@ import type { EventSystem } from "../event/EventSystem.js";
 import { WeatherSimulator } from "../event/WeatherSimulator.js";
 import { LightSystem } from "../event/LightSystem.js";
 import { ThermalSystem } from "../event/ThermalSystem.js";
-import { EntityArrivedEvent } from "../event/Event.js";
+import { EntityArrivedEvent, CollisionEvent } from "../event/Event.js";
 import { Vector3 } from "../entity/Vector3.js";
 import type { GameObject } from "../entity/Entity.js";
 import type {
@@ -79,6 +79,8 @@ export class SoulPerceptionSystem implements WorldSystem {
   private soulsPerceived = 0;
   /** Unsubscribe function for movement.arrived event, set on first tick. */
   private arrivedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for physics.collision event, set on first tick. */
+  private collisionUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -129,6 +131,23 @@ export class SoulPerceptionSystem implements WorldSystem {
           `Arrived at target (${p.stopReason})`,
           "low",
           p.actualPosition,
+          true,
+        );
+      });
+    }
+
+    // Lazily subscribe to CollisionEvent on first tick.
+    if (!this.collisionUnsubscribe) {
+      this.collisionUnsubscribe = events.on("physics.collision", (evt: CollisionEvent) => {
+        const p = evt.payload;
+        // Severity based on impact speed: gentle < 1 m/s, harder >= 1 m/s.
+        const severity = p.relativeSpeed >= 1.0 ? "medium" : "low";
+        this.recordEvent(
+          `collision_${p.a}_${p.b}_${evt.timestamp}`,
+          "physics.collision",
+          `Collision between ${p.a} and ${p.b} (impact: ${p.relativeSpeed.toFixed(2)} m/s)`,
+          severity,
+          p.point,
           true,
         );
       });
@@ -315,6 +334,10 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.arrivedUnsubscribe) {
       this.arrivedUnsubscribe();
       this.arrivedUnsubscribe = null;
+    }
+    if (this.collisionUnsubscribe) {
+      this.collisionUnsubscribe();
+      this.collisionUnsubscribe = null;
     }
   }
 }
