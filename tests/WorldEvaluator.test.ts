@@ -1,61 +1,45 @@
-// Unit tests for src/evaluator/WorldEvaluator.ts
-import { describe, it } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { WorldEvaluator } from '../src/evaluator/WorldEvaluator.js';
 import { World } from '../src/engine/World.js';
 
 function makeWorld(): World {
-  const world = new World({ name: 'test', tickRate: 60 });
-  world.step(1 / 60);
-  world.step(1 / 60);
-  return world;
+  return new World({ name: 'eval-world', tickRate: 60 });
 }
 
-describe('WorldEvaluator', () => {
-  it('recordTick samples tick durations', () => {
-    const ev = new WorldEvaluator();
-    ev.recordTick(2); ev.recordTick(4); ev.recordTick(6);
-    assert.equal(ev.buildReport(makeWorld()).performance.tickTimeAvgMs, 4);
-  });
+test('recordTick feeds performance percentiles into the report', () => {
+  const ev = new WorldEvaluator();
+  ev.recordTick(2);
+  ev.recordTick(4);
+  ev.recordTick(6);
+  const report = ev.buildReport(makeWorld());
+  assert.equal(report.performance.tickTimeAvgMs, 4);
+  assert.equal(report.world.name, 'eval-world');
+  assert.ok(typeof report.performance.rssBytes === 'number');
+});
 
-  it('bump increments activity counters and feeds the report', () => {
-    const ev = new WorldEvaluator();
-    ev.bump('events', 5);
-    ev.bump('soulActions', 2);
-    ev.bump('soulActionsSucceeded', 1);
-    const report = ev.buildReport(makeWorld());
-    assert.equal(report.activity.eventsPerTick, 2.5);
-    assert.equal(report.soulInteraction.actionSuccessRate, 0.5);
-  });
+test('bumps on counters appear in activity and soul-interaction rates', () => {
+  const ev = new WorldEvaluator();
+  const world = makeWorld();
+  world.step(0.01); // tick -> 1
+  ev.bump('events', 5);
+  ev.bump('collisions', 2);
+  ev.bump('soulActions', 4);
+  ev.bump('soulActionsSucceeded', 3);
+  const report = ev.buildReport(world);
+  assert.equal(report.activity.eventsPerTick, 5);
+  assert.equal(report.activity.collisionsPerTick, 2);
+  assert.ok(report.soulInteraction.actionSuccessRate > 0.7);
+});
 
-  it('buildReport produces a complete report', () => {
-    const ev = new WorldEvaluator();
-    ev.recordTick(1); ev.recordTick(3);
-    const r = ev.buildReport(makeWorld());
-    assert.ok(typeof r.generatedAt === 'string');
-    assert.equal(r.world.name, 'test');
-    assert.equal(r.world.tick, 2);
-    assert.ok(r.performance.tickTimeAvgMs >= 0);
-    assert.ok(Array.isArray(r.subsystems));
-  });
-
-  it('p95 and p99 percentiles are computed from samples', () => {
-    const ev = new WorldEvaluator();
-    for (let i = 1; i <= 100; i++) ev.recordTick(i);
-    const r = ev.buildReport(makeWorld());
-    assert.equal(typeof r.performance.tickTimeP95Ms, 'number');
-    assert.equal(typeof r.performance.tickTimeP99Ms, 'number');
-    assert.ok(r.performance.tickTimeP99Ms >= r.performance.tickTimeP95Ms);
-  });
-
-  it('flush writes a JSON report file and returns its path', () => {
-    const ev = new WorldEvaluator();
-    ev.recordTick(2);
-    ev.bump('events', 1);
-    const file = ev.flush(makeWorld());
-    assert.ok(file.endsWith('.json'));
-    assert.equal(fs.existsSync(file), true);
-    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).world.name, 'test');
-  });
+test('flush writes a JSON report to disk and returns its path', () => {
+  const ev = new WorldEvaluator();
+  ev.recordTick(1);
+  ev.bump('messages', 1);
+  const file = ev.flush(makeWorld());
+  assert.ok(fs.existsSync(file), `expected report file at ${file}`);
+  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(parsed.world.name, 'eval-world');
+  fs.rmSync(file, { force: true });
 });

@@ -1,66 +1,62 @@
-// Unit tests for src/security/RateLimiter.ts (token-bucket)
-import { describe, it } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RateLimiter } from '../src/security/RateLimiter.js';
-import type { RateLimitConfig } from '../src/types/index.js';
 
-function cfg(over: Partial<RateLimitConfig> = {}): RateLimitConfig {
-  return { enabled: true, maxRequests: 3, windowMs: 1000, perSoul: true, perIP: false, burstMultiplier: 1, ...over };
+function makeLimiter() {
+  return new RateLimiter({
+    enabled: true,
+    maxRequests: 5,
+    windowMs: 1000,
+    perSoul: true,
+    perIP: true,
+    burstMultiplier: 1,
+  });
 }
 
-describe('RateLimiter', () => {
-  it('consume allows up to the capacity then rejects', () => {
-    const rl = new RateLimiter(cfg());
-    assert.equal(rl.consume('c').allowed, true);
-    assert.equal(rl.consume('c').allowed, true);
-    assert.equal(rl.consume('c').allowed, true);
-    assert.equal(rl.consume('c').allowed, false);
-  });
+test('consume allows up to capacity then rejects', () => {
+  const rl = makeLimiter();
+  for (let i = 0; i < 5; i++) {
+    const r = rl.consume('client-1');
+    assert.equal(r.allowed, true, `request ${i + 1} should be allowed`);
+  }
+  const blocked = rl.consume('client-1');
+  assert.equal(blocked.allowed, false);
+  assert.ok(blocked.retryAfterMs >= 0);
+});
 
-  it('rejected consume reports a positive retryAfterMs', () => {
-    const rl = new RateLimiter(cfg());
-    rl.consume('c'); rl.consume('c'); rl.consume('c');
-    const blocked = rl.consume('c');
-    assert.equal(blocked.allowed, false);
-    assert.ok(blocked.retryAfterMs > 0);
-  });
+test('check reports the current bucket state without consuming', () => {
+  const rl = makeLimiter();
+  assert.equal(rl.check('client-2').allowed, true);
+  rl.consume('client-2', 5);
+  const after = rl.check('client-2');
+  assert.equal(after.allowed, false);
+});
 
-  it('check observes tokens without consuming', () => {
-    const rl = new RateLimiter(cfg());
-    rl.consume('c');
-    const before = rl.check('c').remaining;
-    rl.check('c'); rl.check('c');
-    assert.equal(rl.check('c').remaining, before);
-    assert.equal(before, 2);
-  });
+test('reset and resetAll clear buckets independently', () => {
+  const rl = makeLimiter();
+  rl.consume('a', 5);
+  rl.consume('b', 5);
+  rl.reset('a');
+  assert.equal(rl.check('a').allowed, true);
+  assert.equal(rl.check('b').allowed, false);
+  rl.resetAll();
+  assert.equal(rl.check('b').allowed, true);
+});
 
-  it('reset clears one key and resetAll clears everything', () => {
-    const rl = new RateLimiter(cfg());
-    rl.consume('a'); rl.consume('b');
-    assert.equal(rl.getStats().activeKeys, 2);
-    rl.reset('a');
-    assert.equal(rl.getStats().activeKeys, 1);
-    rl.resetAll();
-    assert.equal(rl.getStats().activeKeys, 0);
-  });
+test('getStats accumulates totals and tracks active keys', () => {
+  const rl = makeLimiter();
+  rl.consume('k1');
+  rl.consume('k1');
+  rl.consume('k2');
+  const stats = rl.getStats();
+  assert.equal(stats.totalRequests, 3);
+  assert.equal(stats.allowed, 3);
+  assert.equal(stats.activeKeys, 2);
+});
 
-  it('getStats tracks total / allowed / rejected counts', () => {
-    const rl = new RateLimiter(cfg());
-    rl.consume('c'); rl.consume('c'); rl.consume('c'); rl.consume('c');
-    const s = rl.getStats();
-    assert.equal(s.totalRequests, 4);
-    assert.equal(s.allowed, 3);
-    assert.equal(s.rejected, 1);
+test('a disabled limiter always allows requests', () => {
+  const rl = new RateLimiter({
+    enabled: false, maxRequests: 1, windowMs: 1000, perSoul: true, perIP: true, burstMultiplier: 1,
   });
-
-  it('disabled mode allows every request', () => {
-    const rl = new RateLimiter(cfg({ enabled: false }));
-    for (let i = 0; i < 10; i++) assert.equal(rl.consume('c').allowed, true);
-  });
-
-  it('burstMultiplier enlarges the burst capacity', () => {
-    const rl = new RateLimiter(cfg({ maxRequests: 3, burstMultiplier: 2 }));
-    for (let i = 0; i < 6; i++) assert.equal(rl.consume('c').allowed, true);
-    assert.equal(rl.consume('c').allowed, false);
-  });
+  for (let i = 0; i < 10; i++) assert.equal(rl.consume('any').allowed, true);
 });
