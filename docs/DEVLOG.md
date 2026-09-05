@@ -5919,3 +5919,117 @@ M7：待管理策略文档定义。可能方向：
 - SDK版本：v2.2.0（M6完成），M7目标v2.3.0
 - 已发布tag：6个
 
+
+
+---
+
+## 2026-09-06 M7阶段2：交易系统（第74轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- 38fadc1（M7阶段1社交关系图）已在GitHub，0待推送
+- 871个单元测试全部通过
+
+#### 2. 交易系统 (`src/trade/`)
+
+**TradeTypes** (`TradeTypes.ts`)
+- TradeStatus：pending/accepted/rejected/cancelled/completed/expired
+- TradeItem：itemId/name/quantity/metadata（应用层定义物品）
+- TradeOffer：id/offererId/responderId/offerItems/requestItems/status/createdTick/expiresTick
+- TradeResult：success/offerId/error
+- ItemTransferValidator：物品转移验证回调（应用层检查库存）
+- ItemTransferHandler：物品转移执行回调（应用层执行转移）
+
+**TradeEvents** (`TradeEvents.ts`) — 6个事件类
+- TradeOfferedEvent：交易发起
+- TradeAcceptedEvent：交易接受（转移前）
+- TradeRejectedEvent：交易拒绝
+- TradeCancelledEvent：交易取消
+- TradeCompletedEvent：交易完成（转移后）
+- TradeExpiredEvent：交易过期
+
+**TradingSystem** (`TradingSystem.ts`) — WorldSystem
+- createOffer()：创建交易（验证：不能对自己/不能空/不能重复pending）
+- acceptOffer()：接受交易（验证responder/验证物品/执行转移/状态pending→accepted→completed）
+- rejectOffer()：拒绝交易
+- cancelOffer()：取消交易（offerer操作）
+- getOffer/getPendingOffers/getOffersByEntity/getActiveOffers
+- tick()：过期检查（expiresTick>0且world.tick>=expiresTick时标记expired）
+- cleanupFinishedOffers()：清理已完成/拒绝/取消/过期的交易
+- transferValidator/transferHandler：应用层注入的库存验证和转移回调
+- serialize/deserialize
+
+#### 3. SDK导出 (`src/sdk/index.ts`)
+- trade模块全部导出（TradeStatus/TradeItem/TradeOffer+6事件类+TradingSystem）
+
+#### 4. 测试 (`tests/trading-system.test.ts`)
+- 27个新测试，覆盖：
+  - 创建交易：5个（有效/对自己/空/重复/事件）
+  - 接受交易：7个（接受/事件/非pending/非responder/验证器失败/转移执行）
+  - 拒绝交易：3个（拒绝/事件/非responder）
+  - 取消交易：3个（取消/事件/非offerer）
+  - 过期：3个（过期/事件/永不过期）
+  - 查询：3个（pending/active/byEntity）
+  - 清理序列化：2个（cleanup/serialize）
+  - WorldSystem：2个（添加到world/stop清理）
+
+### 架构设计
+
+**交易流程**：
+```
+createOffer (offerer发起)
+  → pending状态 → trade.offered事件
+    → acceptOffer (responder接受)
+      → 验证库存 (transferValidator)
+        → accepted状态 → trade.accepted事件
+          → 执行转移 (transferHandler)
+            → offerer→responder (offerItems)
+            → responder→offerer (requestItems)
+          → completed状态 → trade.completed事件
+    → rejectOffer (responder拒绝) → rejected → trade.rejected
+    → cancelOffer (offerer取消) → cancelled → trade.cancelled
+    → tick过期检查 → expired → trade.expired
+```
+
+**与SoulArena分工**：
+- SoulArena：交易决策（发起什么交易/是否接受/价格协商）、库存管理（transferValidator/transferHandler）
+- Seed：交易状态管理（创建/接受/拒绝/取消/过期）、事件发射、验证框架
+
+### 关键特性
+
+- **物品抽象**：TradeItem只存itemId/quantity/metadata，具体物品由应用层定义
+- **库存解耦**：transferValidator/transferHandler回调注入，Seed不管理库存
+- **过期机制**：expiresTick设置，tick()自动检查过期
+- **防重复**：同一offerer-responder对只能有一个pending交易
+- **状态机**：pending→accepted→completed，或pending→rejected/cancelled/expired
+
+### 验证结果
+
+- **单元测试**：898/898 全绿（M7阶段1结束871，+27）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M7里程碑进度：40%
+
+- ✅ 阶段1：社交关系图（29测试）
+- ✅ 阶段2：交易系统（27测试）
+- ⬜ 阶段3：社交+交易事件感知集成（SoulPerceptionSystem监听9个事件）
+- ⬜ 阶段4：组队系统（组队/离队/队伍共享/队伍事件）
+- ⬜ 阶段5：端到端验证+SDK v2.3.0发布
+
+### 下一轮计划
+
+1. M7阶段3：社交+交易事件感知集成
+   - SoulPerceptionSystem添加3个社交事件监听器（social.relation_changed/social.trust_changed/social.interaction）
+   - SoulPerceptionSystem添加6个交易事件监听器（trade.offered/accepted/rejected/cancelled/completed/expired）
+   - 严重度映射：trade.completed=medium, social.interaction=low, 其他=low
+   - 10+测试
+
+### 迭代统计
+
+- 总迭代轮数：74轮
+- 单元测试：898个（M7阶段1结束871，+27）
+- 测试文件：67个
+- SDK版本：v2.2.0（M6完成），M7目标v2.3.0
+

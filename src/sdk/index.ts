@@ -283,3 +283,22 @@ export {
   SocialInteractionEvent,
 } from '../social/SocialEvents.js';
 export { SocialGraph } from '../social/SocialGraph.js';
+
+// --- Trading System (M7) ---
+export type {
+  TradeStatus,
+  TradeItem,
+  TradeOffer,
+  TradeResult,
+  ItemTransferValidator,
+  ItemTransferHandler,
+} from '../trade/TradeTypes.js';
+export {
+  TradeOfferedEvent,
+  TradeAcceptedEvent,
+  TradeRejectedEvent,
+  TradeCancelledEvent,
+  TradeCompletedEvent,
+  TradeExpiredEvent,
+} from '../trade/TradeEvents.js';
+export { TradingSystem } from '../trade/TradingSystem.js';
