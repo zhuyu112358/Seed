@@ -7,3 +7,5 @@ export type {
   ISerializable,
 } from "./WorldSerializer.js";
 export { isSerializable } from "./WorldSerializer.js";
+export { WorldSaveManager } from "./WorldSaveManager.js";
+export type { SaveMetadata, SaveManagerConfig } from "./WorldSaveManager.js";

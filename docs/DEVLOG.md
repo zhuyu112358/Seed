@@ -4574,3 +4574,85 @@ M3完成，SDK v1.2.0发布后进入M4里程碑。M4方向待管理策略文档�
 - 测试文件：53个
 - SDK版本：v1.2.0（M3完成），M4目标v2.0.0
 
+
+
+---
+
+## 2026-09-06 M4阶段2：世界存档/读档系统（第60轮迭代）
+
+### 本轮完成
+
+#### 1. WorldSaveManager (`src/persistence/WorldSaveManager.ts`)
+- 世界存档文件管理系统，基于WorldSerializer添加文件I/O和存档元数据
+- **SaveMetadata**：name/path/size/modifiedAt/worldName/tick/version
+- **SaveManagerConfig**：saveDirectory（默认"./saves"）/fileExtension（默认".seed.json"）/serializer
+- **save(world, name, metadata?)**：序列化世界→写入JSON文件→自动创建目录→保存savedAt时间戳→支持自定义元数据
+- **load(name, world, entityFactory)**：读取文件→验证版本→反序列化到现有世界
+- **exists(name)**：检查存档是否存在
+- **delete(name)**：删除存档文件，返回是否成功
+- **list()**：列出所有存档，按修改时间降序（最新在前），提取元数据
+- **getMetadata(name)**：获取指定存档的元数据
+- **savePath(name)**：获取存档文件完整路径
+- 损坏的存档文件在list()中自动跳过
+
+#### 2. persistence模块更新 (`src/persistence/index.ts`)
+- 新增WorldSaveManager + SaveMetadata + SaveManagerConfig导出
+
+#### 3. SDK导出 (`src/sdk/index.ts`)
+- 新增WorldSaveManager + SaveMetadata + SaveManagerConfig导出
+
+#### 4. 测试 (`tests/world-save-manager.test.ts`)
+- 15个新测试，使用临时目录（os.tmpdir()）避免污染：
+  - save创建存档文件
+  - save包含savedAt时间戳
+  - save自定义元数据
+  - load恢复世界状态
+  - load存档不存在抛出异常
+  - exists检查
+  - delete删除存档
+  - delete不存在返回false
+  - list列出所有存档（按最新排序）
+  - list返回元数据（worldName/tick/version/size/modifiedAt）
+  - list空目录返回空数组
+  - getMetadata获取存档信息
+  - getMetadata不存在返回undefined
+  - 往返save/load保留实体状态
+  - 自定义文件扩展名
+
+### 架构抽象原则
+
+存档系统严格遵循抽象原则：
+- **无硬编码路径**：saveDirectory可配置，默认"./saves"
+- **无硬编码文件格式**：fileExtension可配置，默认".seed.json"
+- **无硬编码世界内容**：存档管理器是泛型的，适用于任何世界配置
+- **实体工厂解耦**：load通过entityFactory回调创建实体，不绑定具体实体类
+- **序列化器可注入**：可传入自定义WorldSerializer实例
+
+### 验证结果
+
+- **单元测试**：663/663 全绿（648+15）
+- **构建**：0错误（主项目+SDK）
+- **GitHub**：0待推送（上轮已同步）
+
+### M4里程碑进度：30%
+
+- ✅ 阶段1：世界序列化系统（WorldSerializer）
+- ✅ 阶段2：世界存档/读档系统（WorldSaveManager）
+- ⬜ 阶段3：程序化世界生成器（地形/资源/实体生成）
+- ⬜ 阶段4：种子系统（确定性生成）
+- ⬜ 阶段5：端到端验证+SDK v2.0.0发布
+
+### 下一轮计划
+
+1. HarvestSystem/CraftingSystem/ConsumptionSystem/GrowthSystem实现ISerializable接口（系统状态可存档）
+2. 程序化世界生成器设计与实现（WorldGenerator）
+3. 种子系统（确定性生成，基于seed的伪随机数）
+4. 继续M4里程碑开发
+
+### 迭代统计
+
+- 总迭代轮数：60轮
+- 单元测试：663个（M4启动时636个，+27）
+- 测试文件：54个
+- SDK版本：v1.2.0（M3完成），M4目标v2.0.0
+
