@@ -47,6 +47,10 @@ export interface SoulActionConfig {
   /** If true, move actions use A* pathfinding to navigate around obstacles.
    *  Requires a PathfinderSystem registered in the world. Default false. */
   pathfindingEnabled?: boolean;
+  /** If true, paths found via pathfinding are automatically smoothed using
+   *  string-pulling (PathSmoother) to reduce waypoint count. Only applies
+   *  when pathfindingEnabled is true. Default false. */
+  smoothPaths?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<Omit<SoulActionConfig, 'acoustic'>> & { acoustic?: AcousticConfig } = {
@@ -58,6 +62,7 @@ const DEFAULT_CONFIG: Required<Omit<SoulActionConfig, 'acoustic'>> & { acoustic?
   movementMode: "instant",
   physicsMoveSpeed: 5,
   pathfindingEnabled: false,
+  smoothPaths: false,
 };
 
 export interface ActionHistoryEntry {
@@ -310,11 +315,23 @@ export class SoulActionSystem implements WorldSystem {
       if (!path || path.waypoints.length === 0) {
         return this.fail(request, `no path found to (${targetX.toFixed(1)}, ${targetZ.toFixed(1)}) [pathfinding, ${mode}]`);
       }
+
+      // Smooth path if enabled (string-pulling reduces waypoint count).
+      let waypoints = path.waypoints;
+      let pathLength = path.length;
+      let smoothed = false;
+      if (this.config.smoothPaths && waypoints.length > 2) {
+        const result = this.pathfinder.smoothPath(waypoints);
+        waypoints = result.waypoints;
+        pathLength = result.length;
+        smoothed = true;
+      }
+
       // Store full path for PathFollowerSystem to advance along.
-      soul.state.set("movePath", path.waypoints);
+      soul.state.set("movePath", waypoints);
       soul.state.set("movePathIndex", 0);
       // Set first waypoint as immediate moveTarget.
-      const firstWp = path.waypoints[0];
+      const firstWp = waypoints[0];
       const dx = firstWp.x - soul.position.x;
       const dz = firstWp.z - soul.position.z;
       const len = Math.sqrt(dx * dx + dz * dz) || 1;
@@ -322,11 +339,13 @@ export class SoulActionSystem implements WorldSystem {
       soul.velocity = new Vector3((dx / len) * speed, 0, (dz / len) * speed);
       soul.state.set("movementMode", "physics");
       soul.state.set("moveTarget", { x: firstWp.x, y: soul.position.y, z: firstWp.z });
-      return this.success(request, `path found: ${path.waypoints.length} waypoints, length ${path.length.toFixed(1)}m [pathfinding, ${mode}]`, {
+      const smoothTag = smoothed ? "smoothed " : "";
+      return this.success(request, `path found: ${smoothTag}${waypoints.length} waypoints, length ${pathLength.toFixed(1)}m [pathfinding, ${mode}]`, {
         position: { x: soul.position.x, y: soul.position.y, z: soul.position.z },
         target: { x: targetX, y: targetY, z: targetZ },
-        pathLength: Math.round(path.length * 100) / 100,
-        waypoints: path.waypoints.length,
+        pathLength: Math.round(pathLength * 100) / 100,
+        waypoints: waypoints.length,
+        smoothed,
         mode: `pathfinding-${mode}`,
       });
     }

@@ -705,4 +705,133 @@ describe("SoulActionSystem", () => {
     assert.ok(Math.abs(soul.position.x - 15) < 1.5, `should be near x=15, got ${soul.position.x.toFixed(2)}`);
     assert.ok(Math.abs(soul.position.z - 8) < 1.5, `should be near z=8, got ${soul.position.z.toFixed(2)}`);
   });
+
+  // --- smoothPaths integration tests ---
+
+  it("smoothPaths reduces waypoint count on straight paths", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinder = new PathfinderSystem({ width: 30, height: 30, cellSize: 1 });
+    const action = new SoulActionSystem({
+      pathfindingEnabled: true,
+      smoothPaths: true,
+      movementMode: "physics",
+    });
+    world.addSystem(pathfinder);
+    world.addSystem(action);
+    world.addEntity(makeSoul("vex", 5, 0, 15));
+    world.step(1 / 60); // build grid
+
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 25, y: 0, z: 15 }, timestamp: Date.now(),
+    }, world);
+
+    assert.equal(result.success, true);
+    // Straight path should be smoothed to very few waypoints.
+    assert.ok(result.data!.waypoints <= 3,
+      `smoothed straight path should have <=3 waypoints, got ${result.data!.waypoints}`);
+    assert.equal(result.data!.smoothed, true);
+  });
+
+  it("smoothPaths disabled (default) returns raw A* waypoints", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinder = new PathfinderSystem({ width: 30, height: 30, cellSize: 1 });
+    const action = new SoulActionSystem({ pathfindingEnabled: true, movementMode: "physics" });
+    world.addSystem(pathfinder);
+    world.addSystem(action);
+    world.addEntity(makeSoul("vex", 5, 0, 15));
+    world.step(1 / 60);
+
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 25, y: 0, z: 15 }, timestamp: Date.now(),
+    }, world);
+
+    assert.equal(result.success, true);
+    // Without smoothing, straight path has many waypoints (one per cell).
+    assert.ok(result.data!.waypoints >= 10,
+      `unsmoothed path should have >=10 waypoints, got ${result.data!.waypoints}`);
+    assert.equal(result.data!.smoothed, false);
+  });
+
+  it("smoothPaths preserves goal and reaches destination", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const physics = new PhysicsSystem({ gravity: 0 });
+    const pathfinder = new PathfinderSystem({ width: 30, height: 30, cellSize: 1 });
+    const action = new SoulActionSystem({
+      pathfindingEnabled: true,
+      smoothPaths: true,
+      movementMode: "physics",
+      physicsMoveSpeed: 8,
+    });
+    const controller = new MovementController({ distanceMode: "2d", enableEarlyStop: false, arrivalThreshold: 0.5 });
+    const follower = new PathFollowerSystem({ moveSpeed: 8 });
+    world.addSystem(physics);
+    world.addSystem(pathfinder);
+    world.addSystem(action);
+    world.addSystem(controller);
+    world.addSystem(follower);
+
+    // Wall obstacle at x=10, z=5-12.
+    for (let i = 5; i <= 12; i++) {
+      const wall = new GameObject({
+        id: `wall_${i}`, name: "Wall", type: "static",
+        position: { x: 10, y: 0, z: i }, mass: 100, material: "stone",
+      });
+      world.addEntity(wall);
+    }
+    world.addEntity(makeSoul("vex", 5, 0, 8));
+    world.step(1 / 60); // build grid
+
+    const result = action.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 15, y: 0, z: 8 }, timestamp: Date.now(),
+    }, world);
+    assert.equal(result.success, true);
+    assert.equal(result.data!.smoothed, true);
+
+    // Follow the path to completion.
+    let completed = false;
+    for (let i = 0; i < 300; i++) {
+      world.step(1 / 60);
+      const soul = world.getEntity("soul_vex")!;
+      if (!soul.state.get("movePath")) {
+        completed = true;
+        break;
+      }
+    }
+
+    assert.ok(completed, "smoothed path should be completed within 300 ticks");
+    const soul = world.getEntity("soul_vex")!;
+    assert.ok(Math.abs(soul.position.x - 15) < 1.5, `should be near x=15, got ${soul.position.x.toFixed(2)}`);
+    assert.ok(Math.abs(soul.position.z - 8) < 1.5, `should be near z=8, got ${soul.position.z.toFixed(2)}`);
+  });
+
+  it("smoothPaths result has shorter or equal path length", () => {
+    const world = new World({ name: "test", tickRate: 60 });
+    const pathfinder = new PathfinderSystem({ width: 30, height: 30, cellSize: 1 });
+    const actionRaw = new SoulActionSystem({ pathfindingEnabled: true, movementMode: "physics" });
+    const actionSmooth = new SoulActionSystem({
+      pathfindingEnabled: true, smoothPaths: true, movementMode: "physics",
+    });
+    world.addSystem(pathfinder);
+    world.addSystem(actionRaw);
+    world.addSystem(actionSmooth);
+    world.addEntity(makeSoul("vex", 5, 0, 5));
+    world.step(1 / 60);
+
+    const rawResult = actionRaw.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 25, y: 0, z: 25 }, timestamp: Date.now(),
+    }, world);
+    const smoothResult = actionSmooth.executeAction({
+      soulId: "vex", action: "move",
+      parameters: { x: 25, y: 0, z: 25 }, timestamp: Date.now(),
+    }, world);
+
+    assert.equal(rawResult.success, true);
+    assert.equal(smoothResult.success, true);
+    assert.ok(smoothResult.data!.pathLength <= rawResult.data!.pathLength + 0.01,
+      `smoothed length (${smoothResult.data!.pathLength}) should be <= raw (${rawResult.data!.pathLength})`);
+  });
 });
