@@ -5271,3 +5271,134 @@ M6具体内容待管理策略文档定义，可能方向：
 - SDK版本：v2.1.0（M5完成）
 - 已发布tag：5个（v1.0.0/v1.1.0/v1.2.0/v2.0.0/v2.1.0）
 
+
+
+---
+
+## 2026-09-06 M6阶段1：行为树基础设施（第68轮迭代）
+
+### 本轮完成
+
+#### 1. 上轮推送确认
+- aa1665b（SDK v2.1.0发布）已在GitHub，0待推送
+- tag seed-sdk-v2.1.0已推送
+
+#### 2. M6里程碑确认
+- 管理策略文档定义M6 = NPC行为系统+动态任务+世界叙事（SDK v2.2.0）
+- 架构约束：Seed不做认知决策，只提供行为执行框架
+- 具体决策逻辑由SoulArena/应用层通过回调函数定义
+
+#### 3. 行为树核心模块 (`src/behavior/`)
+
+**BehaviorStatus** (`BehaviorStatus.ts`)
+- 枚举：Success/Failure/Running
+
+**Blackboard** (`Blackboard.ts`)
+- per-agent共享数据存储（键值对）
+- get/set/has/delete/keys/clear
+- 事件通知：onChange（所有变化）/onKeyChange（特定键）
+- toJSON/fromJSON序列化
+
+**BehaviorNode** (`BehaviorNode.ts`) — 基类+所有节点类型
+- 基类：tick(agent, blackboard)/reset/addChild/getStatus
+- 组合节点：
+  - Sequence：顺序执行，全部成功才成功，第一个失败即失败
+  - Selector：选择执行，第一个成功即成功，全部失败才失败
+  - Parallel：并行执行，3种策略（RequireAll/RequireAny/RequireCount）
+- 装饰节点：
+  - Inverter：取反子节点结果
+  - Repeater：重复执行N次
+  - UntilFail：重复执行直到失败
+- 叶子节点：
+  - ActionNode：执行回调动作（返回BehaviorStatus）
+  - ConditionNode：检查条件（返回true/false）
+  - WaitNode：等待N tick
+
+**BehaviorTree** (`BehaviorTree.ts`)
+- root节点+blackboard容器
+- tick(agent)/reset/getBlackboard/getLastStatus/getTickCount
+- serialize/deserialize（状态持久化，结构由应用层重建）
+
+**BehaviorTreeSystem** (`BehaviorTreeSystem.ts`)
+- WorldSystem，管理多agent行为树
+- registerAgent/unregisterAgent/hasAgent/getTree/getAgentIds
+- tick时依次执行所有agent的行为树
+- resetAll/serialize/deserialize
+- enabled开关
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- behavior模块全部导出（BehaviorStatus/Blackboard/所有节点类型/BehaviorTree/BehaviorTreeSystem）
+- BehaviorAgent用export type（类型擦除）
+
+#### 5. 测试 (`tests/behavior-tree.test.ts`)
+- 43个新测试，覆盖：
+  - Blackboard：7个（set/get/has/delete/onChange/onKeyChange/clear/toJSON）
+  - ActionNode：3个（success/failure/blackboard访问）
+  - ConditionNode：2个（true/false）
+  - WaitNode：2个（等待/reset）
+  - Sequence：4个（全部成功/第一个失败/不执行后续/Running跨tick）
+  - Selector：3个（第一个成功/尝试下一个/全部失败）
+  - Parallel：4个（RequireAll成功/RequireAll失败/RequireAny成功/Running）
+  - Inverter：3个（success→failure/failure→success/Running透传）
+  - Repeater：2个（重复N次/首次失败）
+  - UntilFail：2个（失败即成功/Running循环）
+  - BehaviorTree：5个（执行root/自有blackboard/reset/tickCount/序列化）
+  - BehaviorTreeSystem：5个（注册执行/注销/多agent/禁用/resetAll）
+  - 复杂行为树：1个（巡逻行为：条件→动作→装饰→动作全链路）
+
+### 架构设计
+
+**行为树执行流程**：
+```
+应用层/SoulArena构建行为树（定义条件/动作回调）
+  → BehaviorTreeSystem.tick()
+    → 每个agent的BehaviorTree.tick(agent)
+      → root节点.tick(agent, blackboard)
+        → 组合/装饰节点调度子节点
+          → 叶子节点执行回调（ActionNode/ConditionNode）
+            → 修改blackboard/返回状态
+```
+
+**与SoulArena分工**：
+- SoulArena：决策（选择行为树、定义条件判断逻辑、定义动作执行逻辑）
+- Seed：执行（行为树tick调度、状态管理、blackboard数据共享）
+
+**关键架构约束遵守**：
+1. ✅ 不实现认知决策逻辑——所有条件/动作都是回调函数，由应用层定义
+2. ✅ 不硬编码具体行为——行为树结构完全由应用层构建
+3. ✅ 抽象可配置——所有节点类型通用，不绑定具体游戏/世界
+4. ✅ 与现有架构一致——WorldSystem接口、ISerializable、事件驱动
+
+### 验证结果
+
+- **单元测试**：781/781 全绿（738+43新）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M6里程碑进度：20%
+
+- 🔄 阶段1：行为树基础设施 ✅（43测试）
+- ⬜ 阶段2：动态任务系统（任务定义/状态管理/进度跟踪/事件触发）
+- ⬜ 阶段3：世界叙事链（事件序列/条件触发/叙事状态机）
+- ⬜ 阶段4：玩家影响世界反馈（动作→世界状态变化→感知闭环）
+- ⬜ 阶段5：端到端验证+SDK v2.2.0发布
+
+### 下一轮计划
+
+1. M6阶段2：动态任务系统
+   - TaskDefinition（id/name/description/objectives/rewards/conditions）
+   - TaskInstance（状态：locked/available/active/completed/failed，进度跟踪）
+   - TaskSystem（WorldSystem，任务注册/接受/完成/失败，事件触发）
+   - 目标类型：collect/kill/reach/interact（可扩展）
+   - 任务事件：task_available/task_accepted/task_progress/task_completed/task_failed
+   - SoulPerceptionSystem集成任务事件感知
+   - 15+测试
+
+### 迭代统计
+
+- 总迭代轮数：68轮
+- 单元测试：781个（M5结束738，+43）
+- 测试文件：61个
+- SDK版本：v2.1.0（M5完成），M6目标v2.2.0
+- 已发布tag：5个
+

@@ -210,3 +210,23 @@ export type {
   LogLevel,
   WorldEvent,
 } from '../types/index.js';
+
+// --- Behavior Tree (M6) ---
+export { BehaviorStatus } from '../behavior/BehaviorStatus.js';
+export { Blackboard } from '../behavior/Blackboard.js';
+export {
+  BehaviorNode,
+  Sequence,
+  Selector,
+  Parallel,
+  ParallelPolicy,
+  Inverter,
+  Repeater,
+  UntilFail,
+  ActionNode,
+  ConditionNode,
+  WaitNode,
+} from '../behavior/BehaviorNode.js';
+export type { BehaviorAgent } from '../behavior/BehaviorNode.js';
+export { BehaviorTree } from '../behavior/BehaviorTree.js';
+export { BehaviorTreeSystem } from '../behavior/BehaviorTreeSystem.js';
