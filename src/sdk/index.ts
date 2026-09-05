@@ -1,5 +1,4 @@
-// SDK barrel: the public surface of Seed.
-export { WorldBuilder } from './WorldBuilder.js';
+﻿export { WorldBuilder } from './WorldBuilder.js';
 export { EntityFactory } from '../entity/EntityFactory.js';
 export { PhysicsConfig, PhysicsConfigBuilder } from '../physics/PhysicsConfig.js';
 export { PhysicsSystem } from '../physics/PhysicsSystem.js';
