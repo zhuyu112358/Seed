@@ -6,7 +6,7 @@
 import type { World, WorldSystem } from "../engine/World.js";
 import type { EventSystem } from "../event/EventSystem.js";
 import { CraftingRecipe, CraftingRecipeRegistry } from "./CraftingRecipe.js";
-import type { ResourceInventory } from "./ResourceInventory.js";
+import { ResourceInventory } from "./ResourceInventory.js";
 import {
   CraftStartEvent,
   CraftCompleteEvent,
@@ -168,5 +168,56 @@ export class CraftingSystem implements WorldSystem {
   stop(): void {
     // Cancel all active crafts (resources already consumed, not refunded).
     this.activeCrafts.clear();
+  }
+
+  /** Serialize crafting system state (inventories + active crafts). */
+  serialize(): unknown {
+    const inventories: Record<string, { items: Record<string, number>; maxCapacity: number }> = {};
+    for (const [id, inv] of this.inventories) {
+      inventories[id] = { items: inv.getAll(), maxCapacity: inv.maxCapacity };
+    }
+    const activeCrafts: Record<string, Array<{ recipeId: string; ticksRemaining: number }>> = {};
+    for (const [soulId, crafts] of this.activeCrafts) {
+      activeCrafts[soulId] = crafts.map((c) => ({
+        recipeId: c.recipe.id,
+        ticksRemaining: c.ticksRemaining,
+      }));
+    }
+    return { inventories, activeCrafts };
+  }
+
+  /** Deserialize crafting system state. Recipes must already be registered. */
+  deserialize(data: unknown): void {
+    const d = data as {
+      inventories?: Record<string, { items: Record<string, number>; maxCapacity: number }>;
+      activeCrafts?: Record<string, Array<{ recipeId: string; ticksRemaining: number }>>;
+    };
+    // Restore inventories.
+    this.inventories.clear();
+    if (d.inventories) {
+      for (const [id, invData] of Object.entries(d.inventories)) {
+        const inv = new ResourceInventory({ maxCapacity: invData.maxCapacity });
+        for (const [typeId, amount] of Object.entries(invData.items)) {
+          inv.add(typeId, amount);
+        }
+        this.inventories.set(id, inv);
+      }
+    }
+    // Restore active crafts.
+    this.activeCrafts.clear();
+    if (d.activeCrafts) {
+      for (const [soulId, crafts] of Object.entries(d.activeCrafts)) {
+        const restored: ActiveCraft[] = [];
+        for (const c of crafts) {
+          const recipe = this.recipes.get(c.recipeId);
+          if (recipe) {
+            restored.push({ soulId, recipe, ticksRemaining: c.ticksRemaining, totalTicks: recipe.craftTime });
+          }
+        }
+        if (restored.length > 0) {
+          this.activeCrafts.set(soulId, restored);
+        }
+      }
+    }
   }
 }

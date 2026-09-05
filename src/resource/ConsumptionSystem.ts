@@ -7,7 +7,7 @@
 import type { World, WorldSystem } from "../engine/World.js";
 import type { EventSystem } from "../event/EventSystem.js";
 import { ConsumptionRule, ConsumptionRuleRegistry } from "./ConsumptionRule.js";
-import type { ResourceInventory } from "./ResourceInventory.js";
+import { ResourceInventory } from "./ResourceInventory.js";
 import {
   ResourceConsumedEvent,
   ResourceConsumptionFailedEvent,
@@ -134,5 +134,48 @@ export class ConsumptionSystem implements WorldSystem {
 
   stop(): void {
     this.souls.clear();
+  }
+
+  /** Serialize consumption system state (soul inventories + tick counters). */
+  serialize(): unknown {
+    const souls: Record<string, {
+      inventory: { items: Record<string, number>; maxCapacity: number };
+      tickCounters: Record<string, number>;
+    }> = {};
+    for (const [soulId, state] of this.souls) {
+      const counters: Record<string, number> = {};
+      for (const [ruleId, ticks] of state.tickCounters) {
+        counters[ruleId] = ticks;
+      }
+      souls[soulId] = {
+        inventory: { items: state.inventory.getAll(), maxCapacity: state.inventory.maxCapacity },
+        tickCounters: counters,
+      };
+    }
+    return { souls };
+  }
+
+  /** Deserialize consumption system state. Rules must already be registered. */
+  deserialize(data: unknown): void {
+    const d = data as {
+      souls?: Record<string, {
+        inventory: { items: Record<string, number>; maxCapacity: number };
+        tickCounters: Record<string, number>;
+      }>;
+    };
+    this.souls.clear();
+    if (d.souls) {
+      for (const [soulId, soulData] of Object.entries(d.souls)) {
+        const inv = new ResourceInventory({ maxCapacity: soulData.inventory.maxCapacity });
+        for (const [typeId, amount] of Object.entries(soulData.inventory.items)) {
+          inv.add(typeId, amount);
+        }
+        const tickCounters = new Map<string, number>();
+        for (const [ruleId, ticks] of Object.entries(soulData.tickCounters)) {
+          tickCounters.set(ruleId, ticks);
+        }
+        this.souls.set(soulId, { soulId, inventory: inv, tickCounters });
+      }
+    }
   }
 }

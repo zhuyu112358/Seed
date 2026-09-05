@@ -4750,3 +4750,87 @@ M3完成，SDK v1.2.0发布后进入M4里程碑。M4方向待管理策略文档�
 - 测试文件：56个
 - SDK版本：v1.2.0（M3完成），M4目标v2.0.0
 
+
+
+---
+
+## 2026-09-06 M4阶段4：核心系统ISerializable实现（第62轮迭代）
+
+### 本轮完成
+
+#### 1. HarvestSystem ISerializable (`src/resource/HarvestSystem.ts`)
+- `serialize()`：序列化inventories（soulId→{items, maxCapacity}）+ nodeStates（entityId→currentAmount）
+- `deserialize(data)`：恢复inventories（创建ResourceInventory并填充items）+ 恢复node currentAmount（查找已注册节点）
+- 节点假设：反序列化时节点已通过registerNode()重新注册（由应用层在加载世界后注册）
+
+#### 2. CraftingSystem ISerializable (`src/resource/CraftingSystem.ts`)
+- `serialize()`：序列化inventories + activeCrafts（soulId→[{recipeId, ticksRemaining}]）
+- `deserialize(data)`：恢复inventories + 恢复activeCrafts（通过recipeId查找已注册配方，重建ActiveCraft对象，totalTicks=recipe.craftTime）
+- 配方假设：反序列化时配方已通过recipes.register()重新注册
+- 修复：ResourceInventory从type import改为value import（需要new ResourceInventory()）
+- 修复：ActiveCraft字段名ticksRemaining（非remainingTicks）
+
+#### 3. ConsumptionSystem ISerializable (`src/resource/ConsumptionSystem.ts`)
+- `serialize()`：序列化souls（soulId→{inventory: {items, maxCapacity}, tickCounters: {ruleId→ticks}}）
+- `deserialize(data)`：恢复souls（创建ResourceInventory + tickCounters Map + SoulConsumptionState）
+- 规则假设：反序列化时规则已通过rules.register()重新注册
+- 修复：ResourceInventory从type import改为value import
+
+#### 4. GrowthSystem ISerializable (`src/resource/GrowthSystem.ts`)
+- `serialize()`：序列化soulGrowth（soulId→ruleId→{totalXP, level}）
+- `deserialize(data)`：恢复soulGrowth（创建ruleMap + SoulGrowthState）
+- 规则假设：反序列化时规则已通过rules.register()重新注册
+- 事件监听器是瞬态的（在tick()中通过setupListeners()重新注册），不需要序列化
+
+#### 5. 测试 (`tests/system-serialization.test.ts`)
+- 12个新测试：
+  - 4个ISerializable类型守卫测试（Harvest/Crafting/Consumption/Growth）
+  - HarvestSystem：inventories序列化/反序列化、node amounts序列化/反序列化
+  - CraftingSystem：inventories序列化/反序列化、active crafts序列化/反序列化
+  - ConsumptionSystem：soul state和counters序列化/反序列化
+  - GrowthSystem：XP和等级序列化/反序列化
+  - WorldSerializer：通过ISerializable捕获系统状态、系统状态往返验证
+
+### 架构设计：配置与状态分离
+
+所有资源系统遵循**配置与状态分离**原则：
+- **配置**（ResourceType/CraftingRecipe/ConsumptionRule/GrowthRule）：通过Registry运行时注册，**不序列化**，由应用层在加载世界后重新注册
+- **状态**（inventories/activeCrafts/tickCounters/soulGrowth）：通过ISerializable序列化/反序列化
+- 这种设计确保存档文件只包含可变状态，不重复存储静态配置
+
+### WorldSerializer集成
+
+WorldSerializer自动检测实现ISerializable的系统并序列化其状态：
+- `isSerializable(system)`类型守卫检查serialize()/deserialize()方法
+- serialize()时遍历所有系统，ISerializable系统的状态存入`data.systems[systemName]`
+- deserialize()时遍历所有系统，从`data.systems[systemName]`恢复状态
+
+### 验证结果
+
+- **单元测试**：705/705 全绿（693+12）
+- **构建**：0错误（主项目+SDK）
+- **GitHub**：0待推送（上轮已同步）
+
+### M4里程碑进度：70%
+
+- ✅ 阶段1：世界序列化系统（WorldSerializer）
+- ✅ 阶段2：世界存档/读档系统（WorldSaveManager）
+- ✅ 阶段3：种子系统+程序化世界生成器（SeededRandom+WorldGenerator）
+- ✅ 阶段4：核心系统ISerializable实现（Harvest/Crafting/Consumption/Growth）
+- ⬜ 阶段5：端到端验证+SDK v2.0.0发布
+
+### 下一轮计划
+
+1. 端到端存档/读档验证（创建世界→运行→存档→加载→验证状态一致）
+2. 程序化生成示例（演示插件式世界生成）
+3. CHANGELOG更新v1.2.0→v2.0.0
+4. SDK v2.0.0发布准备（tag+文档）
+5. M4完成后进入M5里程碑
+
+### 迭代统计
+
+- 总迭代轮数：62轮
+- 单元测试：705个（M4启动时636个，+69）
+- 测试文件：57个
+- SDK版本：v1.2.0（M3完成），M4目标v2.0.0
+

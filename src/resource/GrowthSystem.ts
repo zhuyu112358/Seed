@@ -169,4 +169,34 @@ export class GrowthSystem implements WorldSystem {
     this.soulGrowth.clear();
     this.events = null;
   }
+
+  /** Serialize growth system state (soul XP/levels per rule). */
+  serialize(): unknown {
+    const soulGrowth: Record<string, Record<string, { totalXP: number; level: number }>> = {};
+    for (const [soulId, ruleMap] of this.soulGrowth) {
+      const rules: Record<string, { totalXP: number; level: number }> = {};
+      for (const [ruleId, state] of ruleMap) {
+        rules[ruleId] = { totalXP: state.totalXP, level: state.level };
+      }
+      soulGrowth[soulId] = rules;
+    }
+    return { soulGrowth };
+  }
+
+  /** Deserialize growth system state. Rules must already be registered. */
+  deserialize(data: unknown): void {
+    const d = data as {
+      soulGrowth?: Record<string, Record<string, { totalXP: number; level: number }>>;
+    };
+    this.soulGrowth.clear();
+    if (d.soulGrowth) {
+      for (const [soulId, rules] of Object.entries(d.soulGrowth)) {
+        const ruleMap = new Map<string, SoulGrowthState>();
+        for (const [ruleId, state] of Object.entries(rules)) {
+          ruleMap.set(ruleId, { totalXP: state.totalXP, level: state.level });
+        }
+        this.soulGrowth.set(soulId, ruleMap);
+      }
+    }
+  }
 }

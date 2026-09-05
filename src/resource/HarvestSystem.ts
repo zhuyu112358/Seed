@@ -183,4 +183,46 @@ export class HarvestSystem implements WorldSystem {
       registered.node.cancelHarvest();
     }
   }
+
+  /** Serialize harvest system state (inventories + node amounts). */
+  serialize(): unknown {
+    const inventories: Record<string, { items: Record<string, number>; maxCapacity: number }> = {};
+    for (const [id, inv] of this.inventories) {
+      inventories[id] = { items: inv.getAll(), maxCapacity: inv.maxCapacity };
+    }
+    const nodeStates: Record<string, number> = {};
+    for (const [id, registered] of this.nodes) {
+      nodeStates[id] = registered.node.currentAmount;
+    }
+    return { inventories, nodeStates };
+  }
+
+  /** Deserialize harvest system state. Nodes must already be registered. */
+  deserialize(data: unknown): void {
+    const d = data as {
+      inventories?: Record<string, { items: Record<string, number>; maxCapacity: number }>;
+      nodeStates?: Record<string, number>;
+    };
+    // Restore inventories.
+    this.inventories.clear();
+    if (d.inventories) {
+      for (const [id, invData] of Object.entries(d.inventories)) {
+        const inv = new ResourceInventory({ maxCapacity: invData.maxCapacity });
+        for (const [typeId, amount] of Object.entries(invData.items)) {
+          inv.add(typeId, amount);
+        }
+        this.inventories.set(id, inv);
+      }
+    }
+    // Restore node current amounts.
+    if (d.nodeStates) {
+      for (const [id, amount] of Object.entries(d.nodeStates)) {
+        const registered = this.nodes.get(id);
+        if (registered) {
+          registered.node.currentAmount = amount;
+          registered.wasDepleted = amount <= 0;
+        }
+      }
+    }
+  }
 }
