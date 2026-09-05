@@ -1,36 +1,30 @@
-// npm run eval entrypoint: builds a tiny synthetic world, runs a fixed number of
-// ticks while timing each, then writes logs/eval-<timestamp>.json.
-import { WorldBuilder, EntityFactory, PhysicsConfig, AcousticPropagation } from '../sdk/index.js';
-import { Message } from '../communication/Message.js';
-import type { GameObject } from '../entity/Entity.js';
-import { WorldEvaluator } from './WorldEvaluator.js';
-import { Logger } from '../reliability/Logger.js';
-const log = Logger.for('eval-main');
+﻿import fs from "node:fs";
+import path from "node:path";
+import { WorldEngine } from "../engine/WorldEngine.js";
+import { Logger } from "../reliability/Logger.js";
+const log = Logger.for("eval-main");
+function pct(sorted: number[], p: number): number { if (sorted.length === 0) return 0; return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] ?? 0; }
 function main(): void {
-  const world = new WorldBuilder('eval-world')
-    .setConfig({ tickRate: 60 })
-    .usePhysics(PhysicsConfig.builder().gravity(9.8).restitution(0.6).build())
-    .addEntity(EntityFactory.staticBox('ground', { x: 0, y: -0.5, z: 0 }, { x: 20, y: 0.5, z: 20 }))
-    .addEntity(EntityFactory.dynamicBox({ name: 'box-a', position: { x: -2, y: 5, z: 0 }, mass: 1, material: 'wood' }))
-    .addEntity(EntityFactory.dynamicBox({ name: 'box-b', position: { x: 2, y: 7, z: 0 }, mass: 3, material: 'metal' }))
-    .addEntity(EntityFactory.soulProxy({ soulId: 'eval_vex', name: 'Vex', element: 'wind', position: { x: -1, y: 1, z: 0 } }))
-    .build();
-  const evaluator = new WorldEvaluator();
-  world.events.on('physics.collision', () => evaluator.bump('collisions'));
-  world.events.on('world.tick', () => evaluator.bump('events'));
-  const TICKS = 120; const dt = 1 / 60;
-  for (let i = 0; i < TICKS; i++) { const t0 = performance.now(); world.step(dt); evaluator.recordTick(performance.now() - t0); }
-  const acoustic = new AcousticPropagation({ maxRadius: 30 });
-  const vex = world.getEntity('soul_eval_vex')!;
-  const nova = EntityFactory.soulProxy({ soulId: 'eval_nova', name: 'Nova', element: 'fire', position: { x: 5, y: 1, z: 0 } });
-  world.addEntity(nova);
-  const received = acoustic.transmit(
-    new Message({ content: 'hello from Vex', sourceId: vex.id, position: vex.position.toObject(), medium: 'acoustic', intensity: 1 }),
-    vex as never,
-    { entities: world.bodies() as unknown as GameObject[], byId: (id) => world.getEntity(id) as never },
-  );
-  evaluator.bump('messages', received.length);
-  evaluator.flush(world);
-  log.info({ received: received.length }, 'eval complete');
+  const engine = new WorldEngine({ name: "eval-world", tickRate: 60 });
+  engine.createEntity({ type: "static", name: "ground", position: { x: 0, y: -0.5, z: 0 }, mass: 1000, material: "stone" });
+  engine.createEntity({ type: "dynamic", name: "box-a", position: { x: -2, y: 5, z: 0 }, mass: 1, material: "wood" });
+  engine.createEntity({ type: "dynamic", name: "box-b", position: { x: 2, y: 7, z: 0 }, mass: 3, material: "metal" });
+  engine.createEntity({ type: "soul", name: "soul:eval_vex", position: { x: -1, y: 1, z: 0 }, mass: 1, material: "energy" });
+  const TICKS = 120; const dt = 1 / 60; const samples: number[] = []; const t0 = Date.now();
+  for (let i = 0; i < TICKS; i++) { const s = performance.now(); engine.tick(dt); samples.push(performance.now() - s); }
+  const durationMs = Date.now() - t0; const sorted = [...samples].sort((a, b) => a - b);
+  const avg = sorted.reduce((a, b) => a + b, 0) / sorted.length; const stats = engine.getStats();
+  const report = { version: "0.1.0", timestamp: Date.now(), worldId: "eval-world", durationMs, tickCount: TICKS, entityCount: stats.entityCount, avgTickTimeMs: Math.round(avg * 1000) / 1000, p95TickTimeMs: Math.round(pct(sorted, 0.95) * 1000) / 1000, p99TickTimeMs: Math.round(pct(sorted, 0.99) * 1000) / 1000, fps: Math.round((TICKS / (durationMs / 1000)) * 100) / 100, memoryUsageMB: Math.round(stats.memoryUsageMB * 100) / 100, collisions: stats.collisionsPerSecond };
+  const logDir = path.resolve(process.cwd(), "logs"); if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  const fp = path.join(logDir, `eval-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  fs.writeFileSync(fp, JSON.stringify(report, null, 2), "utf8");
+  console.log("--- Seed Evaluation Report ---");
+  console.log("world:        " + report.worldId + " (tick=" + report.tickCount + ", entities=" + report.entityCount + ")");
+  console.log("tick ms:      avg=" + report.avgTickTimeMs + " p95=" + report.p95TickTimeMs + " p99=" + report.p99TickTimeMs);
+  console.log("fps:          " + report.fps);
+  console.log("rss:          " + report.memoryUsageMB + " MB");
+  console.log("report:       " + fp);
+  log.info("eval complete", { received: TICKS });
+  engine.destroy();
 }
 main();
