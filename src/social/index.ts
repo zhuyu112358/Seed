@@ -50,3 +50,21 @@ export type {
 } from "./SocialNormTypes.js";
 export { DEFAULT_SOCIAL_NORM_CONFIG } from "./SocialNormTypes.js";
 export { SocialNormSystem } from "./SocialNormSystem.js";
+
+// M13 Social Event System
+export type {
+  SocialEvent,
+  SocialEventType,
+  SocialEventStatus,
+  EventParticipant,
+  EventParticipantRole,
+  ParticipationStatus,
+  EventSocialImpact,
+  SocialEventSystemConfig,
+  EventCreationResult,
+  SocialEventSystemEvent,
+  SocialEventSystemEventType,
+  SocialEventStats,
+} from "./SocialEventTypes.js";
+export { DEFAULT_SOCIAL_EVENT_CONFIG } from "./SocialEventTypes.js";
+export { SocialEventSystem } from "./SocialEventSystem.js";

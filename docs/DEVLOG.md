@@ -9769,3 +9769,102 @@ M11结束1306 + M12新增261 = **1567测试**
 - SDK版本：v2.8.0（M12），目标v2.9.0（M13）
 - 待推送commit：2个（5bd4808阶段1 + 本轮阶段2）
 
+
+
+---
+
+## 2026-09-06 M13阶段3：SocialEventSystem社会事件系统（第114轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M13阶段1+2已完成，2个commit待推送（5bd4808阶段1 + 4579ecd阶段2）
+- GitHub 443端口仍间歇性不可用，推送重试失败，commit保留本地下轮重试
+- 预研报告无新增（仍为001/002）
+
+#### 2. M13阶段3：SocialEventSystem社会事件系统
+
+**创建文件：**
+- `src/social/SocialEventTypes.ts`：社会事件类型定义
+  - SocialEventType：18种事件类型（wedding婚礼/funeral葬礼/festival节日/celebration庆典/gathering集会/conflict冲突/war战争/migration迁徙/birth出生/coming_of_age成人礼/graduation毕业/coronation加冕/treaty条约签署/trade_fair集市/religious_ceremony宗教仪式/protest抗议/riot暴乱/diplomatic_meeting外交会晤）
+  - SocialEventStatus：4种状态（scheduled/ongoing/completed/cancelled）
+  - EventParticipantRole：8种参与者角色（organizer组织者/host主人/guest_of_honor贵宾/attendee参与者/performer表演者/security安保/speaker演讲者/witness见证人）
+  - ParticipationStatus：5种参与状态（invited/confirmed/attended/left/absent）
+  - EventParticipant：参与者实体（角色/状态/到达时间/离开时间）
+  - EventSocialImpact：事件社会影响配置（关系类别/强度变化/影响范围）
+  - SocialEvent：社会事件实体（类型/名称/描述/地点/计划开始时间/持续时间/状态/实际开始时间/结束时间/参与者列表/最大参与者/社会影响/叙事生成状态/叙事文本/是否公开）
+  - SocialEventSystemConfig + DEFAULT配置
+  - SocialEventSystemEventType：9种系统事件（scheduled/started/completed/cancelled/participant_joined/participant_left/narrative_generated/impact_applied）
+  - EventCreationResult + SocialEventStats
+- `src/social/SocialEventSystem.ts`：社会事件系统（非WorldSystem，独立类）
+  - 事件管理：createEvent/getEvent/getAllEvents/getActiveEvents/getOngoingEvents/getEventsByType/getEventsAtLocation/cancelEvent/completeEvent
+  - 参与管理：addParticipant/removeParticipant/getParticipants/getAttendees/getEventsForEntity/isParticipating
+  - 事件生命周期：tick自动推进（scheduled→ongoing→completed基于时间），progressEvents方法
+  - 叙事生成：generateNarrative（18种事件类型各有专属叙事模板）+buildNarrative（基于事件类型/地点/组织者/参与者数量生成叙事文本）
+  - 社会影响：applySocialImpact（应用事件对关系的影响）+getSocialImpact
+  - 序列化：serialize/deserialize
+  - 统计：getStats（总事件数/各状态数/类型分布/总参与者/叙事生成数/平均出席率）
+  - 参与者上限：attendee/guest_of_honor受maxAttendees限制，organizer/host等不受限
+
+**修改文件：**
+- `src/social/index.ts`：新增M13 SocialEventSystem导出（类型+常量+系统）
+- `src/sdk/index.ts`：新增M13 SocialEventSystem SDK导出
+
+**测试文件：**
+- `tests/social-event-system.test.ts`：40个测试，8个测试套件
+  - Event Management（14测试）：创建/事件/自定义选项/上限/查询/活跃过滤/进行中过滤/类型过滤/地点过滤/取消/完成
+  - Participation（11测试）：添加/默认角色/去重/上限/组织者超限/移除/进行中移除/出席者/按实体/参与检查
+  - Event Lifecycle（4测试）：计划→进行中/进行中→完成/开始标记出席/禁用自动推进
+  - Narrative Generation（6测试）：婚礼叙事/葬礼叙事/战争叙事/标记生成/未知事件/自动生成
+  - Social Impact（3测试）：应用影响/无影响/获取配置
+  - Serialization（1测试）：序列化/反序列化
+  - Statistics（1测试）：统计计数
+  - Configuration（2测试）：默认配置/部分覆盖
+
+#### 3. 验证结果
+
+- **SocialEventSystem测试**：40/40 全绿
+- **全量单元测试**：1682/1682 全绿（M13阶段2结束1642，+40）
+- **构建**：0错误
+- **M13测试目标**：已达到1650+目标（当前1682）✅
+- **GitHub**：3个commit待推送（5bd4808阶段1 + 4579ecd阶段2 + 本轮阶段3）
+
+### M13进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | SocialRelationGraph社会关系网络 | ✅ 完成（38测试） |
+| 2 | SocialNormSystem社会规范系统 | ✅ 完成（37测试） |
+| 3 | SocialEventSystem社会事件系统 | ✅ 完成（本轮，40测试） |
+| 4 | GroupBehaviorEngine群体行为引擎 | ⏳ 下一轮 |
+| 5 | InformationSpreadModel信息传播模型 | ⏳ 待开发 |
+| 6 | SocialMobility社会流动机制 | ⏳ 待开发 |
+| 7 | CulturalEvolution文化演化系统 | ⏳ 待开发 |
+| 8 | 与M12 NPC AI和叙事系统集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.9.0发布 | ⏳ 待开发 |
+
+**M13整体进度：33%（阶段1+2+3完成）**
+
+### 关键设计决策
+
+1. **事件生命周期自动推进**：tick中基于currentTick和scheduledStartTick/durationTicks自动推进scheduled→ongoing→completed，应用层也可手动completeEvent/cancelEvent
+2. **18种事件类型专属叙事模板**：每种事件类型有独立的叙事生成模板，包含地点/组织者/参与者数量等变量，生成丰富叙事文本
+3. **参与者角色分级**：organizer/host等核心角色不受maxAttendees限制，attendee/guest_of_honor受上限约束
+4. **事件完成后移至历史**：completed/cancelled事件从active map移至eventHistory数组，getActiveEvents只返回scheduled+ongoing
+5. **与M9 FlockingSystem共存**：M13 GroupBehaviorEngine将基于M9 FlockingSystem扩展，添加暴民心理/集体行动/群体决策/群体情绪传播
+
+### 下一轮计划
+
+1. 重试推送3个待推送commit
+2. M13阶段4：GroupBehaviorEngine群体行为引擎（基于M9 FlockingSystem扩展+暴民心理+集体行动+群体决策+群体情绪传播）
+
+### 迭代统计
+
+- 总迭代轮数：114轮
+- 单元测试：1682个（M13阶段2结束1642，阶段3+40）
+- 测试文件：99个
+- 活跃bug：0个
+- SDK版本：v2.8.0（M12），目标v2.9.0（M13）
+- M13测试目标：1650+ ✅ 已达到（1682）
+- 待推送commit：3个（5bd4808阶段1 + 4579ecd阶段2 + 本轮阶段3）
+

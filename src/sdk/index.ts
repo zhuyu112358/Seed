@@ -350,6 +350,24 @@ export type {
 export { DEFAULT_SOCIAL_NORM_CONFIG } from '../social/SocialNormTypes.js';
 export { SocialNormSystem } from '../social/SocialNormSystem.js';
 
+// --- Social Event System (M13) ---
+export type {
+  SocialEvent,
+  SocialEventType,
+  SocialEventStatus,
+  EventParticipant,
+  EventParticipantRole,
+  ParticipationStatus,
+  EventSocialImpact,
+  SocialEventSystemConfig,
+  EventCreationResult,
+  SocialEventSystemEvent,
+  SocialEventSystemEventType,
+  SocialEventStats,
+} from '../social/SocialEventTypes.js';
+export { DEFAULT_SOCIAL_EVENT_CONFIG } from '../social/SocialEventTypes.js';
+export { SocialEventSystem } from '../social/SocialEventSystem.js';
+
 // --- Trading System (M7) ---
 export type {
   TradeStatus,
