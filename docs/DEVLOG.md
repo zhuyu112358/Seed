@@ -7744,3 +7744,107 @@ receivedIntensity = sourceIntensity
 - 活跃bug：0个
 - SDK版本：v2.5.0（M9完成），M10目标v2.6.0
 
+
+
+---
+
+## 2026-09-06 M10阶段3：感知过滤+注意力机制（第91轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M10阶段2（听觉感知）已完成推送（commit 71a9b87，1159测试），0待推送
+- M9 SDK v2.5.0已发布，BUG-019已关闭
+- 项目重组：D:\Seed → D:\Sojourn\arboreus（世界引擎新名Arboreus/建木）
+
+#### 2. 感知过滤系统 (`src/perception/`)
+
+**PerceptionFilterTypes** (`PerceptionFilterTypes.ts`)
+- PerceptionSeverity：low/medium/high/critical（4级）
+- PerceptionEvent：id/type/name/severity/position/tick/metadata
+- PerceptibleEntity：id/type/position/name
+- FilterConfig：maxDistance/minSeverity/allowedTypes/excludedTypes/allowedEntityTypes/enableFovFilter
+- DEFAULT_FILTER_CONFIG：maxDistance=0(无限制), minSeverity=low, enableFovFilter=false
+- FilterResult：inputCount/outputCount/filteredCount
+- SEVERITY_PRIORITY：low=1, medium=2, high=3, critical=4
+
+**PerceptionFilter** (`PerceptionFilter.ts`)
+- setConfig/addAllowedType/removeAllowedType/addExcludedType/setMinSeverity/setMaxDistance
+- passesEventFilter：4级过滤管道（排除类型→允许类型→严重度→距离）
+- filterEvents：批量过滤事件+统计
+- passesEntityFilter：3级过滤（实体类型→距离→FOV）
+- filterEntities：批量过滤实体+FOV可见性map
+- serialize/deserialize
+
+**AttentionSystem** (`AttentionSystem.ts`)
+- AttentionConfig：severityWeight/distanceWeight/recencyWeight/maxEventsPerTick/referenceDistance/referenceAge/attentionDecay
+- DEFAULT_ATTENTION_CONFIG：severityWeight=0.5, distanceWeight=0.2, recencyWeight=0.2, maxEventsPerTick=10
+- PrioritizedEvent：event/priority/severityScore/distanceScore/recencyScore
+- AttentionResult：processedCount/selectedCount/averagePriority
+- setConfig/setTypeImportance/getTypeImportance/removeTypeImportance
+- calculatePriority：加权优先级计算（严重度+距离+新近度+类型bonus）
+- prioritizeEvents：按优先级排序（降序）
+- getTopEvents：获取前N个最重要事件（attention span限制）
+- applyAttentionDecay：注意力衰减（模拟遗忘）
+- tick/stop/serialize/deserialize
+
+#### 3. SDK导出 (`src/sdk/index.ts`)
+- perception模块全部导出（PerceptionFilter+AttentionSystem+所有类型）
+
+#### 4. 测试 (`tests/perception-filter-attention.test.ts`)
+- 40个新测试，覆盖：
+  - PerceptionFilter配置：7个
+  - 事件过滤：8个（默认全通过/排除类型/允许类型/严重度/距离/无位置事件/组合过滤/统计）
+  - 实体过滤：5个（默认全通过/类型/距离/FOV map/FOV禁用）
+  - 序列化：1个
+  - AttentionSystem配置：5个
+  - 优先级计算：5个（严重度/距离/新近度/类型bonus/组件范围0-1）
+  - 排序与选择：4个（降序排序/attention span/自定义maxCount/平均优先级）
+  - 注意力衰减：3个（衰减降低/零衰减/不低于0）
+  - 序列化：2个
+
+**关键修复**：recencyScore在未来事件（event.tick > currentTick）时超过1，添加Math.min(1, ...) clamp
+
+### 架构设计
+
+**感知过滤管道**：
+```
+事件输入
+  ├── 1. 排除类型（excludedTypes，总是过滤）
+  ├── 2. 允许类型（allowedTypes，非空时只允许这些）
+  ├── 3. 严重度过滤（minSeverity，低于此过滤）
+  └── 4. 距离过滤（maxDistance > 0且有position时）
+      ↓
+过滤后事件
+```
+
+**注意力优先级公式**：
+```
+priority = (severityWeight * severityScore
+          + distanceWeight * distanceScore
+          + recencyWeight * recencyScore) / totalWeight
+         + typeBonus * 0.2
+```
+
+### 验证结果
+
+- **单元测试**：1199/1199 全绿（M10阶段2结束1159，+40）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M10里程碑进度：60%
+
+- ✅ 阶段1：视野锥（FOV）感知系统（26测试）
+- ✅ 阶段2：听觉感知增强（32测试）
+- ✅ 阶段3：感知过滤+注意力机制（40测试）
+- ⬜ 阶段4：SoulPerceptionSystem集成（FOV过滤+多模态感知事件）
+- ⬜ 阶段5：端到端验证+SDK v2.6.0发布
+
+### 迭代统计
+
+- 总迭代轮数：91轮
+- 单元测试：1199个（M10阶段2结束1159，+40）
+- 测试文件：82个
+- 活跃bug：0个
+- SDK版本：v2.5.0（M9完成），M10目标v2.6.0
+

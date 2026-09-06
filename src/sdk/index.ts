@@ -421,3 +421,23 @@ export type {
 } from '../sound/SoundTypes.js';
 export { DEFAULT_SOUND_CONFIG } from '../sound/SoundTypes.js';
 export { SoundPerceptionSystem } from '../sound/SoundPerceptionSystem.js';
+
+// --- Perception Filter + Attention System (M10) ---
+export type {
+  PerceptionSeverity,
+  PerceptionEvent,
+  PerceptibleEntity,
+  FilterConfig,
+  FilterResult,
+  AttentionConfig,
+  PrioritizedEvent,
+  AttentionResult,
+  TypeImportanceMap,
+} from '../perception/index.js';
+export {
+  DEFAULT_FILTER_CONFIG,
+  SEVERITY_PRIORITY,
+  PerceptionFilter,
+  DEFAULT_ATTENTION_CONFIG,
+  AttentionSystem,
+} from '../perception/index.js';
