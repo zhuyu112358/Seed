@@ -9868,3 +9868,108 @@ M11结束1306 + M12新增261 = **1567测试**
 - M13测试目标：1650+ ✅ 已达到（1682）
 - 待推送commit：3个（5bd4808阶段1 + 4579ecd阶段2 + 本轮阶段3）
 
+
+
+---
+
+## 2026-09-06 M13阶段4：GroupBehaviorEngine群体行为引擎（第115轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M13阶段1+2+3已完成，3个commit待推送
+- GitHub推送重试成功！3个commit全部推送（d1d3807..f7d2479）
+- 预研报告无新增（仍为001/002）
+
+#### 2. M13阶段4：GroupBehaviorEngine群体行为引擎
+
+**创建文件：**
+- `src/social/GroupBehaviorTypes.ts`：群体行为类型定义
+  - GroupEmotionType：10种群体情绪（calm平静/excited兴奋/angry愤怒/fearful恐惧/joyful欢乐/anxious焦虑/hostile敌意/euphoric欣快/sad悲伤/determined坚定）
+  - GroupEmotionState：群体情绪状态（主导情绪+强度+各情绪分布+唤醒度+效价）
+  - MobPsychologyState：暴民心理状态（极化程度+去个性化程度+非理性程度+行动倾向+暗示性+是否暴民状态）
+  - CollectiveActionType：10种集体行动类型（protest抗议/celebration庆祝/migration迁徙/attack攻击/defense防御/construction建设/ritual仪式/strike罢工/feast盛宴/pilgrimage朝圣）
+  - CollectiveActionStatus：6种状态（proposed/mobilizing/active/completed/failed/cancelled）
+  - CollectiveAction：集体行动实体（类型/名称/描述/目标/状态/参与者/最大参与者/进度/开始时间/预期持续/是否暴力化）
+  - DecisionMethod：5种决策方式（majority_vote多数投票/consensus共识/leader_decides领袖决定/sortition抽签/weighted_vote加权投票）
+  - GroupDecisionStatus：5种决策状态（proposed/debating/voting/resolved/rejected）
+  - GroupDecision：群体决策实体（议题/描述/方法/状态/选项/已投票实体/领袖/已解决选项）
+  - GroupMember：群体成员（实体ID/角色/个体情绪/情绪强度/社会影响力/参与度/是否匿名）
+  - BehaviorGroup：群体实体（名称/类型/成员/情绪状态/暴民状态/活跃行动/待决策/是否活跃）
+  - GroupBehaviorEngineConfig + DEFAULT配置
+  - GroupBehaviorEventType：13种系统事件（created/disbanded/emotion_changed/mob_formed/mob_dispersed/action_started/action_completed/action_failed/action_violent/decision_proposed/decision_resolved/member_joined/member_left）
+  - GroupBehaviorStats：统计信息
+- `src/social/GroupBehaviorEngine.ts`：群体行为引擎（非WorldSystem，独立类）
+  - 群体管理：createGroup/getGroup/getActiveGroups/disbandGroup
+  - 成员管理：addMember/removeMember/getGroupsForEntity/setMemberEmotion/setMemberAnonymity
+  - 群体情绪：getGroupEmotion/setGroupEmotion/spreadEmotion（基于影响力的情绪传播模型）
+  - 暴民心理：getMobState/updateMobPsychology（基于群体规模/唤醒度/匿名性/负面效价计算极化/去个性化/非理性/行动倾向/暗示性）
+  - 集体行动：startCollectiveAction/getAction/getGroupActions/addActionParticipant/completeAction
+  - 群体决策：proposeDecision/vote/resolveDecision（支持5种决策方式）/getDecision
+  - tick自动更新：情绪传播+暴民心理更新+集体行动进度推进
+  - 序列化：serialize/deserialize
+  - 统计：getStats
+  - 关键修复：createGroup中必须先将group加入map再调用addMember（否则addMember找不到group）
+
+**修改文件：**
+- `src/social/index.ts`：新增M13 GroupBehaviorEngine导出（类型+常量+系统）
+- `src/sdk/index.ts`：新增M13 GroupBehaviorEngine SDK导出
+
+**测试文件：**
+- `tests/group-behavior-engine.test.ts`：54个测试，9个测试套件
+  - Group Management（9测试）：创建/初始成员/上限/查询/活跃过滤/解散
+  - Member Management（10测试）：添加/默认角色/去重/上限/移除/按实体/设置情绪/强度钳制/设置匿名
+  - Group Emotion（9测试）：默认状态/设置群体情绪/主导情绪更新/从成员计算/情绪传播/未知来源/负面效价/正面效价
+  - Mob Psychology（7测试）：默认状态/规模影响/唤醒度影响/匿名性影响/大群体变暴民/暴民形成事件
+  - Collective Action（10测试）：创建/初始参与者/查询/按群体/添加参与者/自动启动/完成/失败/暴民抗议暴力化
+  - Group Decision（9测试）：创建议题/投票/重复投票/无效选项/多数投票解决/无投票拒绝/领袖决定/共识分裂/查询
+  - Serialization（1测试）：序列化/反序列化
+  - Statistics（1测试）：统计计数
+  - Configuration（2测试）：默认配置/部分覆盖
+
+#### 3. 验证结果
+
+- **GroupBehaviorEngine测试**：54/54 全绿
+- **全量单元测试**：1736/1736 全绿（M13阶段3结束1682，+54）
+- **构建**：0错误
+- **GitHub**：本轮commit待推送（前3个已推送成功）
+
+### M13进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | SocialRelationGraph社会关系网络 | ✅ 完成（38测试） |
+| 2 | SocialNormSystem社会规范系统 | ✅ 完成（37测试） |
+| 3 | SocialEventSystem社会事件系统 | ✅ 完成（40测试） |
+| 4 | GroupBehaviorEngine群体行为引擎 | ✅ 完成（本轮，54测试） |
+| 5 | InformationSpreadModel信息传播模型 | ⏳ 下一轮 |
+| 6 | SocialMobility社会流动机制 | ⏳ 待开发 |
+| 7 | CulturalEvolution文化演化系统 | ⏳ 待开发 |
+| 8 | 与M12 NPC AI和叙事系统集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.9.0发布 | ⏳ 待开发 |
+
+**M13整体进度：44%（阶段1+2+3+4完成）**
+
+### 关键设计决策
+
+1. **暴民心理模型**：基于群体规模/唤醒度/匿名性/负面效价计算5个维度（极化/去个性化/非理性/行动倾向/暗示性），行动倾向+非理性超过阈值即进入暴民状态
+2. **情绪传播模型**：基于来源成员影响力×传播率×情绪强度，高影响力成员传播更有效，相同情绪增加强度，不同情绪概率转换
+3. **集体行动暴力化**：暴民状态下的protest/attack/strike行动有概率（基于非理性程度）转为暴力
+4. **5种决策方式**：多数投票/共识/领袖决定/抽签/加权投票，每种有独立的解决逻辑
+5. **与M9 FlockingSystem共存**：M9提供物理层面的Boids群体运动，M13 GroupBehaviorEngine提供社会心理层面的群体行为，两者互补不冲突
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M13阶段5：InformationSpreadModel信息传播模型（观念/谣言/新闻的SIR传播模型+社会影响网络+信息可信度评估+信息变异）
+
+### 迭代统计
+
+- 总迭代轮数：115轮
+- 单元测试：1736个（M13阶段3结束1682，阶段4+54）
+- 测试文件：100个
+- 活跃bug：0个
+- SDK版本：v2.8.0（M12），目标v2.9.0（M13）
+- M13测试目标：1650+ ✅ 已达到（1736）
+- GitHub：前3个M13 commit已推送，本轮commit待推送
+

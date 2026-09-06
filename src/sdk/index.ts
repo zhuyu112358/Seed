@@ -368,6 +368,28 @@ export type {
 export { DEFAULT_SOCIAL_EVENT_CONFIG } from '../social/SocialEventTypes.js';
 export { SocialEventSystem } from '../social/SocialEventSystem.js';
 
+// --- Group Behavior Engine (M13) ---
+export type {
+  BehaviorGroup,
+  GroupMember,
+  GroupEmotionType,
+  GroupEmotionState,
+  MobPsychologyState,
+  CollectiveAction,
+  CollectiveActionType,
+  CollectiveActionStatus,
+  GroupDecision,
+  DecisionOption,
+  DecisionMethod,
+  GroupDecisionStatus,
+  GroupBehaviorEngineConfig,
+  GroupBehaviorEvent,
+  GroupBehaviorEventType,
+  GroupBehaviorStats,
+} from '../social/GroupBehaviorTypes.js';
+export { DEFAULT_GROUP_BEHAVIOR_CONFIG } from '../social/GroupBehaviorTypes.js';
+export { GroupBehaviorEngine } from '../social/GroupBehaviorEngine.js';
+
 // --- Trading System (M7) ---
 export type {
   TradeStatus,
