@@ -10072,3 +10072,103 @@ M11结束1306 + M12新增261 = **1567测试**
 - M13测试目标：1650+ ✅ 已达到（1774）
 - GitHub：本轮commit待推送
 
+
+
+---
+
+## 2026-09-07 M13阶段6：SocialMobilitySystem社会流动机制（第117轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M13阶段1-5已完成，全部commit已推送（e2a068e）
+- Git状态干净，无待推送commit
+- 预研报告无新增（仍为001/002）
+
+#### 2. M13阶段6：SocialMobilitySystem社会流动机制
+
+**创建文件：**
+- `src/social/SocialMobilityTypes.ts`：社会流动类型定义
+  - SocialClass：8种社会阶层（serf农奴/commoner平民/artisan工匠/merchant商人/clergy神职人员/noble贵族/aristocrat贵族精英/royal皇室）
+  - SOCIAL_CLASS_RANK：阶层等级映射（serf=0到royal=7）
+  - MobilityType：8种流动类型（upward上升/downward下降/lateral横向/migration移民/intermarriage通婚/appointment任命/inheritance继承/disgrace失势）
+  - MobilityEvent：流动事件记录（实体/类型/前后阶层/前后地点/配偶/声望变化/原因/时间）
+  - SocialStatus：社会状态（实体ID/当前阶层/声望/财富/影响力/地点/阶层历史/移民历史/婚姻历史/总流动事件/是否已婚/配偶ID）
+  - MobilityResult：升降级结果（成功/类型/前后阶层/声望变化/原因）
+  - SocialMobilityConfig + DEFAULT配置（各阶层晋升声望阈值/晋升声望增益/降级声望损失/声望衰减/通婚流动/最大历史记录）
+  - SocialMobilityEventType：8种系统事件（promoted/demoted/migrated/married/divorced/prestige_changed/appointed/disgraced）
+  - SocialMobilityStats：统计信息
+- `src/social/SocialMobilitySystem.ts`：社会流动系统（非WorldSystem，独立类）
+  - 社会状态管理：registerEntity/getSocialStatus/setSocialClass/setWealth/setInfluence
+  - 阶层升降：canPromote（检查声望阈值）/promote（晋升+声望增益）/demote（降级+声望损失）
+  - 声望系统：addPrestige/removePrestige/getPrestige（0-1000钳制）
+  - 移民：migrate（地点变更+历史记录）/getMigrationHistory
+  - 通婚：intermarry（结婚+低阶层配偶自动晋升）/divorce（离婚+声望损失）/getMarriageHistory
+  - 失势：disgrace（多级降级+大量声望损失）
+  - tick自动更新：声望衰减（基于衰减率）
+  - 序列化：serialize/deserialize
+  - 统计：getStats（阶层分布/平均声望/最活跃流动实体/最高声望实体）
+
+**修改文件：**
+- `src/social/index.ts`：新增M13 SocialMobilitySystem导出（类型+常量+系统）
+- `src/sdk/index.ts`：新增M13 SocialMobilitySystem SDK导出
+
+**测试文件：**
+- `tests/social-mobility-system.test.ts`：40个测试，10个测试套件
+  - Social Status Management（8测试）：注册/默认值/未知实体/查询/设置阶层/设置财富/钳制/设置影响力
+  - Promotion / Demotion（10测试）：可晋升检查/声望不足/最高阶层/晋升成功/晋升失败/最高阶层失败/降级成功/最低阶层失败/阶层等级顺序
+  - Prestige System（5测试）：增加/上限/减少/下限/未知实体
+  - Migration（5测试）：地点变更/历史记录/同地点失败/未知实体/空历史
+  - Intermarriage（8测试）：结婚/已婚失败/同实体失败/婚姻历史/离婚/未结婚失败/通婚晋升低阶层配偶
+  - Disgrace（2测试）：多级降级/声望减少
+  - Serialization（1测试）：序列化/反序列化
+  - Statistics（1测试）：统计计数
+  - Configuration（2测试）：默认配置/部分覆盖
+
+#### 3. 验证结果
+
+- **SocialMobilitySystem测试**：40/40 全绿
+- **全量单元测试**：1814/1814 全绿（M13阶段5结束1774，+40）
+- **构建**：0错误
+- **GitHub**：本轮commit待推送
+
+### M13进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | SocialRelationGraph社会关系网络 | ✅ 完成（38测试） |
+| 2 | SocialNormSystem社会规范系统 | ✅ 完成（37测试） |
+| 3 | SocialEventSystem社会事件系统 | ✅ 完成（40测试） |
+| 4 | GroupBehaviorEngine群体行为引擎 | ✅ 完成（54测试） |
+| 5 | InformationSpreadModel信息传播模型 | ✅ 完成（38测试） |
+| 6 | SocialMobilitySystem社会流动机制 | ✅ 完成（本轮，40测试） |
+| 7 | CulturalEvolution文化演化系统 | ⏳ 下一轮 |
+| 8 | 与M12 NPC AI和叙事系统集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.9.0发布 | ⏳ 待开发 |
+
+**M13整体进度：67%（阶段1-6完成）**
+
+### 关键设计决策
+
+1. **8级社会阶层体系**：serf→commoner→artisan→merchant→clergy→noble→aristocrat→royal，每级有对应的晋升声望阈值
+2. **声望驱动晋升**：晋升需要达到下一阶层的声望阈值，晋升后额外获得声望增益；降级则损失声望
+3. **通婚社会流动**：高阶层与低阶层通婚后，低阶层配偶自动晋升一级，模拟历史上的婚姻社会流动
+4. **声望衰减机制**：tick自动衰减声望，模拟声望随时间流逝的自然衰减
+5. **失势系统**：disgrace可以一次多级降级+大量声望损失，模拟政治失势或丑闻的严重后果
+6. **与M12 NPC个性系统协同**：NPC的声望和社会阶层可影响其个性表达和决策风格，应用层可桥接两者
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M13阶段7：CulturalEvolution文化演化系统（文化特质的变异/选择/传播+文化差异化+文化接触与融合+文化变迁驱动叙事）
+
+### 迭代统计
+
+- 总迭代轮数：117轮
+- 单元测试：1814个（M13阶段5结束1774，阶段6+40）
+- 测试文件：102个
+- 活跃bug：0个
+- SDK版本：v2.8.0（M12），目标v2.9.0（M13）
+- M13测试目标：1650+ ✅ 已达到（1814）
+- GitHub：本轮commit待推送
+

@@ -406,6 +406,21 @@ export type {
 export { DEFAULT_INFORMATION_SPREAD_CONFIG } from '../social/InformationSpreadTypes.js';
 export { InformationSpreadModel } from '../social/InformationSpreadModel.js';
 
+// --- Social Mobility System (M13) ---
+export type {
+  SocialClass,
+  MobilityType,
+  MobilityEvent,
+  SocialStatus,
+  MobilityResult,
+  SocialMobilityConfig,
+  SocialMobilityEvent,
+  SocialMobilityEventType,
+  SocialMobilityStats,
+} from '../social/SocialMobilityTypes.js';
+export { DEFAULT_SOCIAL_MOBILITY_CONFIG, SOCIAL_CLASS_RANK } from '../social/SocialMobilityTypes.js';
+export { SocialMobilitySystem } from '../social/SocialMobilitySystem.js';
+
 // --- Trading System (M7) ---
 export type {
   TradeStatus,

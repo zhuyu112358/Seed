@@ -106,3 +106,18 @@ export type {
 } from "./InformationSpreadTypes.js";
 export { DEFAULT_INFORMATION_SPREAD_CONFIG } from "./InformationSpreadTypes.js";
 export { InformationSpreadModel } from "./InformationSpreadModel.js";
+
+// M13 Social Mobility System
+export type {
+  SocialClass,
+  MobilityType,
+  MobilityEvent,
+  SocialStatus,
+  MobilityResult,
+  SocialMobilityConfig,
+  SocialMobilityEvent,
+  SocialMobilityEventType,
+  SocialMobilityStats,
+} from "./SocialMobilityTypes.js";
+export { DEFAULT_SOCIAL_MOBILITY_CONFIG, SOCIAL_CLASS_RANK } from "./SocialMobilityTypes.js";
+export { SocialMobilitySystem } from "./SocialMobilitySystem.js";
