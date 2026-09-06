@@ -36,3 +36,14 @@ export type {
 export { DEFAULT_GOAP_CONFIG } from "./GoapTypes.js";
 export { GoapPlanner } from "./GoapPlanner.js";
 export { GoapSystem } from "./GoapSystem.js";
+
+export type {
+  ScheduleActivity,
+  CurrentActivity,
+  ScheduleConfig,
+  TransitionResult,
+  ScheduleLocation,
+  ActivityStatus,
+} from "./ScheduleTypes.js";
+export { DEFAULT_SCHEDULE_CONFIG, SCHEDULE_TEMPLATES } from "./ScheduleTypes.js";
+export { ScheduleSystem } from "./ScheduleSystem.js";

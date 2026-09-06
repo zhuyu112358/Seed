@@ -512,6 +512,12 @@ export type {
   GoapConfig,
   PlanExecution,
   PlanExecutionStatus,
+  ScheduleActivity,
+  CurrentActivity,
+  ScheduleConfig,
+  TransitionResult,
+  ScheduleLocation,
+  ActivityStatus,
 } from '../npc/index.js';
 export {
   DEFAULT_NPC_MEMORY_CONFIG,
@@ -524,5 +530,8 @@ export {
   DEFAULT_GOAP_CONFIG,
   GoapPlanner,
   GoapSystem,
+  DEFAULT_SCHEDULE_CONFIG,
+  SCHEDULE_TEMPLATES,
+  ScheduleSystem,
 } from '../npc/index.js';
 

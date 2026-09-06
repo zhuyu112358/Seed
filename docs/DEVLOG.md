@@ -8959,3 +8959,90 @@ M11已完成，M12里程碑方向尚未在MANAGEMENT_STRATEGY.md中定义。按�
 - 活跃bug：0个
 - SDK版本：v2.7.0（M11），目标v2.8.0（M12）
 
+
+
+---
+
+## 2026-09-06 M12阶段5：NPC日常作息（第105轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M12阶段1-4已完成并推送（1447测试）
+- 0待推送
+- 预研报告无新增（002已在上一轮查看）
+
+#### 2. M12阶段5：NPC日常作息
+- 创建src/npc/ScheduleTypes.ts
+  - ScheduleLocation: 2D位置（x/z）
+  - ActivityStatus: pending/active/completed/skipped
+  - ScheduleActivity: 活动定义（id/name/startTime/endTime/location/priority/actionType/enabled/metadata）
+  - CurrentActivity: 当前活动状态（activity/startedAt/status/attemptCount）
+  - ScheduleConfig: autoTransition/emitEvents/dayLength(1440)/startTolerance
+  - DEFAULT_SCHEDULE_CONFIG
+  - TransitionResult: transitioned/previous/next/reason
+  - SCHEDULE_TEMPLATES: 3种预设作息模板（diurnal昼行/nocturnal夜行/shift_worker轮班）
+- 创建src/npc/ScheduleSystem.ts（WorldSystem）
+  - 作息管理：setSchedule/getSchedule/addActivity/removeActivity/updateActivity
+  - 活动查询：getActivityAtTime（支持跨午夜wrap-around）/getNextActivity（支持跨天）
+  - 手动控制：startActivity/completeActivity/skipActivity
+  - 地点偏好：getCurrentLocation/getActivityLocation
+  - tick(): 从WorldClock获取时间（通过world.systems.find），自动检查活动转换，发射schedule.activity_started/completed/skipped事件
+  - 冲突解决：同一时间多个活动时选最高优先级
+  - 支持禁用活动（enabled=false）
+  - serialize/deserialize: 持久化
+- 更新src/npc/index.ts: barrel导出包含schedule
+- 更新src/sdk/index.ts: SDK导出包含schedule类型和系统
+
+#### 3. 测试（32个，全部通过）
+- 作息管理（7测试：设置排序/添加排序/删除/删除未知/更新/未知实体空数组）
+- 活动查询（7测试：时间查询/无活动/跨午夜/冲突选最高优先级/跳过禁用/下一个活动/跨天下一个）
+- 手动控制（6测试：开始/开始未知/完成/完成无活动/跳过/尝试次数）
+- 地点偏好（3测试：当前地点/无地点/指定活动地点）
+- 自动转换（3测试：tick转换/事件发射/禁用自动转换）
+- 模板（5测试：diurnal/nocturnal/shift_worker/模板时间范围/从模板设置）
+- 配置（1测试）
+- 序列化（1测试）
+
+**关键修复**：
+- World没有getSystem方法，需用world.systems.find(s => s.name === "world-clock")访问WorldClock
+- TypeScript类型转换需通过unknown：`as unknown as { getTimeOfDay?: () => number }`
+- 事件发射测试中第一次step已触发转换，需手动清除当前活动后重新触发
+
+### 验证结果
+
+- **单元测试**：1479/1479 全绿（M12阶段4结束1447，+32）
+- **构建**：0错误
+- **GitHub**：待推送
+
+### M12进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | NPC记忆系统 | ✅ 完成 |
+| 2 | NPC个性系统 | ✅ 完成 |
+| 3 | GOAP目标导向行动规划 | ✅ 完成 |
+| 4 | 行为树增强 | ✅ 完成 |
+| 5 | NPC日常作息 | ✅ 完成（本轮） |
+| 6 | 动态叙事生成 | ⏳ 下一轮 |
+| 7 | 任务链深化 | ⏳ 待开发 |
+| 8 | 世界状态叙事+叙事事件感知+集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.8.0发布 | ⏳ 待开发 |
+
+**M12整体进度：56%（阶段1-5完成）**
+**NPC AI深化子目标：5/5全部完成！（记忆+个性+GOAP+行为树+日常作息）**
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M12阶段6：动态叙事生成（DynamicNarrative叙事弧+事件链+分支叙事+玩家影响）
+3. 运行npm test确认无回归
+
+### 迭代统计
+
+- 总迭代轮数：105轮
+- 单元测试：1479个（M11结束1306，M12阶段1+24，阶段2+41，阶段3+36，阶段4+40，阶段5+32）
+- 测试文件：93个
+- 活跃bug：0个
+- SDK版本：v2.7.0（M11），目标v2.8.0（M12）
+
