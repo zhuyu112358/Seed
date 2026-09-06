@@ -363,3 +363,14 @@ export type {
 } from '../flocking/FlockingTypes.js';
 export { DEFAULT_FLOCK_CONFIG } from '../flocking/FlockingTypes.js';
 export { FlockingSystem } from '../flocking/FlockingSystem.js';
+
+// --- ORCA Avoidance System (M9) ---
+export type {
+  OrcaConfig,
+  OrcaVector2,
+  OrcaAgent,
+  OrcaHalfPlane,
+  OrcaResult,
+} from '../orca/OrcaTypes.js';
+export { DEFAULT_ORCA_CONFIG } from '../orca/OrcaTypes.js';
+export { OrcaSystem } from '../orca/OrcaSystem.js';
