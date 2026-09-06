@@ -490,6 +490,14 @@ export type {
   DecisionStyle,
   PersonalityProfile,
   PersonalityConfig,
+  WorldState,
+  GoapGoal,
+  GoapAction,
+  GoapNode,
+  GoapPlanResult,
+  GoapConfig,
+  PlanExecution,
+  PlanExecutionStatus,
 } from '../npc/index.js';
 export {
   DEFAULT_NPC_MEMORY_CONFIG,
@@ -499,5 +507,8 @@ export {
   PERSONALITY_ARCHETYPES,
   DEFAULT_PERSONALITY_CONFIG,
   NPCPersonalitySystem,
+  DEFAULT_GOAP_CONFIG,
+  GoapPlanner,
+  GoapSystem,
 } from '../npc/index.js';
 

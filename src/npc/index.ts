@@ -22,3 +22,17 @@ export {
   DEFAULT_PERSONALITY_CONFIG,
 } from "./PersonalityTypes.js";
 export { NPCPersonalitySystem } from "./NPCPersonalitySystem.js";
+
+export type {
+  WorldState,
+  GoapGoal,
+  GoapAction,
+  GoapNode,
+  GoapPlanResult,
+  GoapConfig,
+  PlanExecution,
+  PlanExecutionStatus,
+} from "./GoapTypes.js";
+export { DEFAULT_GOAP_CONFIG } from "./GoapTypes.js";
+export { GoapPlanner } from "./GoapPlanner.js";
+export { GoapSystem } from "./GoapSystem.js";
