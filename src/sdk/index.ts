@@ -421,6 +421,23 @@ export type {
 export { DEFAULT_SOCIAL_MOBILITY_CONFIG, SOCIAL_CLASS_RANK } from '../social/SocialMobilityTypes.js';
 export { SocialMobilitySystem } from '../social/SocialMobilitySystem.js';
 
+// --- Cultural Evolution System (M13) ---
+export type {
+  CulturalTrait,
+  CulturalTraitType,
+  CulturalMutation,
+  CulturalTransmission,
+  Culture,
+  CulturalDistanceResult,
+  CultureMergeResult,
+  CulturalEvolutionConfig,
+  CulturalEvolutionEvent,
+  CulturalEvolutionEventType,
+  CulturalEvolutionStats,
+} from '../social/CulturalEvolutionTypes.js';
+export { DEFAULT_CULTURAL_EVOLUTION_CONFIG } from '../social/CulturalEvolutionTypes.js';
+export { CulturalEvolutionSystem } from '../social/CulturalEvolutionSystem.js';
+
 // --- Trading System (M7) ---
 export type {
   TradeStatus,

@@ -121,3 +121,20 @@ export type {
 } from "./SocialMobilityTypes.js";
 export { DEFAULT_SOCIAL_MOBILITY_CONFIG, SOCIAL_CLASS_RANK } from "./SocialMobilityTypes.js";
 export { SocialMobilitySystem } from "./SocialMobilitySystem.js";
+
+// M13 Cultural Evolution System
+export type {
+  CulturalTrait,
+  CulturalTraitType,
+  CulturalMutation,
+  CulturalTransmission,
+  Culture,
+  CulturalDistanceResult,
+  CultureMergeResult,
+  CulturalEvolutionConfig,
+  CulturalEvolutionEvent,
+  CulturalEvolutionEventType,
+  CulturalEvolutionStats,
+} from "./CulturalEvolutionTypes.js";
+export { DEFAULT_CULTURAL_EVOLUTION_CONFIG } from "./CulturalEvolutionTypes.js";
+export { CulturalEvolutionSystem } from "./CulturalEvolutionSystem.js";
