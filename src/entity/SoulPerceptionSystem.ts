@@ -63,6 +63,7 @@ import {
   BuildingDestroyedEvent,
   BuildingDamagedEvent,
   BuildingRepairedEvent,
+  BuildingProductionEvent,
 } from "../building/BuildingEvents.js";
 import {
   TerritoryClaimedEvent,
@@ -236,6 +237,8 @@ export class SoulPerceptionSystem implements WorldSystem {
   private buildingDamagedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for building.repaired event, set on first tick. */
   private buildingRepairedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for building.production event, set on first tick. */
+  private buildingProductionUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for territory.claimed event, set on first tick. */
   private territoryClaimedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for territory.abandoned event, set on first tick. */
@@ -974,6 +977,22 @@ export class SoulPerceptionSystem implements WorldSystem {
       });
     }
 
+    // Listen for building production events.
+    if (!this.buildingProductionUnsubscribe) {
+      this.buildingProductionUnsubscribe = events.on("building.production", (evt: BuildingProductionEvent) => {
+        const p = evt.payload;
+        const outputStr = Object.entries(p.output).map(([k, v]) => `${k}:${v}`).join(", ");
+        this.recordEvent(
+          `building_production_${p.buildingId}_${evt.timestamp}`,
+          "building.production",
+          `Building produced: ${p.buildingName} (Lv${p.level}) → ${outputStr}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
     // Listen for territory claimed events.
     if (!this.territoryClaimedUnsubscribe) {
       this.territoryClaimedUnsubscribe = events.on("territory.claimed", (evt: TerritoryClaimedEvent) => {
@@ -1449,6 +1468,10 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.buildingRepairedUnsubscribe) {
       this.buildingRepairedUnsubscribe();
       this.buildingRepairedUnsubscribe = null;
+    }
+    if (this.buildingProductionUnsubscribe) {
+      this.buildingProductionUnsubscribe();
+      this.buildingProductionUnsubscribe = null;
     }
     if (this.territoryClaimedUnsubscribe) {
       this.territoryClaimedUnsubscribe();

@@ -83,3 +83,28 @@ export class BuildingRepairedEvent extends Event<{
     });
   }
 }
+
+/** Emitted when a production building produces output. */
+export class BuildingProductionEvent extends Event<{
+  buildingId: string;
+  buildingType: BuildingType;
+  buildingName: string;
+  ownerId: string;
+  level: number;
+  output: Record<string, number>;
+}> {
+  constructor(
+    buildingId: string,
+    buildingType: BuildingType,
+    buildingName: string,
+    ownerId: string,
+    level: number,
+    output: Record<string, number>,
+  ) {
+    super({
+      type: "building.production",
+      payload: { buildingId, buildingType, buildingName, ownerId, level, output },
+      sourceId: "building-system",
+    });
+  }
+}

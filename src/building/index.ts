@@ -14,5 +14,6 @@ export {
   BuildingDestroyedEvent,
   BuildingDamagedEvent,
   BuildingRepairedEvent,
+  BuildingProductionEvent,
 } from "./BuildingEvents.js";
 export { BuildingSystem } from "./BuildingSystem.js";

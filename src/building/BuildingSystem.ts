@@ -18,7 +18,9 @@ import {
   BuildingDestroyedEvent,
   BuildingDamagedEvent,
   BuildingRepairedEvent,
+  BuildingProductionEvent,
 } from "./BuildingEvents.js";
+import type { TerritorySystem } from "../territory/TerritorySystem.js";
 
 export class BuildingSystem {
   readonly name = "building";
@@ -30,6 +32,12 @@ export class BuildingSystem {
   productionHandler: BuildingProductionHandler | null = null;
   /** Optional defense handler (application layer). */
   defenseHandler: BuildingDefenseHandler | null = null;
+  /** Optional territory system for building placement validation. */
+  territorySystem: TerritorySystem | null = null;
+  /** Number of ticks between production cycles. Default 60 (1 second at 60fps). */
+  productionIntervalTicks = 60;
+  /** Last tick when production occurred. */
+  private lastProductionTick = -1;
 
   /** Generate a unique building ID. */
   private generateId(): string {
@@ -71,6 +79,16 @@ export class BuildingSystem {
     if (this.isPositionOccupied(position, size)) {
       return { success: false, error: "Position is occupied by another building" };
     }
+    // If territory system is set, validate building is within owner's territory.
+    if (this.territorySystem) {
+      const territory = this.territorySystem.getTerritoryAtPosition(position);
+      if (!territory) {
+        return { success: false, error: "Building must be placed within a territory" };
+      }
+      if (territory.ownerId !== ownerId) {
+        return { success: false, error: "Building must be placed within owner's territory" };
+      }
+    }
     const id = this.generateId();
     const building: Building = {
       id,
@@ -111,13 +129,19 @@ export class BuildingSystem {
     return { success: true, buildingId };
   }
 
-  /** Apply damage to a building. Destroys if health reaches 0. */
+  /** Apply damage to a building. Destroys if health reaches 0. Defense buildings reduce damage. */
   damageBuilding(buildingId: string, damage: number, events: EventSystem): BuildingResult {
     const building = this.buildings.get(buildingId);
     if (!building) return { success: false, error: "Building not found" };
+    // Apply defense reduction if defense handler is set.
+    let actualDamage = damage;
+    if (this.defenseHandler) {
+      const totalDefense = this.getTotalDefense();
+      actualDamage = Math.max(1, damage - totalDefense);
+    }
     const oldHealth = building.health;
-    building.health = Math.max(0, building.health - damage);
-    events.emit(new BuildingDamagedEvent(buildingId, building.type, damage, oldHealth, building.health));
+    building.health = Math.max(0, building.health - actualDamage);
+    events.emit(new BuildingDamagedEvent(buildingId, building.type, actualDamage, oldHealth, building.health));
     if (building.health <= 0) {
       this.destroyBuilding(buildingId, events, "destroyed by damage");
     }
@@ -206,16 +230,27 @@ export class BuildingSystem {
     return total;
   }
 
-  /** WorldSystem interface: called each tick. Production buildings produce output. */
-  tick(_dt: number, _world: World, _events: EventSystem): void {
+  /** WorldSystem interface: called each tick. Production buildings produce output periodically. */
+  tick(_dt: number, world: World, events: EventSystem): void {
     if (!this.enabled) return;
-    // Future: periodic production, building decay, etc.
+    // Periodic production for active production buildings.
+    if (this.productionHandler && world.tick - this.lastProductionTick >= this.productionIntervalTicks) {
+      this.lastProductionTick = world.tick;
+      for (const building of this.buildings.values()) {
+        if (!building.active || building.type !== "production") continue;
+        const output = this.productionHandler(building.id, building.type, building.level, building.ownerId);
+        if (Object.keys(output).length > 0) {
+          events.emit(new BuildingProductionEvent(building.id, building.type, building.name, building.ownerId, building.level, output));
+        }
+      }
+    }
   }
 
   /** WorldSystem interface: cleanup. */
   stop(): void {
     this.buildings.clear();
     this.buildingCounter = 0;
+    this.lastProductionTick = -1;
   }
 
   /** Serialize all buildings. */

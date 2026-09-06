@@ -6644,3 +6644,119 @@ SoulPerceptionSystem现在监听**53+个事件**，覆盖：
 - 测试文件：73个
 - SDK版本：v2.3.0（M7完成），M8目标v2.4.0
 
+
+
+---
+
+## 2026-09-06 M8阶段4：建筑效果集成（第81轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- c3aa5a5（M8阶段3感知集成）已推送，0待推送
+- 1006个单元测试全部通过
+
+#### 2. 建筑生产tick (`src/building/BuildingSystem.ts`)
+- 新增`productionIntervalTicks`属性（默认60 = 1秒@60fps）
+- 新增`lastProductionTick`属性（追踪上次生产时间）
+- tick()方法实现周期性生产：
+  - 每`productionIntervalTicks`tick触发一次
+  - 遍历所有active的production类型建筑
+  - 调用`productionHandler`获取产出
+  - 发射`BuildingProductionEvent`（含buildingId/type/name/ownerId/level/output）
+- stop()重置`lastProductionTick = -1`
+
+#### 3. 建筑防御减伤 (`src/building/BuildingSystem.ts`)
+- damageBuilding()方法集成防御减伤：
+  - 如果defenseHandler已设置，计算总防御值`getTotalDefense()`
+  - 实际伤害 = max(1, 原始伤害 - 总防御)
+  - 最小伤害1，防止高防御无敌
+  - 发射BuildingDamagedEvent使用实际伤害值
+- 无defenseHandler时全额伤害（向后兼容）
+
+#### 4. 建筑-领地关联 (`src/building/BuildingSystem.ts`)
+- 新增`territorySystem`可选属性（TerritorySystem引用）
+- placeBuilding()增加领地验证：
+  - 如果territorySystem已设置，检查位置是否在领地内
+  - 检查领地ownerId是否与建筑ownerId一致
+  - 不在领地内 → error "Building must be placed within a territory"
+  - 在他人领地内 → error "Building must be placed within owner's territory"
+- 不设置territorySystem时，建筑可放置在任意位置（向后兼容）
+
+#### 5. 建筑生产事件 (`src/building/BuildingEvents.ts`)
+- 新增`BuildingProductionEvent`事件类：
+  - payload: buildingId/buildingType/buildingName/ownerId/level/output
+  - type: "building.production"
+
+#### 6. 感知系统集成 (`src/entity/SoulPerceptionSystem.ts`)
+- 新增`building.production`事件监听器（low严重度）
+- 感知描述："Building produced: {name} (Lv{level}) → {output}"
+- 新增unsubscribe字段+stop()清理
+
+#### 7. SDK/Barrel导出更新
+- `src/building/index.ts`：新增BuildingProductionEvent导出
+- `src/sdk/index.ts`：需确认已包含（BuildingEvents已全部导出）
+
+#### 8. 测试 (`tests/building-effect-integration.test.ts`)
+- 10个新测试，覆盖：
+  - 生产tick：3个（周期性产出/inactive不产出/等级影响产出）
+  - 防御减伤：3个（减伤生效/最小伤害1/无防御全额伤害）
+  - 领地关联：3个（仅在自己领地内/不能在他人领地/无领地系统任意放置）
+  - 生产感知：1个（building.production事件被感知）
+
+### 架构设计
+
+**建筑效果集成模型**：
+```
+BuildingSystem
+  ├── 生产tick: 每N tick调用productionHandler → BuildingProductionEvent
+  │     → 应用层监听事件，将产出加入资源库存
+  ├── 防御减伤: damageBuilding()时，总防御值减少实际伤害
+  │     → defenseHandler由应用层定义每个防御建筑的防御值
+  └── 领地关联: placeBuilding()时验证位置在owner领地内
+        → territorySystem可选引用，不设置则无限制
+```
+
+**与SoulArena分工**：
+- SoulArena：定义生产产出（productionHandler）、防御值（defenseHandler）、领地规则、资源库存管理
+- Seed：生产周期调度、伤害减免计算、领地位置验证、事件发射
+
+### 关键特性
+
+- **向后兼容**：所有新功能都是可选的，不设置handler/territorySystem时行为与之前一致
+- **最小伤害保证**：防御减伤后最少1点伤害，防止无敌
+- **生产等级缩放**：productionHandler接收level参数，应用层可定义等级影响
+- **领地可选验证**：territorySystem为可选引用，灵活适配不同游戏模式
+
+### 验证结果
+
+- **单元测试**：1016/1016 全绿（M8阶段3结束1006，+10）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M8里程碑进度：80%
+
+- ✅ 阶段1：建筑系统（25测试）
+- ✅ 阶段2：领地系统（23测试）
+- ✅ 阶段3：建筑+领地事件感知集成（12测试）
+- ✅ 阶段4：建筑效果集成（10测试）
+- ⬜ 阶段5：端到端验证+SDK v2.4.0发布
+
+### 下一轮计划
+
+1. M8阶段5：端到端验证+SDK v2.4.0发布
+   - 创建examples/m8-demo.ts端到端演示（建筑放置→生产→防御→领地→感知全链路）
+   - 运行完整npm test确认无回归
+   - package.json版本2.3.0→2.4.0
+   - CHANGELOG.md添加v2.4.0条目
+   - 打git tag seed-sdk-v2.4.0
+   - DEVLOG更新第81轮
+   - commit并推送
+
+### 迭代统计
+
+- 总迭代轮数：81轮
+- 单元测试：1016个（M8阶段3结束1006，+10）
+- 测试文件：74个
+- SDK版本：v2.3.0（M7完成），M8目标v2.4.0
+
