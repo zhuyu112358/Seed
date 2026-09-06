@@ -8577,3 +8577,95 @@ M11已完成，M12里程碑方向尚未在MANAGEMENT_STRATEGY.md中定义。按�
 - SDK版本：v2.7.0（M11完成）
 - Git tag：seed-sdk-v1.0.0 → seed-sdk-v2.7.0（18个版本标签）
 
+
+
+---
+
+## 2026-09-06 M12阶段1：NPC记忆系统（第101轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M11已全部完成，SDK v2.7.0已发布（1306测试）
+- 重试推送commit 76e5900（第100轮）成功
+- 0待推送，版本2.7.0
+
+#### 2. 预研成果查看
+- 读取 D:\Sojourn\research\arboreus\001_world_models_multiagent_frontier.md
+- 核心内容：MASS多人世界模型权威共享状态架构+Gamma-World智能体对称编码+Aivilization大规模社会模拟
+- 对M12的启示：非核心模拟（平民行为/叙事事件）可学习式推进，但Arboreus是CPU型TS引擎，应继续确定性规则系统；显式解耦玩家控制与NPC行为；为策略丰富的NPC交互铺路
+- 预研结论：学习式组件不适合当前Arboreus（CPU型/无训练数据/可调试性需求），M12采用确定性规则系统
+
+#### 3. M12阶段1：NPC记忆系统
+- 创建src/npc/模块目录
+- **MemoryTypes.ts**：
+  - MemoryType: 7种（interaction/observation/action/emotion/location/knowledge/custom）
+  - MemoryImportance: 5级（trivial/low/medium/high/critical）
+  - MemoryEntry: id/type/text/importance/createdAt/lastAccessedAt/accessCount/decay/relatedEntities/location/metadata
+  - NPCMemoryConfig: maxShortTermMemories(50)/maxLongTermMemories(200)/shortTermRetentionTicks(600)/shortTermDecayRate(0.001)/longTermDecayRate(0.0001)/longTermThreshold(high)/accessRefreshesDecay(true)/autoForget(true)/forgetThreshold(0.1)
+  - DEFAULT_NPC_MEMORY_CONFIG
+  - IMPORTANCE_WEIGHT: trivial=0.5/low=0.75/medium=1.0/high=1.5/critical=2.0
+  - MemoryQueryResult: memories/totalCount/shortTermCount/longTermCount
+- **NPCMemorySystem.ts**（WorldSystem）：
+  - addMemory(entityId, type, text, importance, options?): 创建记忆，高重要性自动提升到长期记忆
+  - getMemories(entityId, filters?): 检索记忆，支持type/importance/relatedEntity/minDecay/limit/includeShortTerm/includeLongTerm过滤，按decay和时间排序，访问刷新decay
+  - getMemoryById(entityId, memoryId): 按ID获取单条记忆
+  - promoteToLongTerm(entityId, memoryId): 手动提升到长期记忆
+  - forgetMemory(entityId, memoryId): 遗忘特定记忆
+  - clearMemories(entityId): 清除所有记忆
+  - getMemoryStats(entityId): 统计（短期/长期/总数/平均decay/按类型分布），自动去重
+  - tick(): 记忆衰减（短期快/长期慢，重要性权重影响衰减速度）+自动遗忘低于阈值的记忆
+  - 事件发射：memory.created/memory.promoted/memory.forgotten
+  - serialize/deserialize: 持久化
+- **index.ts**: barrel导出
+- SDK导出新增npc模块
+
+#### 4. 测试（24个，全部通过）
+- 记忆创建（5测试：基本创建/关联实体位置/高重要性自动提升/中重要性不提升/短期容量限制）
+- 记忆检索（8测试：全部检索/按类型过滤/按重要性过滤/按关联实体过滤/limit/访问刷新decay/按ID获取）
+- 记忆管理（4测试：提升到长期/遗忘/清除/统计）
+- 衰减与遗忘（3测试：随时间衰减/高重要性衰减慢/自动遗忘）
+- 事件（2测试：memory.created/memory.promoted）
+- 序列化（1测试）
+- 配置（2测试：默认配置/重要性权重）
+
+**关键修复**：
+- getMemoryStats去重：高重要性记忆同时存在于短期和长期，统计时按memory ID去重
+- TypeScript类型收窄：filter回调中使用局部变量避免undefined类型错误
+
+### 验证结果
+
+- **单元测试**：1330/1330 全绿（M11结束1306，+24）
+- **构建**：0错误
+- **GitHub**：待推送
+
+### M12进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | NPC记忆系统（短期/长期+检索+衰减） | ✅ 完成（本轮） |
+| 2 | NPC个性系统（大五人格+行为倾向） | ⏳ 下一轮 |
+| 3 | GOAP目标导向行动规划 | ⏳ 待开发 |
+| 4 | 行为树增强 | ⏳ 待开发 |
+| 5 | NPC日常作息 | ⏳ 待开发 |
+| 6 | 动态叙事生成 | ⏳ 待开发 |
+| 7 | 任务链深化 | ⏳ 待开发 |
+| 8 | 世界状态叙事+叙事事件感知+集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.8.0发布 | ⏳ 待开发 |
+
+**M12整体进度：11%（阶段1完成）**
+
+### 下一轮计划
+
+1. 推送本轮commit
+2. M12阶段2：NPC个性系统（大五人格OCEAN+行为倾向+决策风格+个性与记忆/行为集成）
+3. 运行npm test确认无回归
+
+### 迭代统计
+
+- 总迭代轮数：101轮
+- 单元测试：1330个（M11结束1306，M12阶段1+24）
+- 测试文件：89个
+- 活跃bug：0个
+- SDK版本：v2.7.0（M11），目标v2.8.0（M12）
+

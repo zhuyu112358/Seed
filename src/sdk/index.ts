@@ -477,3 +477,14 @@ export type {
 } from '../performance/index.js';
 export { DEFAULT_PROFILER_CONFIG, PerformanceProfiler, DEFAULT_BENCHMARK_CONFIG, runBenchmark } from '../performance/index.js';
 
+
+// --- NPC System (M12 Phase 1) ---
+export type {
+  MemoryType,
+  MemoryImportance,
+  MemoryEntry,
+  NPCMemoryConfig,
+  MemoryQueryResult,
+} from '../npc/index.js';
+export { DEFAULT_NPC_MEMORY_CONFIG, IMPORTANCE_WEIGHT, NPCMemorySystem } from '../npc/index.js';
+
