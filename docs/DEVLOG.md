@@ -9973,3 +9973,102 @@ M11结束1306 + M12新增261 = **1567测试**
 - M13测试目标：1650+ ✅ 已达到（1736）
 - GitHub：前3个M13 commit已推送，本轮commit待推送
 
+
+
+---
+
+## 2026-09-06 M13阶段5：InformationSpreadModel信息传播模型（第116轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M13阶段1-4已完成，全部commit已推送（a633307）
+- Git状态干净，无待推送commit
+- 预研报告无新增（仍为001/002）
+
+#### 2. M13阶段5：InformationSpreadModel信息传播模型
+
+**创建文件：**
+- `src/social/InformationSpreadTypes.ts`：信息传播类型定义
+  - InformationType：9种信息类型（idea观念/rumor谣言/news新闻/gossip八卦/propaganda宣传/knowledge知识/meme模因/warning警告/tradition传统）
+  - InformationState：5种SIR扩展状态（susceptible易感/exposed暴露/infected感染/recovered恢复/ignored忽略）
+  - InformationItem：信息条目（类型/内容/来源/来源可信度/传播力/感染持续时间/当前可信度/变异次数/变异历史/创建时间/总感染数/总传播事件/是否活跃）
+  - InformationMutation：信息变异记录（原始内容/变异后内容/变异者/时间/可信度影响）
+  - InformationNode：信息传播节点（实体ID/各信息状态/感染时间/恢复时间/传播次数/接收次数/怀疑度/影响力）
+  - CredibilityAssessment：可信度评估结果（总体可信度/来源分/类型分/变异惩罚/传播惩罚/是否可能为真/解释）
+  - InformationSpreadConfig + DEFAULT配置
+  - InformationSpreadEventType：7种系统事件（created/spread/infected/recovered/mutated/extinct/credibility_assessed）
+  - InformationSpreadStats：统计信息
+- `src/social/InformationSpreadModel.ts`：信息传播模型（非WorldSystem，独立类）
+  - 信息管理：createInformation（创建并感染来源）/getInformation/getActiveInformation/getAllInformation
+  - 节点管理：ensureNode/getNode/setNodeSkepticism/setNodeInfluence/getNodeState/setNodeState
+  - 社会影响网络：addInfluenceConnection/getInfluenceConnections/removeInfluenceConnection
+  - SIR传播模型：spreadInformation（基于基础感染率×信息传播力×来源影响力×连接权重×(1-目标怀疑度/150)计算感染概率）/recoverInfectedNodes（基于感染持续时间的恢复概率）/checkExtinction（无感染节点时信息灭绝）
+  - 信息变异：mutateInformation（传播过程中概率变异，降低可信度）/getMutationHistory
+  - 可信度评估：assessCredibility（来源分×0.35+类型分×0.35-变异惩罚-传播惩罚，谣言/八卦类型分低，知识/传统类型分高）
+  - tick自动更新：每个感染节点自动传播+自动恢复+自动检测灭绝
+  - 序列化：serialize/deserialize（Map类型转换为entries数组）
+  - 统计：getStats
+
+**修改文件：**
+- `src/social/index.ts`：新增M13 InformationSpreadModel导出（类型+常量+系统）
+- `src/sdk/index.ts`：新增M13 InformationSpreadModel SDK导出
+
+**测试文件：**
+- `tests/information-spread-model.test.ts`：38个测试，9个测试套件
+  - Information Management（6测试）：创建/自定义选项/上限/查询/活跃过滤
+  - Node Management（7测试）：未知节点/设置怀疑度/钳制/设置影响力/默认状态/设置状态/感染时间记录
+  - Social Influence Network（4测试）：添加连接/钳制/未知实体/移除连接
+  - SIR Spread（8测试）：感染易感节点/非感染源/不重复感染/恢复/灭绝/有感染节点/怀疑度影响
+  - Mutation（5测试）：改变内容/降低可信度/增加计数/历史查询/未知信息
+  - Credibility Assessment（5测试）：评估/谣言vs新闻/变异降低/知识高可信度/未知信息
+  - Serialization（1测试）：序列化/反序列化
+  - Statistics（1测试）：统计计数
+  - Configuration（2测试）：默认配置/部分覆盖
+
+#### 3. 验证结果
+
+- **InformationSpreadModel测试**：38/38 全绿
+- **全量单元测试**：1774/1774 全绿（M13阶段4结束1736，+38）
+- **构建**：0错误
+- **GitHub**：本轮commit待推送
+
+### M13进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | SocialRelationGraph社会关系网络 | ✅ 完成（38测试） |
+| 2 | SocialNormSystem社会规范系统 | ✅ 完成（37测试） |
+| 3 | SocialEventSystem社会事件系统 | ✅ 完成（40测试） |
+| 4 | GroupBehaviorEngine群体行为引擎 | ✅ 完成（54测试） |
+| 5 | InformationSpreadModel信息传播模型 | ✅ 完成（本轮，38测试） |
+| 6 | SocialMobility社会流动机制 | ⏳ 下一轮 |
+| 7 | CulturalEvolution文化演化系统 | ⏳ 待开发 |
+| 8 | 与M12 NPC AI和叙事系统集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.9.0发布 | ⏳ 待开发 |
+
+**M13整体进度：56%（阶段1-5完成）**
+
+### 关键设计决策
+
+1. **SIR传播模型**：感染概率=基础感染率×信息传播力×来源影响力×连接权重×(1-目标怀疑度/150)，多因子乘积模型，怀疑度降低感染概率
+2. **信息可信度评估**：来源分×0.35+类型分×0.35-变异惩罚(每次8分)-传播惩罚(每次0.5分，上限20)，谣言/八卦类型分20-25，知识/传统类型分80-90
+3. **信息变异机制**：传播过程中按变异率概率变异，每次变异降低5-15分可信度，内容追加[variant N]标记
+4. **社会影响网络**：有向加权图，高影响力节点+高权重连接传播更有效
+5. **与M12 NPC个性系统协同**：NPC的怀疑度和影响力可从NPCPersonalitySystem推导，应用层可桥接两者
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M13阶段6：SocialMobility社会流动机制（阶层升降+移民+通婚+社会地位变化+声望系统）
+
+### 迭代统计
+
+- 总迭代轮数：116轮
+- 单元测试：1774个（M13阶段4结束1736，阶段5+38）
+- 测试文件：101个
+- 活跃bug：0个
+- SDK版本：v2.8.0（M12），目标v2.9.0（M13）
+- M13测试目标：1650+ ✅ 已达到（1774）
+- GitHub：本轮commit待推送
+

@@ -390,6 +390,22 @@ export type {
 export { DEFAULT_GROUP_BEHAVIOR_CONFIG } from '../social/GroupBehaviorTypes.js';
 export { GroupBehaviorEngine } from '../social/GroupBehaviorEngine.js';
 
+// --- Information Spread Model (M13) ---
+export type {
+  InformationItem,
+  InformationType,
+  InformationState,
+  InformationNode,
+  InformationMutation,
+  CredibilityAssessment,
+  InformationSpreadConfig,
+  InformationSpreadEvent,
+  InformationSpreadEventType,
+  InformationSpreadStats,
+} from '../social/InformationSpreadTypes.js';
+export { DEFAULT_INFORMATION_SPREAD_CONFIG } from '../social/InformationSpreadTypes.js';
+export { InformationSpreadModel } from '../social/InformationSpreadModel.js';
+
 // --- Trading System (M7) ---
 export type {
   TradeStatus,

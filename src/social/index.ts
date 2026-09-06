@@ -90,3 +90,19 @@ export type {
 } from "./GroupBehaviorTypes.js";
 export { DEFAULT_GROUP_BEHAVIOR_CONFIG } from "./GroupBehaviorTypes.js";
 export { GroupBehaviorEngine } from "./GroupBehaviorEngine.js";
+
+// M13 Information Spread Model
+export type {
+  InformationItem,
+  InformationType,
+  InformationState,
+  InformationNode,
+  InformationMutation,
+  CredibilityAssessment,
+  InformationSpreadConfig,
+  InformationSpreadEvent,
+  InformationSpreadEventType,
+  InformationSpreadStats,
+} from "./InformationSpreadTypes.js";
+export { DEFAULT_INFORMATION_SPREAD_CONFIG } from "./InformationSpreadTypes.js";
+export { InformationSpreadModel } from "./InformationSpreadModel.js";
