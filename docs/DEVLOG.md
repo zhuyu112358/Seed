@@ -9129,3 +9129,85 @@ M11已完成，M12里程碑方向尚未在MANAGEMENT_STRATEGY.md中定义。按�
 - 活跃bug：0个
 - SDK版本：v2.7.0（M11），目标v2.8.0（M12）
 
+
+
+---
+
+## 2026-09-06 M12阶段7：任务链深化（第107轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M12阶段1-6已完成并推送（1515测试），上一轮commit 49a28fd实际已推送成功（0待推送）
+- 预研报告无新增
+
+#### 2. M12阶段7：任务链深化
+- 创建src/task/TaskChainTypes.ts
+  - ChainStepStatus: locked/available/active/completed/failed/skipped（6种）
+  - TaskChainStep: 任务步骤（id/name/description/dependencies/status/taskDefinitionId/narrative/metadata/startedAt/completedAt）
+  - TaskChainStatus: locked/available/active/completed/failed
+  - TaskChain: 任务链（id/name/description/steps/status/participants/priority/narrative/startedAt/completedAt/metadata）
+  - TaskChainConfig: autoUnlockSteps/autoCompleteChain/emitEvents/failChainOnStepFailure
+  - DEFAULT_TASK_CHAIN_CONFIG
+  - StepProgressionResult / DependencyCheckResult
+- 创建src/task/TaskChainSystem.ts（WorldSystem）
+  - 链管理：addChain/getChain/getAllChains/getChainsByStatus/startChain/completeChain/failChain
+  - 步骤管理：getStep/getAvailableSteps/getActiveSteps/getCompletedSteps/checkDependencies/startStep/completeStep/failStep/skipStep
+  - 依赖解析：checkDependencies检查所有依赖是否completed/skipped；completeStep/skipStep后自动unlockDependents
+  - 链进度：getChainProgress（0-1）/getNextStep
+  - 自动完成：所有步骤completed/skipped/failed后自动completeChain
+  - 事件：taskchain.chain_started/chain_completed/chain_failed/step_started/step_completed/step_failed/step_skipped/step_unlocked
+  - failChainOnStepFailure配置：步骤失败时是否导致整个链失败
+  - serialize/deserialize
+- 更新src/task/index.ts: 合并M6原有导出+M12任务链导出
+- 更新src/sdk/index.ts: SDK导出包含任务链类型和系统
+
+**关键修复**：
+- checkDependencies中skipped步骤也应视为依赖满足（最初只认completed），修复后skipStep能正确解锁后续步骤
+- startStep依赖检查测试中需先将步骤设为available（否则返回not_available而非dependencies_not_met）
+
+#### 3. 测试（30个，全部通过）
+- 链管理（7测试：添加获取/全部/按状态/开始+解锁/重复开始/完成/失败）
+- 步骤管理（11测试：获取步骤/可用步骤/活跃步骤/完成步骤/依赖检查无依赖/依赖检查未满足/开始步骤/依赖未满足开始失败/完成步骤+解锁/失败步骤/跳过步骤+解锁）
+- 分支依赖（2测试：并行步骤解锁/多依赖全部满足才解锁）
+- 链进度（4测试：新链进度0/正确分数/下一个步骤/自动完成链）
+- 事件（3测试：chain_started/step_completed/step_unlocked）
+- 配置（2测试：默认配置/failChainOnStepFailure）
+- 序列化（1测试）
+
+### 验证结果
+
+- **单元测试**：1545/1545 全绿（M12阶段6结束1515，+30）
+- **构建**：0错误
+- **GitHub**：待推送
+
+### M12进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1-5 | NPC AI深化（记忆/个性/GOAP/行为树/作息） | ✅ 全部完成 |
+| 6 | 动态叙事生成 | ✅ 完成 |
+| 7 | 任务链深化 | ✅ 完成（本轮） |
+| 8 | 世界状态叙事+叙事事件感知+NPC与叙事集成 | ⏳ 下一轮 |
+| 9 | 端到端演示+SDK v2.8.0发布 | ⏳ 待开发 |
+
+**M12整体进度：78%（阶段1-7完成）**
+**世界叙事增强子目标：2/5完成（动态叙事生成+任务链深化）**
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M12阶段8：世界状态叙事+叙事事件感知+NPC与叙事集成
+   - SoulPerceptionSystem新增叙事事件监听器（narrative.event_recorded/arc_started/phase_changed等）
+   - 世界状态叙事（WorldStateNarrative：世界状态变化→叙事事件）
+   - NPC与叙事集成（NPC行为驱动叙事+叙事事件影响NPC行为）
+3. 运行npm test确认无回归
+
+### 迭代统计
+
+- 总迭代轮数：107轮
+- 单元测试：1545个（M11结束1306，M12阶段1+24，阶段2+41，阶段3+36，阶段4+40，阶段5+32，阶段6+36，阶段7+30）
+- 测试文件：95个
+- 活跃bug：0个
+- SDK版本：v2.7.0（M11），目标v2.8.0（M12）
+

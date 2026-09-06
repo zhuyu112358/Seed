@@ -267,6 +267,19 @@ export {
 } from '../task/TaskEvents.js';
 export { TaskSystem } from '../task/TaskSystem.js';
 
+// --- Task Chain (M12 Phase 7) ---
+export type {
+  TaskChain,
+  TaskChainStatus,
+  TaskChainStep,
+  ChainStepStatus,
+  TaskChainConfig,
+  StepProgressionResult,
+  DependencyCheckResult,
+} from '../task/TaskChainTypes.js';
+export { DEFAULT_TASK_CHAIN_CONFIG } from '../task/TaskChainTypes.js';
+export { TaskChainSystem } from '../task/TaskChainSystem.js';
+
 // --- Narrative System (M6) ---
 export { NarrativeChainInstance } from '../narrative/NarrativeTypes.js';
 export type {
