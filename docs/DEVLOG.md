@@ -7848,3 +7848,108 @@ priority = (severityWeight * severityScore
 - 活跃bug：0个
 - SDK版本：v2.5.0（M9完成），M10目标v2.6.0
 
+
+
+---
+
+## 2026-09-06 M10阶段4：SoulPerceptionSystem多模态感知集成（第92轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M10阶段3（感知过滤+注意力）已完成推送（commit ee72e36，1199测试），0待推送
+- 项目已重组：D:\Seed → D:\Sojourn\arboreus（世界引擎新名Arboreus/建木）
+
+#### 2. SoulPerceptionSystem多模态感知集成
+
+**SoulPerceptionConfig新增字段**：
+- `visionCone?: VisionConeSystem` — FOV视野锥系统引用
+- `soundPerception?: SoundPerceptionSystem` — 听觉感知系统引用
+- `perceptionFilter?: PerceptionFilter` — 感知过滤器引用
+- `attentionSystem?: AttentionSystem` — 注意力系统引用
+- `visionObserverId?: string` — 灵魂对应的视觉观察者ID
+- `soundListenerId?: string` — 灵魂对应的听觉听者ID
+
+**PerceptionFrame新增字段**：
+- `auditoryEvents?: Array<{sourceId, type, receivedIntensity, distance, directionAngle}>` — 听觉感知事件
+- `fovFiltered?: boolean` — 是否应用了FOV过滤
+- `attentionSorted?: boolean` — 是否应用了注意力排序
+
+**buildFrame修改**：
+1. **FOV过滤**：当visionCone+visionObserverId配置且观察者active时，过滤visibleEntities只保留视野锥内的实体
+2. **听觉感知**：当soundPerception+soundListenerId配置时，收集heard sounds到auditoryEvents
+3. **事件过滤**：当perceptionFilter配置时，按类型/严重度/距离过滤events
+4. **注意力排序**：当attentionSystem配置时，按严重度/距离/新近度优先级排序events
+
+**关键设计决策**：
+- 所有M10系统都是**可选集成**——不配置时行为完全不变（向后兼容）
+- fovFiltered/attentionSorted为`undefined`（非false）表示未应用该功能
+- 观察者inactive时不应用FOV过滤（所有实体可见）
+- 听觉事件按接收强度排序（最响优先）
+
+#### 3. 测试 (`tests/m10-multimodal-perception.test.ts`)
+- 9个新测试，覆盖：
+  - 向后兼容：1个（无M10系统时行为不变）
+  - FOV过滤：3个（FOV外实体过滤/宽FOV包含更多/inactive观察者禁用过滤）
+  - 听觉感知：2个（听觉事件包含/不可听声音不包含）
+  - 感知过滤：1个（配置后无错误）
+  - 注意力排序：1个（配置后attentionSorted=true）
+  - 完整多模态栈：1个（四个系统协同工作）
+
+**关键修复**：
+- fovFiltered/attentionSorted默认值从false改为undefined（向后兼容）
+- 测试中移除不存在的world.getSystem调用
+- DEFAULT_CONFIG类型从Required<SoulPerceptionConfig>改为排除M10字段的Required<Omit<...>>
+
+### 架构设计
+
+**多模态感知流水线**：
+```
+世界状态
+  │
+  ├── 视觉通道：VisionConeSystem → FOV过滤 → visibleEntities
+  ├── 听觉通道：SoundPerceptionSystem → 距离衰减 → auditoryEvents
+  ├── 事件通道：PerceptionFilter → 类型/严重度/距离过滤
+  │              → AttentionSystem → 优先级排序 → events
+  └── 环境通道：Weather/Light/Thermal → environment
+      ↓
+  PerceptionFrame（多模态感知帧）
+```
+
+**与Ember分工**：
+- Ember：配置观察者/听者参数，处理多模态感知信息的认知融合
+- Seed：计算各模态感知，过滤和排序，提供标准化感知帧
+
+### 验证结果
+
+- **单元测试**：1208/1208 全绿（M10阶段3结束1199，+9）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M10里程碑进度：80%
+
+- ✅ 阶段1：视野锥（FOV）感知系统（26测试）
+- ✅ 阶段2：听觉感知增强（32测试）
+- ✅ 阶段3：感知过滤+注意力机制（40测试）
+- ✅ 阶段4：SoulPerceptionSystem多模态感知集成（9测试）
+- ⬜ 阶段5：端到端验证+SDK v2.6.0发布
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M10阶段5：端到端验证+SDK v2.6.0发布
+   - 创建examples/m10-demo.ts端到端演示（多模态感知全链路）
+   - package.json 2.5.0→2.6.0
+   - CHANGELOG添加v2.6.0条目
+   - git tag seed-sdk-v2.6.0
+   - DEVLOG第93轮
+   - commit并推送
+
+### 迭代统计
+
+- 总迭代轮数：92轮
+- 单元测试：1208个（M10阶段3结束1199，+9）
+- 测试文件：83个
+- 活跃bug：0个
+- SDK版本：v2.5.0（M9完成），M10目标v2.6.0
+

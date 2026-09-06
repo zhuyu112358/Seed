@@ -389,6 +389,18 @@ export interface PerceptionFrame {
     affectsSoul: boolean;
   }>;
   communications: CommunicationMessage[];
+  /** M10: Auditory events perceived by the soul (from SoundPerceptionSystem). */
+  auditoryEvents?: Array<{
+    sourceId: string;
+    type: string;
+    receivedIntensity: number;
+    distance: number;
+    directionAngle: number;
+  }>;
+  /** M10: Whether FOV-based visibility filtering was applied. */
+  fovFiltered?: boolean;
+  /** M10: Whether events were sorted by attention priority. */
+  attentionSorted?: boolean;
 }
 
 /** A soul's requested action. */

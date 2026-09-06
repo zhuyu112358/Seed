@@ -93,6 +93,12 @@ import {
 } from "../event/Event.js";
 import { Vector3 } from "../entity/Vector3.js";
 import type { GameObject } from "../entity/Entity.js";
+// M10 multi-modal perception systems (optional integration).
+import type { VisionConeSystem } from "../vision/VisionConeSystem.js";
+import type { SoundPerceptionSystem } from "../sound/SoundPerceptionSystem.js";
+import type { PerceptionFilter } from "../perception/PerceptionFilter.js";
+import type { AttentionSystem } from "../perception/AttentionSystem.js";
+import type { HeardSound } from "../sound/SoundTypes.js";
 import type {
   CommunicationMessage,
   EntityType,
@@ -113,9 +119,22 @@ export interface SoulPerceptionConfig {
   sensoryRange?: number;
   /** Maximum nearby heat sources/lights returned per frame. Default 8. */
   maxNearbySensory?: number;
+  // --- M10 multi-modal perception (optional) ---
+  /** VisionConeSystem for FOV-based entity visibility filtering. */
+  visionCone?: VisionConeSystem;
+  /** SoundPerceptionSystem for auditory perception. */
+  soundPerception?: SoundPerceptionSystem;
+  /** PerceptionFilter for event filtering by type/severity/distance. */
+  perceptionFilter?: PerceptionFilter;
+  /** AttentionSystem for event prioritization. */
+  attentionSystem?: AttentionSystem;
+  /** Observer ID for VisionConeSystem (maps soul to a vision observer). */
+  visionObserverId?: string;
+  /** Listener ID for SoundPerceptionSystem (maps soul to a sound listener). */
+  soundListenerId?: string;
 }
 
-const DEFAULT_CONFIG: Required<SoulPerceptionConfig> = {
+const DEFAULT_CONFIG: Required<Omit<SoulPerceptionConfig, "visionCone" | "soundPerception" | "perceptionFilter" | "attentionSystem" | "visionObserverId" | "soundListenerId">> = {
   viewDistance: 30,
   maxVisibleEntities: 20,
   commRetentionTicks: 300,
@@ -143,11 +162,18 @@ export class SoulPerceptionSystem implements WorldSystem {
   readonly name = "soul-perception";
   enabled = true;
 
-  private readonly config: Required<SoulPerceptionConfig>;
+  private readonly config: Required<Omit<SoulPerceptionConfig, "visionCone" | "soundPerception" | "perceptionFilter" | "attentionSystem" | "visionObserverId" | "soundListenerId">>;
   private weather: WeatherSimulator | null = null;
   private light: LightSystem | null = null;
   private thermal: ThermalSystem | null = null;
   private harvest: HarvestSystem | null = null;
+  // M10 multi-modal perception references (optional, set from config).
+  private visionCone: VisionConeSystem | null = null;
+  private soundPerception: SoundPerceptionSystem | null = null;
+  private perceptionFilter: PerceptionFilter | null = null;
+  private attentionSystem: AttentionSystem | null = null;
+  private visionObserverId: string | null = null;
+  private soundListenerId: string | null = null;
   private readonly frames = new Map<string, PerceptionFrame>();
   private readonly eventBuffer: BufferedEvent[] = [];
   private readonly commBuffer: BufferedCommunication[] = [];
@@ -266,6 +292,13 @@ export class SoulPerceptionSystem implements WorldSystem {
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    // Initialize M10 multi-modal perception references from config.
+    if (config?.visionCone) this.visionCone = config.visionCone;
+    if (config?.soundPerception) this.soundPerception = config.soundPerception;
+    if (config?.perceptionFilter) this.perceptionFilter = config.perceptionFilter;
+    if (config?.attentionSystem) this.attentionSystem = config.attentionSystem;
+    if (config?.visionObserverId) this.visionObserverId = config.visionObserverId;
+    if (config?.soundListenerId) this.soundListenerId = config.soundListenerId;
   }
 
   /** Get the latest perception frame for a soul. */
@@ -1221,20 +1254,35 @@ export class SoulPerceptionSystem implements WorldSystem {
       : undefined;
 
     // Visible entities: within view distance, sorted by distance, capped.
-    const visible = allEntities
+    // M10: If VisionConeSystem is available, apply FOV filtering.
+    let fovFiltered: boolean | undefined;
+    let visible = allEntities
       .filter(e => e.id !== soul.id && e.type !== "soul")
       .map(e => ({ entity: e, dist: pos.distance(e.position) }))
       .filter(x => x.dist <= this.config.viewDistance)
       .sort((a, b) => a.dist - b.dist)
-      .slice(0, this.config.maxVisibleEntities)
-      .map(x => ({
-        id: x.entity.id,
-        name: x.entity.name,
-        type: x.entity.type as EntityType,
-        position: { x: x.entity.position.x, y: x.entity.position.y, z: x.entity.position.z },
-        distance: Math.round(x.dist * 100) / 100,
-        visible: true,
-      }));
+      .slice(0, this.config.maxVisibleEntities);
+
+    // M10 FOV filtering: only keep entities within the vision cone.
+    if (this.visionCone && this.visionObserverId) {
+      const observer = this.visionCone.getObserver(this.visionObserverId);
+      if (observer && observer.active) {
+        fovFiltered = true;
+        visible = visible.filter(x => {
+          const targetPos = { x: x.entity.position.x, z: x.entity.position.z };
+          return this.visionCone!.isTargetVisible(this.visionObserverId!, targetPos);
+        });
+      }
+    }
+
+    const visibleEntities = visible.map(x => ({
+      id: x.entity.id,
+      name: x.entity.name,
+      type: x.entity.type as EntityType,
+      position: { x: x.entity.position.x, y: x.entity.position.y, z: x.entity.position.z },
+      distance: Math.round(x.dist * 100) / 100,
+      visible: true,
+    }));
 
     // Nearby souls: other souls within view distance.
     const nearbySouls = allSouls
@@ -1271,9 +1319,47 @@ export class SoulPerceptionSystem implements WorldSystem {
       : undefined;
 
     // Recent events within range.
-    const events = this.eventBuffer
+    // M10: If PerceptionFilter is available, filter events by type/severity/distance.
+    // M10: If AttentionSystem is available, prioritize events.
+    let eventList = this.eventBuffer
       .map(e => ({ ...e, dist: pos.distance(e.position) }))
-      .filter(e => e.dist <= this.config.viewDistance * 2)
+      .filter(e => e.dist <= this.config.viewDistance * 2);
+
+    // M10 PerceptionFilter: filter events.
+    if (this.perceptionFilter) {
+      const observerPos = { x: pos.x, z: pos.z };
+      const perceptionEvents = eventList.map(e => ({
+        id: e.id,
+        type: e.type,
+        name: e.name,
+        severity: e.severity as "low" | "medium" | "high" | "critical",
+        position: { x: e.position.x, z: e.position.z },
+        tick: e.bornTick,
+      }));
+      const filtered = this.perceptionFilter.filterEvents(perceptionEvents, observerPos);
+      const filteredIds = new Set(filtered.events.map(e => e.id));
+      eventList = eventList.filter(e => filteredIds.has(e.id));
+    }
+
+    // M10 AttentionSystem: prioritize events by severity/distance/recency.
+    let attentionSorted: boolean | undefined;
+    if (this.attentionSystem) {
+      attentionSorted = true;
+      const observerPos = { x: pos.x, z: pos.z };
+      const perceptionEvents = eventList.map(e => ({
+        id: e.id,
+        type: e.type,
+        name: e.name,
+        severity: e.severity as "low" | "medium" | "high" | "critical",
+        position: { x: e.position.x, z: e.position.z },
+        tick: e.bornTick,
+      }));
+      const prioritized = this.attentionSystem.prioritizeEvents(perceptionEvents, observerPos, this.currentTick);
+      const priorityMap = new Map(prioritized.map(p => [p.event.id, p.priority]));
+      eventList.sort((a, b) => (priorityMap.get(b.id) ?? 0) - (priorityMap.get(a.id) ?? 0));
+    }
+
+    const events = eventList
       .slice(-10)
       .map(e => ({
         id: e.id,
@@ -1283,6 +1369,19 @@ export class SoulPerceptionSystem implements WorldSystem {
         distance: Math.round(e.dist * 100) / 100,
         affectsSoul: e.affectsSoul,
       }));
+
+    // M10 Auditory perception: gather heard sounds from SoundPerceptionSystem.
+    let auditoryEvents: PerceptionFrame["auditoryEvents"];
+    if (this.soundPerception && this.soundListenerId) {
+      const heard = this.soundPerception.getHeardSounds(this.soundListenerId);
+      auditoryEvents = heard.map(h => ({
+        sourceId: h.sourceId,
+        type: h.type,
+        receivedIntensity: Math.round(h.receivedIntensity * 1000) / 1000,
+        distance: Math.round(h.distance * 100) / 100,
+        directionAngle: Math.round(h.directionAngle * 10) / 10,
+      }));
+    }
 
     // Recent communications (audible within range).
     const communications = this.commBuffer
@@ -1296,7 +1395,7 @@ export class SoulPerceptionSystem implements WorldSystem {
       timestamp: Date.now(),
       worldTime: world.worldTime,
       position: { x: pos.x, y: pos.y, z: pos.z },
-      visibleEntities: visible,
+      visibleEntities,
       nearbySouls,
       nearbyResources,
       environment: {
@@ -1308,6 +1407,9 @@ export class SoulPerceptionSystem implements WorldSystem {
       },
       events,
       communications,
+      auditoryEvents,
+      fovFiltered,
+      attentionSorted,
     };
   }
 
