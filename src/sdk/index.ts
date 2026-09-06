@@ -451,7 +451,7 @@ export type {
   ActionStartResult,
   ActionEventPayload,
 } from '../action/index.js';
-export { DEFAULT_ACTION_DEFINITION, ActionStateMachine, ActionSystem } from '../action/index.js';
+export { DEFAULT_ACTION_DEFINITION, ActionStateMachine, ActionSystem, createAttackPreset, createDefendPreset, createInteractPreset, createHarvestPreset, createBuildPreset, createMovePreset, createCommunicatePreset, getAllPresets } from '../action/index.js';
 
 
 // --- Interaction System (M11 phase 3) ---

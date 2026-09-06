@@ -5,6 +5,74 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-09-06
+
+### Milestone M11: Action System Enhancement + Interaction System Deepening + Performance Optimization
+
+#### Added
+- **Action State Machine** (`src/action/`): NPC action state machine system
+  - ActionCategory: 10 categories (idle/move/attack/defend/interact/harvest/build/communicate/use/custom)
+  - ActionState: 5 states (idle/casting/active/cooling/interrupted)
+  - ActionStateMachine: per-entity state machine with state flow idle→casting→active→cooling→idle
+  - ActionSystem: WorldSystem managing multiple entity state machines + unified API + event emission
+  - Action lifecycle events: action.{state} (casting/active/cooling/interrupted/idle) + semantic events (action.started/completed/interrupted)
+- **Action Presets** (`src/action/ActionPresets.ts`): 7 standard action preset factory functions
+  - createAttackPreset: castTime=3, duration=5, cooldown=10, range=3
+  - createDefendPreset: castTime=1, duration=30, cooldown=5
+  - createInteractPreset: castTime=2, duration=3, cooldown=2, range=2
+  - createHarvestPreset: castTime=5, duration=10, cooldown=3, range=2
+  - createBuildPreset: castTime=10, duration=20, cooldown=5, cancellable=false
+  - createMovePreset: castTime=0, duration=0, cooldown=0 (instant)
+  - createCommunicatePreset: castTime=1, duration=2, cooldown=1, range=10
+  - PresetOptions: override any parameter
+  - getAllPresets(): returns all 7 standard presets
+- **Interaction Session System** (`src/interaction/`): NPC-NPC and NPC-environment interaction sessions
+  - InteractionType: 11 types (dialogue/trade/party_invite/inspect/use_object/harvest/craft/build/greet/follow/custom)
+  - InteractionState: 5 states (pending/active/completed/interrupted/cancelled)
+  - InteractionSessionSystem: manages ongoing interaction sessions with duration/progress/lifecycle
+  - Participant management: initiator/target/observer/participant roles
+  - Concurrency control: entity cannot be in multiple active sessions
+  - Interaction events: interaction.started/progress/completed/interrupted/cancelled
+- **Performance Profiler** (`src/performance/PerformanceProfiler.ts`): frame time and system performance measurement
+  - Frame timing: beginFrame()/endFrame() records per-frame duration
+  - FPS calculation: sliding window average (default 60 frames)
+  - System-level timing: measureSystem(name, fn) measures per-system tick time
+  - Statistics: frame count/avg frame time/peak frame time/slow frame count/slow frame percentage
+  - Slow frame threshold: default 33.3ms (30FPS target)
+  - getSlowestSystems(n): returns slowest N systems
+  - getSummary(): complete performance summary
+- **Benchmark** (`src/performance/Benchmark.ts`): performance benchmarking utility
+  - runBenchmark(config?): creates N NPCs (default 100) with random positions/velocities
+  - BenchmarkConfig: npcCount/worldSize/frameCount/enablePhysics/enablePerception/movingNpcs
+  - BenchmarkResult: fps/avgFrameTimeMs/peakFrameTimeMs/slowFrameCount/meets30FpsTarget/systemStats
+- **Action Event Perception** (SoulPerceptionSystem): action events integrated into perception frame
+  - action.started: attack class severity=high, others low
+  - action.completed: severity=low
+  - action.interrupted: severity=medium
+- **Interaction Event Perception** (SoulPerceptionSystem): interaction events integrated into perception frame
+  - interaction.started: severity=low
+  - interaction.completed: severity=low
+  - interaction.interrupted: severity=medium
+- **M11 End-to-End Demo** (`examples/m11-demo.ts`): 42 assertions covering all M11 systems
+  - Phase 1: Action system (ActionStateMachine + 7 presets)
+  - Phase 2: Interaction system (InteractionSessionSystem + 11 types)
+  - Phase 3: Performance (PerformanceProfiler + Benchmark)
+  - Phase 4: Perception integration (action + interaction events)
+
+#### Changed
+- SoulPerceptionSystem: added 6 new event listeners (3 action + 3 interaction) with lazy initialization
+- ActionSystem: enhanced handleStateChange to emit semantic events (action.started/completed/interrupted) in addition to state events
+- ActionStateMachine: completeAction() emits idle state change before clearing current action
+- SDK exports: added action/interaction/performance modules
+
+#### Tests
+- 1306 total tests (was 1208 in v2.6.0, +98)
+- action-state-machine.test.ts: 35 tests
+- action-presets-perception.test.ts: 15 tests
+- interaction-session.test.ts: 24 tests
+- performance-profiler.test.ts: 17 tests
+- m11-sdk-exports.test.ts: 7 tests
+
 ## [2.6.0] - 2026-09-06
 
 ### Milestone M10: Perception System Enhancement (Vision Cone + Auditory + Filter + Attention)
