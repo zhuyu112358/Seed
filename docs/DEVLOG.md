@@ -8358,3 +8358,80 @@ M10（感知系统深化）全部5个阶段完成：
 - 活跃bug：0个
 - SDK版本：v2.6.0（M10），目标v2.7.0（M11）
 
+
+
+---
+
+## 2026-09-06 M11阶段4：性能优化（第98轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M11阶段1-3已完成（1282测试）
+- 重试推送commit 5271f20（M11阶段3）成功
+- 0待推送，工作区干净
+
+#### 2. M11阶段4：PerformanceProfiler性能分析系统
+- 创建src/performance/模块目录
+- **PerformanceProfiler.ts**（WorldSystem）：
+  - 帧时间测量：beginFrame()/endFrame()记录每帧耗时
+  - FPS计算：基于帧历史滑动窗口（默认60帧）计算平均FPS
+  - 系统级计时：measureSystem(name, fn)测量每个系统的tick耗时
+  - 统计指标：总帧数/平均帧时间/峰值帧时间/慢帧计数/慢帧百分比
+  - 系统性能统计：每个系统的总耗时/调用次数/平均耗时/最大耗时/最近耗时
+  - getSlowestSystems(n)：返回最慢的N个系统
+  - getSummary()：返回完整性能摘要（FPS/帧时间/慢帧/最慢系统）
+  - reset()：重置所有统计
+  - 配置：enabled/frameHistorySize/frameTimeWarningMs(默认33.3ms=30FPS阈值)/trackSystemTiming
+- **Benchmark.ts**：
+  - runBenchmark(config?)：运行性能基准测试
+  - BenchmarkConfig：npcCount(默认100)/worldSize/frameCount(默认600)/enablePhysics/enablePerception/movingNpcs
+  - 创建N个NPC实体，随机位置和速度，边界反弹
+  - 运行指定帧数，测量FPS/帧时间/系统性能
+  - BenchmarkResult：fps/avgFrameTimeMs/peakFrameTimeMs/slowFrameCount/slowFramePercentage/meets30FpsTarget/systemStats
+- **index.ts**：barrel导出
+- SDK导出新增performance模块
+
+#### 3. 测试（17个，全部通过）
+- PerformanceProfiler帧计时（6测试：记录/FPS/峰值/慢帧/重置/禁用）
+- PerformanceProfiler系统计时（4测试：记录/平均/最慢排序/当前帧）
+- PerformanceProfiler摘要（1测试）
+- PerformanceProfiler WorldSystem接口（1测试）
+- Benchmark基准（5测试：基本结果/物理+感知/100NPC性能/系统统计/默认配置）
+
+### 验证结果
+
+- **单元测试**：1299/1299 全绿（M11阶段3结束1282，+17）
+- **构建**：0错误（修复Vector3不可变类型问题）
+- **GitHub**：待推送
+
+### M11进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | ActionStateMachine动作状态机核心 | ✅ 完成 |
+| 2 | ActionPresets+动作事件感知集成 | ✅ 完成 |
+| 3 | InteractionSessionSystem交互会话系统 | ✅ 完成 |
+| 4 | 性能优化（PerformanceProfiler+Benchmark） | ✅ 完成（本轮） |
+| 5 | 端到端演示+SDK v2.7.0发布 | ⏳ 下一轮 |
+
+**M11整体进度：80%（阶段1-4完成）**
+
+### 下一轮计划
+
+1. 推送本轮commit
+2. M11阶段5：端到端演示（examples/m11-demo.ts）+ SDK v2.7.0发布
+   - 创建M11端到端演示（动作系统+交互系统+性能分析全链路）
+   - package.json 2.6.0→2.7.0
+   - CHANGELOG v2.7.0条目
+   - git tag seed-sdk-v2.7.0
+   - 推送
+
+### 迭代统计
+
+- 总迭代轮数：98轮
+- 单元测试：1299个（M10结束1208，M11阶段1+35，阶段2+15，阶段3+24，阶段4+17）
+- 测试文件：87个
+- 活跃bug：0个
+- SDK版本：v2.6.0（M10），目标v2.7.0（M11）
+

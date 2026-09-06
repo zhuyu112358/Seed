@@ -466,3 +466,14 @@ export type {
 } from '../interaction/index.js';
 export { DEFAULT_INTERACTION_DEFINITION, InteractionSessionSystem } from '../interaction/index.js';
 
+
+// --- Performance System (M11 phase 4) ---
+export type {
+  SystemPerformance,
+  FrameStats,
+  PerformanceProfilerConfig,
+  BenchmarkConfig,
+  BenchmarkResult,
+} from '../performance/index.js';
+export { DEFAULT_PROFILER_CONFIG, PerformanceProfiler, DEFAULT_BENCHMARK_CONFIG, runBenchmark } from '../performance/index.js';
+
