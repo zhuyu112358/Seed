@@ -399,3 +399,13 @@ export type {
 export { DEFAULT_PATH_COST_CONFIG } from '../navigation/NavigationTypes.js';
 export { PathCostSystem } from '../navigation/PathCostSystem.js';
 export { PathChangedEvent, PathBlockedEvent, ArrivedEvent, WaypointReachedEvent } from '../navigation/NavigationEvents.js';
+
+// --- Vision System (M10) ---
+export type {
+  VisionConeConfig,
+  VisionObserver,
+  VisibleEntity,
+  VisionResult,
+} from '../vision/VisionConeTypes.js';
+export { DEFAULT_VISION_CONE_CONFIG } from '../vision/VisionConeTypes.js';
+export { VisionConeSystem } from '../vision/VisionConeSystem.js';

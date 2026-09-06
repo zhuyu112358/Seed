@@ -7511,3 +7511,117 @@ PathCostSystem
 - SDK版本：v2.5.0（M9完成，待推送）
 - Git tag：seed-sdk-v2.5.0（待创建+推送）
 
+
+
+---
+
+## 2026-09-06 M10阶段1：视野锥（FOV）感知系统（第89轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M9 SDK v2.5.0已发布（第88轮，1101测试，tag已推送），0待推送
+- BUG-019已关闭（第85轮）
+- 管理策略文档更新：M9标记完成，M10定义添加（感知系统增强+视野锥+多模态感官，SDK v2.6.0）
+- 世界引擎新名：Arboreus/建木（管理策略文档已更新，过渡期代码仍用Seed）
+
+#### 2. 视野锥系统 (`src/vision/`)
+
+**VisionConeTypes** (`VisionConeTypes.ts`)
+- VisionConeConfig：fovAngle（视野角度，度）/viewDistance（视野距离）/checkOcclusion（是否检查遮挡）
+- DEFAULT_VISION_CONE_CONFIG：fovAngle=90, viewDistance=10, checkOcclusion=false
+- VisionObserver：id/position/direction（朝向，弧度，0=+x轴）/config/active
+- VisibleEntity：entityId/position/distance/angleToEntity（与朝向的夹角，度）/lineOfSight
+- VisionResult：success/observerId/visibleCount/error
+
+**VisionConeSystem** (`VisionConeSystem.ts`) — WorldSystem
+- addObserver：添加观察者（位置+朝向+配置，可指定ID）
+- removeObserver/getObserver/getObservers/getActiveObservers
+- setObserverPosition/setObserverDirection/setObserverConfig/setObserverActive
+- computeAngleToTarget：计算观察者朝向到目标的夹角（度，-180到180）
+- computeDistance：计算距离
+- isTargetVisible：检查目标是否在视野锥内（角度+距离）
+- getTargetVisibility：获取目标的详细可见性信息（距离/角度/视线）
+- getVisibleEntities：过滤实体列表，只返回可见的（按距离排序）
+- findObserversSeeingTarget：查找所有能看到目标的观察者
+- tick：WorldSystem接口（按需计算，无状态更新）
+- serialize/deserialize
+
+#### 3. SDK导出 (`src/sdk/index.ts`)
+- vision模块全部导出（VisionConeConfig/VisionObserver/VisibleEntity/VisionResult/DEFAULT_VISION_CONE_CONFIG/VisionConeSystem）
+
+#### 4. 测试 (`tests/vision-cone-system.test.ts`)
+- 26个新测试，覆盖：
+  - 观察者管理：9个（添加/指定ID/重复ID拒绝/移除/设置位置/设置朝向/设置配置/设置激活/计数）
+  - 可见性计算：11个（正前方可见/正后方不可见/FOV边缘可见/FOV外不可见/距离外不可见/同位置可见/非激活不可见/计算夹角/计算距离/窄FOV/宽FOV）
+  - 实体过滤：4个（过滤可见实体/按距离排序/详细可见性/查找能看到目标的观察者）
+  - 序列化：2个（序列化反序列化/stop清理）
+
+### 架构设计
+
+**视野锥模型**：
+```
+观察者 (position + direction)
+  │
+  ├── FOV角度 (fovAngle, 度)
+  │     └── 半角 = fovAngle / 2
+  │
+  ├── 视野距离 (viewDistance)
+  │
+  └── 目标可见条件：
+        ├── distance <= viewDistance
+        └── |angleToTarget| <= fovAngle / 2
+```
+
+**坐标系**：x/z平面（俯视），direction 0 = +x轴，正角度=逆时针（标准数学约定）
+
+**与SoulPerceptionSystem的关系**（M10阶段4集成）：
+- 当前SoulPerceptionSystem收集所有附近实体（无视野过滤）
+- M10阶段4将集成VisionConeSystem，只感知视野锥内的实体
+- 应用层/Ember配置观察者的FOV和朝向
+
+**与Ember分工**：
+- Ember：配置观察者参数（FOV/距离/朝向），处理视觉信息的认知
+- Seed：计算可见性，过滤实体，提供可见实体列表
+
+### 关键特性
+
+- **可配置FOV**：30度到360度，支持窄视野和全景
+- **可配置距离**：viewDistance独立于FOV角度
+- **朝向旋转**：direction弧度，支持动态朝向变化
+- **详细可见性信息**：距离/夹角/视线状态
+- **实体过滤**：getVisibleEntities按距离排序返回可见实体
+- **反向查询**：findObserversSeeingTarget查找能看到目标的所有观察者
+- **序列化支持**：观察者状态可保存/恢复
+
+### 验证结果
+
+- **单元测试**：1127/1127 全绿（M9结束1101，+26）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M10里程碑进度：20%
+
+- ✅ 阶段1：视野锥（FOV）感知系统（26测试）
+- ⬜ 阶段2：听觉感知增强（声音事件+距离衰减+AcousticPropagation集成）
+- ⬜ 阶段3：感知过滤/注意力机制（距离/类型/严重度过滤+重要事件优先）
+- ⬜ 阶段4：SoulPerceptionSystem集成（FOV过滤+多模态感知事件）
+- ⬜ 阶段5：端到端验证+SDK v2.6.0发布
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M10阶段2：听觉感知增强
+   - SoundEvent系统（声音事件+距离衰减+方向）
+   - 与现有AcousticPropagation集成
+   - 听觉感知事件（heard_sound）
+   - 15+测试
+
+### 迭代统计
+
+- 总迭代轮数：89轮
+- 单元测试：1127个（M9结束1101，+26）
+- 测试文件：80个
+- 活跃bug：0个
+- SDK版本：v2.5.0（M9完成），M10目标v2.6.0
+
