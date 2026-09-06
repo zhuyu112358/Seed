@@ -386,3 +386,16 @@ export type {
 } from '../formation/FormationTypes.js';
 export { DEFAULT_FORMATION_CONFIG } from '../formation/FormationTypes.js';
 export { FormationSystem } from '../formation/FormationSystem.js';
+
+// --- Navigation System (M9) ---
+export type {
+  CostModifierType,
+  PathCostModifier,
+  PathCostConfig,
+  NavigationEventType,
+  NavigationEventPayload,
+  NavigationResult,
+} from '../navigation/NavigationTypes.js';
+export { DEFAULT_PATH_COST_CONFIG } from '../navigation/NavigationTypes.js';
+export { PathCostSystem } from '../navigation/PathCostSystem.js';
+export { PathChangedEvent, PathBlockedEvent, ArrivedEvent, WaypointReachedEvent } from '../navigation/NavigationEvents.js';

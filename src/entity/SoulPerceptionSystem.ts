@@ -73,6 +73,12 @@ import {
   TerritoryLeftEvent,
 } from "../territory/TerritoryEvents.js";
 import {
+  PathChangedEvent,
+  PathBlockedEvent,
+  ArrivedEvent,
+  WaypointReachedEvent,
+} from "../navigation/NavigationEvents.js";
+import {
   EntityArrivedEvent,
   CollisionEvent,
   CollisionEnterEvent,
@@ -239,6 +245,14 @@ export class SoulPerceptionSystem implements WorldSystem {
   private buildingRepairedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for building.production event, set on first tick. */
   private buildingProductionUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for navigation.path_changed event, set on first tick. */
+  private pathChangedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for navigation.path_blocked event, set on first tick. */
+  private pathBlockedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for navigation.arrived event, set on first tick. */
+  private navigationArrivedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for navigation.waypoint_reached event, set on first tick. */
+  private waypointReachedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for territory.claimed event, set on first tick. */
   private territoryClaimedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for territory.abandoned event, set on first tick. */
@@ -993,6 +1007,66 @@ export class SoulPerceptionSystem implements WorldSystem {
       });
     }
 
+    // Listen for navigation path changed events.
+    if (!this.pathChangedUnsubscribe) {
+      this.pathChangedUnsubscribe = events.on("navigation.path_changed", (evt: PathChangedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `path_changed_${p.entityId}_${evt.timestamp}`,
+          "navigation.path_changed",
+          `Path changed: ${p.entityId} → (${p.target?.x ?? "?"}, ${p.target?.z ?? "?"}) (cost: ${p.pathCost ?? "?"})`,
+          "low",
+          { x: p.position.x, y: 0, z: p.position.z },
+          true,
+        );
+      });
+    }
+
+    // Listen for navigation path blocked events.
+    if (!this.pathBlockedUnsubscribe) {
+      this.pathBlockedUnsubscribe = events.on("navigation.path_blocked", (evt: PathBlockedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `path_blocked_${p.entityId}_${evt.timestamp}`,
+          "navigation.path_blocked",
+          `Path blocked: ${p.entityId} at (${p.position.x}, ${p.position.z})${p.reason ? ` - ${p.reason}` : ""}`,
+          "high",
+          { x: p.position.x, y: 0, z: p.position.z },
+          true,
+        );
+      });
+    }
+
+    // Listen for navigation arrived events.
+    if (!this.navigationArrivedUnsubscribe) {
+      this.navigationArrivedUnsubscribe = events.on("navigation.arrived", (evt: ArrivedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `arrived_${p.entityId}_${evt.timestamp}`,
+          "navigation.arrived",
+          `Arrived: ${p.entityId} at (${p.position.x}, ${p.position.z})`,
+          "medium",
+          { x: p.position.x, y: 0, z: p.position.z },
+          true,
+        );
+      });
+    }
+
+    // Listen for navigation waypoint reached events.
+    if (!this.waypointReachedUnsubscribe) {
+      this.waypointReachedUnsubscribe = events.on("navigation.waypoint_reached", (evt: WaypointReachedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `waypoint_${p.entityId}_${p.waypointIndex ?? "?"}_${evt.timestamp}`,
+          "navigation.waypoint_reached",
+          `Waypoint reached: ${p.entityId} #${p.waypointIndex ?? "?"} at (${p.position.x}, ${p.position.z})`,
+          "low",
+          { x: p.position.x, y: 0, z: p.position.z },
+          true,
+        );
+      });
+    }
+
     // Listen for territory claimed events.
     if (!this.territoryClaimedUnsubscribe) {
       this.territoryClaimedUnsubscribe = events.on("territory.claimed", (evt: TerritoryClaimedEvent) => {
@@ -1472,6 +1546,10 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.buildingProductionUnsubscribe) {
       this.buildingProductionUnsubscribe();
       this.buildingProductionUnsubscribe = null;
+      if (this.pathChangedUnsubscribe) { this.pathChangedUnsubscribe(); this.pathChangedUnsubscribe = null; }
+      if (this.pathBlockedUnsubscribe) { this.pathBlockedUnsubscribe(); this.pathBlockedUnsubscribe = null; }
+      if (this.navigationArrivedUnsubscribe) { this.navigationArrivedUnsubscribe(); this.navigationArrivedUnsubscribe = null; }
+      if (this.waypointReachedUnsubscribe) { this.waypointReachedUnsubscribe(); this.waypointReachedUnsubscribe = null; }
     }
     if (this.territoryClaimedUnsubscribe) {
       this.territoryClaimedUnsubscribe();

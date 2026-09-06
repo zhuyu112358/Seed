@@ -7277,3 +7277,148 @@ v（宽V形）:       circle（圆形）:    custom（自定义）:
 - 活跃bug：0个
 - SDK版本：v2.4.0（M8完成），M9目标v2.5.0
 
+
+
+---
+
+## 2026-09-06 M9阶段4：路径成本修饰器+导航事件感知（第87轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- BUG-019已关闭（第85轮），0待推送，1076/1076全绿
+- M9阶段3编队系统已完成推送（commit 13459b9）
+
+#### 2. 路径成本系统 (`src/navigation/`)
+
+**NavigationTypes** (`NavigationTypes.ts`)
+- CostModifierType：terrain/danger/building/zone/custom（5种）
+- PathCostModifier：id/type/name/position/radius/costMultiplier/active/metadata
+- PathCostConfig：baseCost/maxCostMultiplier
+- DEFAULT_PATH_COST_CONFIG：baseCost=1.0, maxCostMultiplier=100.0
+- NavigationEventType：path_changed/path_blocked/arrived/waypoint_reached
+- NavigationEventPayload：entityId/eventType/position/target/waypointIndex/pathCost/reason（含索引签名兼容EventPayload）
+- NavigationResult：success/modifierId/error
+
+**NavigationEvents** (`NavigationEvents.ts`)
+- PathChangedEvent（navigation.path_changed）
+- PathBlockedEvent（navigation.path_blocked）
+- ArrivedEvent（navigation.arrived）
+- WaypointReachedEvent（navigation.waypoint_reached）
+- 所有事件继承Event<NavigationEventPayload>，构造函数传{type, payload, sourceId}
+
+**PathCostSystem** (`PathCostSystem.ts`) — WorldSystem
+- addModifier：添加成本修饰器（5种类型，圆形区域，成本乘数）
+- removeModifier/getModifier/getModifiers/getActiveModifiers/getModifiersByType
+- setModifierActive/setCostMultiplier
+- getModifiersAtPosition：获取影响某位置的所有修饰器
+- computeCostMultiplier：计算位置的总成本乘数（所有活跃修饰器相乘，上限maxCostMultiplier）
+- computePathCost：baseCost * totalMultiplier
+- computeSegmentCost：线段成本（多点采样平均成本*距离）
+- aStarCostFunction：A*寻路兼容的成本函数（可直接传入路径规划系统）
+- serialize/deserialize（含config）
+
+#### 3. 导航事件感知集成 (`SoulPerceptionSystem.ts`)
+- 4个新事件监听器（懒加载首次tick设置）：
+  - navigation.path_changed：low（路径变更，含目标和成本）
+  - navigation.path_blocked：high（路径阻塞，含原因）
+  - navigation.arrived：medium（到达目的地）
+  - navigation.waypoint_reached：low（到达路径点）
+- 4个unsubscribe字段（pathChanged/pathBlocked/navigationArrived/waypointReached）
+- stop()清理所有4个监听器
+- imports更新
+
+**注意**：navigationArrivedUnsubscribe命名避免与已有的movement.arrived的arrivedUnsubscribe冲突。
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- navigation模块全部导出（类型+事件类+PathCostSystem）
+
+#### 5. 测试 (`tests/navigation-system.test.ts`)
+- 25个新测试，覆盖：
+  - 修饰器管理：8个（添加/各类型/无效半径/无效乘数/移除/激活状态/设置乘数/按类型查询）
+  - 成本计算：10个（基础成本/半径内乘数/半径外/多修饰器相乘/非活跃不影响/位置查询/线段成本/修饰器线段成本/A*成本函数/最大乘数上限）
+  - 事件感知：5个（path_changed/path_blocked high/arrived medium/waypoint_reached/stop清理）
+  - 序列化：2个（序列化反序列化/stop清理）
+
+**关键修复**：
+1. arrivedUnsubscribe重复定义：已有movement.arrived的arrivedUnsubscribe，重命名为navigationArrivedUnsubscribe
+2. Event构造函数参数：Event接受单个对象{type, payload, sourceId}，不是两个参数(type, payload)
+3. NavigationEventPayload类型兼容：添加索引签名[key: string]: unknown使其兼容EventPayload
+
+### 架构设计
+
+**路径成本修饰器模型**：
+```
+PathCostSystem
+  ├── 修饰器（圆形区域）：terrain(地形)/danger(危险)/building(建筑)/zone(区域)/custom
+  │     └── position + radius + costMultiplier
+  ├── computeCostMultiplier(pos) = 所有活跃修饰器相乘（上限maxCostMultiplier）
+  ├── computePathCost(pos) = baseCost * multiplier
+  ├── computeSegmentCost(from, to) = 采样平均成本 * 距离
+  └── aStarCostFunction(from, to) = 可直接传入A*寻路
+```
+
+**导航事件感知**：
+```
+应用层/Ember → 发射导航事件 → SoulPerceptionSystem → 感知帧
+  ├── path_changed (low)    路径变更
+  ├── path_blocked (high)   路径阻塞
+  ├── arrived (medium)       到达目的地
+  └── waypoint_reached (low) 到达路径点
+```
+
+**与SoulArena(Ember)分工**：
+- Ember：地形定义、危险区放置、路径规划决策、发射导航事件
+- Seed：成本修饰器管理、成本计算、A*成本函数、事件感知集成
+
+### 关键特性
+
+- **5种修饰器类型**：terrain/danger/building/zone/custom，可运行时添加
+- **成本相乘**：多修饰器叠加时乘数相乘，上限可配置
+- **A*兼容**：aStarCostFunction可直接传入现有路径规划系统
+- **线段成本计算**：多点采样平均，精确计算穿越修饰器区域的成本
+- **4个导航事件**：path_changed/path_blocked/arrived/waypoint_reached
+- **感知集成**：4个事件监听器集成到SoulPerceptionSystem（high/medium/low分级）
+
+### 验证结果
+
+- **单元测试**：1101/1101 全绿（M9阶段3结束1076，+25）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+- **🎉 达到M9 1100+测试标准**
+
+### M9里程碑进度：80%
+
+- ✅ 阶段1：群体行为系统Flocking（17测试，BUG-019已关闭）
+- ✅ 阶段2：局部避障ORCA（15测试）
+- ✅ 阶段3：编队控制系统（28测试）
+- ✅ 阶段4：路径成本修饰器+导航事件感知（25测试）
+- ⬜ 阶段5：端到端验证+SDK v2.5.0发布
+
+### M9完成标准检查
+
+- ✅ 群体行为系统（flocking：对齐/分离/聚合）
+- ✅ 局部碰撞避免（ORCA）
+- ✅ 导航/路径规划系统（路径成本修饰器+A*成本函数+导航事件）
+- ✅ 1100+测试（1101）
+- ✅ 无P0/P1 bug（BUG-019 P2已关闭）
+- ⬜ CHANGELOG更新（阶段5发布时完成）
+
+### 下一轮计划
+
+1. M9阶段5：端到端验证+SDK v2.5.0发布
+   - 创建examples/m9-demo.ts（Flocking+ORCA+Formation+Navigation全链路演示）
+   - 完整npm test确认无回归
+   - package.json 2.4.0→2.5.0
+   - CHANGELOG添加v2.5.0条目
+   - 打git tag seed-sdk-v2.5.0
+   - DEVLOG更新+commit推送
+
+### 迭代统计
+
+- 总迭代轮数：87轮
+- 单元测试：1101个（M9阶段3结束1076，+25）
+- 测试文件：79个
+- 活跃bug：0个
+- SDK版本：v2.4.0（M8完成），M9目标v2.5.0
+
