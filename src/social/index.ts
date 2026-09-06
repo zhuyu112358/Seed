@@ -138,3 +138,16 @@ export type {
 } from "./CulturalEvolutionTypes.js";
 export { DEFAULT_CULTURAL_EVOLUTION_CONFIG } from "./CulturalEvolutionTypes.js";
 export { CulturalEvolutionSystem } from "./CulturalEvolutionSystem.js";
+
+// M13 Social-Cultural Integration
+export type {
+  SocialCulturalIntegrationConfig,
+  SocialInfluenceResult,
+  SocialNarrativeBridgeResult,
+  CulturalInfluenceResult,
+  IntegrationEventType,
+  IntegrationEvent,
+  SocialCulturalIntegrationStats,
+} from "./SocialCulturalIntegrationTypes.js";
+export { DEFAULT_SOCIAL_CULTURAL_INTEGRATION_CONFIG } from "./SocialCulturalIntegrationTypes.js";
+export { SocialCulturalIntegrationSystem } from "./SocialCulturalIntegrationSystem.js";

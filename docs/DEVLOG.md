@@ -10277,3 +10277,107 @@ M11结束1306 + M12新增261 = **1567测试**
 - M13测试目标：1650+ ✅ 已达到（1846）
 - GitHub：本轮commit待推送
 
+
+
+---
+
+## 2026-09-07 M13阶段8：SocialCulturalIntegrationSystem社会文化集成系统（第119轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M13阶段1-7已完成，全部commit已推送（e60b73e）
+- Git状态干净，无待推送commit
+- 预研报告无新增（仍为001/002）
+
+#### 2. M13阶段8：与M12 NPC AI和叙事系统集成
+
+**创建文件：**
+- `src/social/SocialCulturalIntegrationTypes.ts`：社会文化集成类型定义
+  - SocialCulturalIntegrationConfig + DEFAULT配置（社会影响开关/叙事桥接开关/文化影响开关/权重/自动桥接/事件历史上限）
+  - SocialInfluenceResult：社会影响结果（关系数/聚合影响分/行为修正器/主导关系类型/描述）
+  - SocialNarrativeBridgeResult：社会事件→叙事桥接结果（社会事件ID/类型/是否触发/叙事弧ID/叙事事件ID/描述）
+  - CulturalInfluenceResult：文化影响结果（文化ID/特质数/个性特质修正/文化影响分/描述）
+  - IntegrationEventType：4种集成事件（social_influence_applied/social_event_bridged/cultural_influence_applied/sync_completed）
+  - IntegrationEvent：集成事件载荷
+  - SocialCulturalIntegrationStats：统计信息
+- `src/social/SocialCulturalIntegrationSystem.ts`：社会文化集成系统（非WorldSystem，独立类）
+  - 系统注册：registerSocialSystems（注册M13三大系统）/registerM12Systems（注册M12两大系统）
+  - 社会关系→NPC行为桥接：applySocialInfluence（基于关系强度计算聚合影响，正向关系增加正向影响，负向关系增加负向影响，输出行为修正器0.5-1.5）/applySocialInfluenceToAll
+  - 社会事件→动态叙事桥接：bridgeSocialEventToNarrative（将SocialEventSystem事件记录为DynamicNarrativeSystem的world类型叙事事件，避免重复桥接）/bridgeRecentSocialEvents
+  - 文化→NPC个性桥接：applyCulturalInfluence（基于文化特质类型映射到大五人格维度：宗教/仪式/习俗→尽责性，艺术/音乐/神话→开放性，语言/礼仪→宜人性，技术/建筑→尽责性+开放性，饮食/服饰/节日→外向性）
+  - 全量同步：sync（执行所有桥接操作）
+  - tick自动更新：autoBridgeEvents时自动同步
+  - 序列化：serialize/deserialize
+  - 统计：getStats（社会影响数/事件桥接数/文化影响数/同步周期/活跃桥接数/平均影响分）
+
+**修改文件：**
+- `src/social/index.ts`：新增M13 SocialCulturalIntegrationSystem导出（类型+常量+系统）
+- `src/sdk/index.ts`：新增M13 SocialCulturalIntegrationSystem SDK导出
+
+**测试文件：**
+- `tests/social-cultural-integration.test.ts`：22个测试，8个测试套件
+  - System Registration（2测试）：注册M13系统/注册M12系统
+  - Social Influence（5测试）：无关系中性/禁用返回null/正向关系/负向关系/主导关系类型识别
+  - Social Event to Narrative Bridge（4测试）：未知事件/真实事件桥接/避免重复桥接/禁用返回null
+  - Cultural Influence（6测试）：禁用返回null/无特质文化/特质个性修正/宗教映射尽责性/未知文化
+  - Full Sync（2测试）：同步运行所有操作/同步计数器递增
+  - Serialization（1测试）：序列化/反序列化
+  - Statistics（1测试）：统计计数
+  - Configuration（2测试）：默认配置/部分覆盖
+
+**关键修复：**
+- SocialRelationGraph方法名是`getRelations`不是`getRelationsForEntity`
+- SocialEventSystem的`getEvent`只查active map，需用`getAllEvents`查找
+- SocialRelationGraph.addRelation的strength参数直接传Partial<RelationStrength>，不包裹在对象里
+- DynamicNarrativeSystem.recordEvent的type必须是有效的DynamicNarrativeEventType（plot/character/world/player/random/climax/resolution），用"world"类型
+- SocialEventSystem.createEvent返回EventCreationResult（含event属性），不是直接返回SocialEvent
+- RelationStrength没有overallScore属性，用trust+intimacy+respect+influence的平均值
+- CulturalTraitType没有"tradition"，用"custom"替代
+
+#### 3. 验证结果
+
+- **SocialCulturalIntegrationSystem测试**：22/22 全绿
+- **全量单元测试**：1868/1868 全绿（M13阶段7结束1846，+22）
+- **构建**：0错误
+- **GitHub**：本轮commit待推送
+
+### M13进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | SocialRelationGraph社会关系网络 | ✅ 完成（38测试） |
+| 2 | SocialNormSystem社会规范系统 | ✅ 完成（37测试） |
+| 3 | SocialEventSystem社会事件系统 | ✅ 完成（40测试） |
+| 4 | GroupBehaviorEngine群体行为引擎 | ✅ 完成（54测试） |
+| 5 | InformationSpreadModel信息传播模型 | ✅ 完成（38测试） |
+| 6 | SocialMobilitySystem社会流动机制 | ✅ 完成（40测试） |
+| 7 | CulturalEvolutionSystem文化演化系统 | ✅ 完成（32测试） |
+| 8 | 与M12 NPC AI和叙事系统集成 | ✅ 完成（本轮，22测试） |
+| 9 | 端到端演示+SDK v2.9.0发布 | ⏳ 下一轮 |
+
+**M13整体进度：89%（阶段1-8完成）**
+
+### 关键设计决策
+
+1. **三大桥接机制**：社会关系→NPC行为（行为修正器）、社会事件→动态叙事（叙事事件）、文化→NPC个性（大五人格修正），全面连接M13社会模拟与M12 NPC AI
+2. **社会影响计算**：正向关系（友谊/家庭/浪漫/伙伴/师徒）按(强度-50)×权重计算，负向关系（敌意）按-强度×权重计算，输出行为修正器0.5-1.5
+3. **文化→个性映射**：17种文化特质类型映射到大五人格维度，宗教/仪式→尽责性，艺术/音乐/神话→开放性，语言/礼仪→宜人性
+4. **避免重复桥接**：社会事件桥接使用Set记录已桥接事件，避免重复创建叙事事件
+5. **系统注册模式**：集成系统通过registerSocialSystems和registerM12Systems持有其他系统引用，松耦合设计
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M13阶段9：M13端到端演示（examples/m13-demo.ts，覆盖全部8阶段）+ SDK v2.9.0发布（package.json版本更新+CHANGELOG+git tag seed-sdk-v2.9.0）
+
+### 迭代统计
+
+- 总迭代轮数：119轮
+- 单元测试：1868个（M13阶段7结束1846，阶段8+22）
+- 测试文件：104个
+- 活跃bug：0个
+- SDK版本：v2.8.0（M12），目标v2.9.0（M13）
+- M13测试目标：1650+ ✅ 已达到（1868）
+- GitHub：本轮commit待推送
+

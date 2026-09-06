@@ -438,6 +438,19 @@ export type {
 export { DEFAULT_CULTURAL_EVOLUTION_CONFIG } from '../social/CulturalEvolutionTypes.js';
 export { CulturalEvolutionSystem } from '../social/CulturalEvolutionSystem.js';
 
+// --- Social-Cultural Integration (M13) ---
+export type {
+  SocialCulturalIntegrationConfig,
+  SocialInfluenceResult,
+  SocialNarrativeBridgeResult,
+  CulturalInfluenceResult,
+  IntegrationEventType,
+  IntegrationEvent,
+  SocialCulturalIntegrationStats,
+} from '../social/SocialCulturalIntegrationTypes.js';
+export { DEFAULT_SOCIAL_CULTURAL_INTEGRATION_CONFIG } from '../social/SocialCulturalIntegrationTypes.js';
+export { SocialCulturalIntegrationSystem } from '../social/SocialCulturalIntegrationSystem.js';
+
 // --- Trading System (M7) ---
 export type {
   TradeStatus,
