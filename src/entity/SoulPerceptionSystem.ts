@@ -58,6 +58,20 @@ import {
   PartyLeaderChangedEvent,
 } from "../party/PartyEvents.js";
 import {
+  BuildingPlacedEvent,
+  BuildingUpgradedEvent,
+  BuildingDestroyedEvent,
+  BuildingDamagedEvent,
+  BuildingRepairedEvent,
+} from "../building/BuildingEvents.js";
+import {
+  TerritoryClaimedEvent,
+  TerritoryAbandonedEvent,
+  TerritoryExpandedEvent,
+  TerritoryEnteredEvent,
+  TerritoryLeftEvent,
+} from "../territory/TerritoryEvents.js";
+import {
   EntityArrivedEvent,
   CollisionEvent,
   CollisionEnterEvent,
@@ -212,6 +226,26 @@ export class SoulPerceptionSystem implements WorldSystem {
   private partyMemberLeftUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for party.leader_changed event, set on first tick. */
   private partyLeaderChangedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for building.placed event, set on first tick. */
+  private buildingPlacedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for building.upgraded event, set on first tick. */
+  private buildingUpgradedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for building.destroyed event, set on first tick. */
+  private buildingDestroyedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for building.damaged event, set on first tick. */
+  private buildingDamagedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for building.repaired event, set on first tick. */
+  private buildingRepairedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for territory.claimed event, set on first tick. */
+  private territoryClaimedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for territory.abandoned event, set on first tick. */
+  private territoryAbandonedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for territory.expanded event, set on first tick. */
+  private territoryExpandedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for territory.entered event, set on first tick. */
+  private territoryEnteredUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for territory.left event, set on first tick. */
+  private territoryLeftUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -865,6 +899,156 @@ export class SoulPerceptionSystem implements WorldSystem {
       });
     }
 
+    // Listen for building placed events.
+    if (!this.buildingPlacedUnsubscribe) {
+      this.buildingPlacedUnsubscribe = events.on("building.placed", (evt: BuildingPlacedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `building_placed_${p.buildingId}_${evt.timestamp}`,
+          "building.placed",
+          `Building placed: ${p.buildingName} (${p.buildingType}) by ${p.ownerId}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for building upgraded events.
+    if (!this.buildingUpgradedUnsubscribe) {
+      this.buildingUpgradedUnsubscribe = events.on("building.upgraded", (evt: BuildingUpgradedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `building_upgraded_${p.buildingId}_${evt.timestamp}`,
+          "building.upgraded",
+          `Building upgraded: ${p.buildingType} (Lv${p.oldLevel}→Lv${p.newLevel})`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for building destroyed events.
+    if (!this.buildingDestroyedUnsubscribe) {
+      this.buildingDestroyedUnsubscribe = events.on("building.destroyed", (evt: BuildingDestroyedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `building_destroyed_${p.buildingId}_${evt.timestamp}`,
+          "building.destroyed",
+          `Building destroyed: ${p.buildingType} (owner: ${p.ownerId})${p.reason ? ` (${p.reason})` : ""}`,
+          "high",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for building damaged events.
+    if (!this.buildingDamagedUnsubscribe) {
+      this.buildingDamagedUnsubscribe = events.on("building.damaged", (evt: BuildingDamagedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `building_damaged_${p.buildingId}_${evt.timestamp}`,
+          "building.damaged",
+          `Building damaged: ${p.buildingType} (-${p.damage} HP, ${p.newHealth}/${p.oldHealth})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for building repaired events.
+    if (!this.buildingRepairedUnsubscribe) {
+      this.buildingRepairedUnsubscribe = events.on("building.repaired", (evt: BuildingRepairedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `building_repaired_${p.buildingId}_${evt.timestamp}`,
+          "building.repaired",
+          `Building repaired: ${p.buildingType} (+${p.repairAmount} HP, ${p.oldHealth}→${p.newHealth})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for territory claimed events.
+    if (!this.territoryClaimedUnsubscribe) {
+      this.territoryClaimedUnsubscribe = events.on("territory.claimed", (evt: TerritoryClaimedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `territory_claimed_${p.territoryId}_${evt.timestamp}`,
+          "territory.claimed",
+          `Territory claimed: ${p.territoryName} by ${p.ownerId}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for territory abandoned events.
+    if (!this.territoryAbandonedUnsubscribe) {
+      this.territoryAbandonedUnsubscribe = events.on("territory.abandoned", (evt: TerritoryAbandonedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `territory_abandoned_${p.territoryId}_${evt.timestamp}`,
+          "territory.abandoned",
+          `Territory abandoned: ${p.territoryName} by ${p.ownerId}`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for territory expanded events.
+    if (!this.territoryExpandedUnsubscribe) {
+      this.territoryExpandedUnsubscribe = events.on("territory.expanded", (evt: TerritoryExpandedEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `territory_expanded_${p.territoryId}_${evt.timestamp}`,
+          "territory.expanded",
+          `Territory expanded: ${p.territoryName} by ${p.ownerId}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for territory entered events.
+    if (!this.territoryEnteredUnsubscribe) {
+      this.territoryEnteredUnsubscribe = events.on("territory.entered", (evt: TerritoryEnteredEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `territory_entered_${p.territoryId}_${p.entityId}_${evt.timestamp}`,
+          "territory.entered",
+          `Entity entered territory: ${p.entityId} → ${p.territoryName} (owner: ${p.ownerId})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for territory left events.
+    if (!this.territoryLeftUnsubscribe) {
+      this.territoryLeftUnsubscribe = events.on("territory.left", (evt: TerritoryLeftEvent) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `territory_left_${p.territoryId}_${p.entityId}_${evt.timestamp}`,
+          "territory.left",
+          `Entity left territory: ${p.entityId} ← ${p.territoryName} (owner: ${p.ownerId})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
     // Lazy-locate WeatherSimulator.
     if (!this.weather || !world.systems.includes(this.weather)) {
       this.weather = world.systems.find(s => s instanceof WeatherSimulator) as WeatherSimulator | null ?? null;
@@ -1245,6 +1429,46 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.partyLeaderChangedUnsubscribe) {
       this.partyLeaderChangedUnsubscribe();
       this.partyLeaderChangedUnsubscribe = null;
+    }
+    if (this.buildingPlacedUnsubscribe) {
+      this.buildingPlacedUnsubscribe();
+      this.buildingPlacedUnsubscribe = null;
+    }
+    if (this.buildingUpgradedUnsubscribe) {
+      this.buildingUpgradedUnsubscribe();
+      this.buildingUpgradedUnsubscribe = null;
+    }
+    if (this.buildingDestroyedUnsubscribe) {
+      this.buildingDestroyedUnsubscribe();
+      this.buildingDestroyedUnsubscribe = null;
+    }
+    if (this.buildingDamagedUnsubscribe) {
+      this.buildingDamagedUnsubscribe();
+      this.buildingDamagedUnsubscribe = null;
+    }
+    if (this.buildingRepairedUnsubscribe) {
+      this.buildingRepairedUnsubscribe();
+      this.buildingRepairedUnsubscribe = null;
+    }
+    if (this.territoryClaimedUnsubscribe) {
+      this.territoryClaimedUnsubscribe();
+      this.territoryClaimedUnsubscribe = null;
+    }
+    if (this.territoryAbandonedUnsubscribe) {
+      this.territoryAbandonedUnsubscribe();
+      this.territoryAbandonedUnsubscribe = null;
+    }
+    if (this.territoryExpandedUnsubscribe) {
+      this.territoryExpandedUnsubscribe();
+      this.territoryExpandedUnsubscribe = null;
+    }
+    if (this.territoryEnteredUnsubscribe) {
+      this.territoryEnteredUnsubscribe();
+      this.territoryEnteredUnsubscribe = null;
+    }
+    if (this.territoryLeftUnsubscribe) {
+      this.territoryLeftUnsubscribe();
+      this.territoryLeftUnsubscribe = null;
     }
   }
 }

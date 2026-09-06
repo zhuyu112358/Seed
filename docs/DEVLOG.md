@@ -6557,3 +6557,90 @@ TerritorySystem
 - 测试文件：72个
 - SDK版本：v2.3.0（M7完成），M8目标v2.4.0
 
+
+
+---
+
+## 2026-09-06 M8阶段3：建筑+领地事件感知集成（第80轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- d19e1d4（M8阶段2领地系统）推送成功（GitHub网络恢复）
+- 0待推送，994个单元测试全部通过
+
+#### 2. 建筑+领地事件感知集成 (`src/entity/SoulPerceptionSystem.ts`)
+
+**新增imports**：
+- BuildingEvents：5个事件类（Placed/Upgraded/Destroyed/Damaged/Repaired）
+- TerritoryEvents：5个事件类（Claimed/Abandoned/Expanded/Entered/Left）
+
+**新增10个unsubscribe字段**：
+- buildingPlacedUnsubscribe / buildingUpgradedUnsubscribe / buildingDestroyedUnsubscribe / buildingDamagedUnsubscribe / buildingRepairedUnsubscribe
+- territoryClaimedUnsubscribe / territoryAbandonedUnsubscribe / territoryExpandedUnsubscribe / territoryEnteredUnsubscribe / territoryLeftUnsubscribe
+
+**新增10个事件监听器（懒加载，首次tick设置）**：
+
+| 事件 | 严重度 | 感知描述 |
+|------|--------|----------|
+| `building.placed` | low | Building placed: {name} ({type}) by {ownerId} |
+| `building.upgraded` | medium | Building upgraded: {type} (Lv{old}→Lv{new}) |
+| `building.destroyed` | high | Building destroyed: {type} (owner: {ownerId}) ({reason}) |
+| `building.damaged` | low | Building damaged: {type} (-{damage} HP, {new}/{old}) |
+| `building.repaired` | low | Building repaired: {type} (+{amount} HP, {old}→{new}) |
+| `territory.claimed` | low | Territory claimed: {name} by {ownerId} |
+| `territory.abandoned` | medium | Territory abandoned: {name} by {ownerId} |
+| `territory.expanded` | low | Territory expanded: {name} by {ownerId} |
+| `territory.entered` | low | Entity entered territory: {entityId} → {name} (owner: {ownerId}) |
+| `territory.left` | low | Entity left territory: {entityId} ← {name} (owner: {ownerId}) |
+
+**stop()清理**：新增10个unsubscribe调用，全部置null。
+
+#### 3. 测试 (`tests/building-territory-perception.test.ts`)
+- 12个新测试，覆盖：
+  - 建筑感知：5个（placed/upgraded(medium)/destroyed(high)/damaged/repaired）
+  - 领地感知：5个（claimed/abandoned(medium)/expanded/entered/left）
+  - 共存：1个（建筑+领地事件同时出现在感知帧中）
+  - stop清理：1个（stop()后发射事件不抛异常）
+
+**关键修复**：GameObject构造函数需用对象参数 `new GameObject({ id, type, name, position })`，不能用位置参数 `new GameObject("soul", "name", pos)`。
+
+### 感知系统事件统计
+
+SoulPerceptionSystem现在监听**53+个事件**，覆盖：
+- 移动/物理/碰撞/触发器（10+）
+- 路径/天气（5+）
+- 资源/采集/生态（10+）
+- 任务/叙事（11+）
+- 社交/交易/组队（14+）
+- **建筑/领地（10个，M8新增）**
+
+### 验证结果
+
+- **单元测试**：1006/1006 全绿（M8阶段2结束994，+12）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M8里程碑进度：60%
+
+- ✅ 阶段1：建筑系统（25测试）
+- ✅ 阶段2：领地系统（23测试）
+- ✅ 阶段3：建筑+领地事件感知集成（12测试）
+- ⬜ 阶段4：建筑效果集成（生产→资源系统/防御→伤害减免）
+- ⬜ 阶段5：端到端验证+SDK v2.4.0发布
+
+### 下一轮计划
+
+1. M8阶段4：建筑效果集成
+   - 建筑生产与资源系统集成（productionHandler调用HarvestSystem/CraftingSystem）
+   - 建筑防御与伤害减免集成（defenseHandler减少damageBuilding的伤害）
+   - 建筑与领地关联（建筑必须建在领地内）
+   - 8+测试
+
+### 迭代统计
+
+- 总迭代轮数：80轮
+- 单元测试：1006个（M8阶段2结束994，+12）
+- 测试文件：73个
+- SDK版本：v2.3.0（M7完成），M8目标v2.4.0
+
