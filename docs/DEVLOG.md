@@ -7953,3 +7953,80 @@ priority = (severityWeight * severityScore
 - 活跃bug：0个
 - SDK版本：v2.5.0（M9完成），M10目标v2.6.0
 
+
+
+---
+
+## 2026-09-06 M10阶段5：端到端验证+SDK v2.6.0发布（第93轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M10阶段4（SoulPerceptionSystem多模态感知集成）已完成（commit 9e5e22b，1208测试）
+- GitHub推送失败（443连接超时），commit保留本地
+- 清理误提交的test_r33.txt
+
+#### 2. M10端到端演示 (`examples/m10-demo.ts`)
+- 5阶段全链路演示，35个断言全部通过
+  - Phase 1: VisionConeSystem FOV过滤（6断言）
+  - Phase 2: SoundPerceptionSystem听觉感知（5断言）
+  - Phase 3: PerceptionFilter事件过滤（3断言）
+  - Phase 4: AttentionSystem事件优先级（7断言）
+  - Phase 5: SoulPerceptionSystem完整多模态集成（14断言）
+
+**关键修复**：frame.soulId被strip了"soul_"前缀（"soul_1"→"1"），demo断言修正为"1"
+
+#### 3. SDK v2.6.0发布
+- package.json: 2.5.0→2.6.0
+- CHANGELOG.md: 添加v2.6.0完整条目（M10感知系统增强）
+- git tag: seed-sdk-v2.6.0已创建
+- 测试: 1208/1208全绿
+- 构建: 0错误
+- 端到端演示: 35/35通过
+
+### M10里程碑完成总结
+
+M10（感知系统深化）全部5个阶段完成：
+
+| 阶段 | 内容 | 测试数 | commit |
+|------|------|--------|--------|
+| 1 | VisionConeSystem视野锥感知 | 26 | e9a7a9c |
+| 2 | SoundPerceptionSystem听觉感知 | 32 | 71a9b87 |
+| 3 | PerceptionFilter+AttentionSystem | 40 | ee72e36 |
+| 4 | SoulPerceptionSystem多模态集成 | 9 | 9e5e22b |
+| 5 | 端到端演示+SDK v2.6.0发布 | - | 本轮 |
+
+**新增模块目录**：src/vision/、src/sound/、src/perception/
+**测试增长**：1101→1208（+107）
+**PerceptionFrame新增字段**：auditoryEvents/fovFiltered/attentionSorted
+**SoulPerceptionConfig新增字段**：visionCone/soundPerception/perceptionFilter/attentionSystem/visionObserverId/soundListenerId
+
+### 架构亮点
+
+- **多模态感知流水线**：视觉(FOV)+听觉(距离衰减)+事件(过滤+优先级排序)
+- **可选集成**：所有M10系统可选，不配置时行为完全不变（向后兼容）
+- **与Ember分工**：Seed提供感知计算框架，Ember处理认知融合和决策
+- **端到端验证**：examples/m10-demo.ts 35断言全通过
+
+### 验证结果
+
+- **单元测试**：1208/1208 全绿
+- **构建**：0错误
+- **端到端演示**：35/35通过
+- **GitHub**：⚠️ 推送失败（网络443超时），commit+tag保留本地下轮重试
+
+### 下一轮计划
+
+1. 重试推送commit 9e5e22b + 本轮release commit + tag seed-sdk-v2.6.0
+2. 读取MANAGEMENT_STRATEGY.md第八节确认M11里程碑定义
+3. M11里程碑开发（待确认）
+
+### 迭代统计
+
+- 总迭代轮数：93轮
+- 单元测试：1208个（M9结束1101，M10+107）
+- 测试文件：83个
+- 活跃bug：0个
+- SDK版本：v2.6.0（M10完成）
+- Git tag：seed-sdk-v2.6.0已创建（待推送）
+

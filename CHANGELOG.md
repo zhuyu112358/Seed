@@ -5,6 +5,74 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-09-06
+
+### Milestone M10: Perception System Enhancement (Vision Cone + Auditory + Filter + Attention)
+
+#### Added
+- **Vision Cone System** (`src/vision/`): Field-of-view (FOV) based visibility perception
+  - VisionConeConfig: fovAngle/viewDistance/checkOcclusion
+  - VisionObserver: id/position/direction/config/active
+  - VisibleEntity: entityId/position/distance/angleToEntity/lineOfSight
+  - VisionConeSystem (WorldSystem): addObserver/removeObserver/setObserverPosition/setObserverDirection/setObserverConfig/setObserverActive
+  - computeAngleToTarget: signed angle from facing direction to target (degrees, -180 to 180)
+  - isTargetVisible: check if target is within FOV angle + view distance
+  - getTargetVisibility: detailed visibility info (distance/angle/line-of-sight)
+  - getVisibleEntities: filter entity list to visible only, sorted by distance
+  - findObserversSeeingTarget: reverse lookup - all observers seeing a target
+  - Coordinate system: x/z plane (top-down), direction 0 = +x, positive = counterclockwise
+  - 26 unit tests
+- **Sound Perception System** (`src/sound/`): Auditory perception with distance attenuation
+  - SoundType: speech/noise/music/footstep/impact/alert/custom (7 types)
+  - SoundSource: id/type/position/intensity/frequency/duration/active/metadata
+  - SoundListener: id/position/hearingThreshold/active
+  - HeardSound: sourceId/type/sourcePosition/receivedIntensity/distance/directionAngle/audible
+  - SoundPerceptionSystem (WorldSystem): addSource/removeSource/addListener/removeListener
+  - computeReceivedIntensity: inverse-square attenuation + linear absorption (same model as AcousticPropagation)
+  - isAudible: intensity > threshold AND distance <= maxRadius
+  - getHeardSounds: all audible sounds, sorted by intensity (loudest first)
+  - findListenersHearingSource: reverse lookup - all listeners hearing a source
+  - Temporary (duration>0) and persistent (duration=0) sounds
+  - 32 unit tests
+- **Perception Filter + Attention System** (`src/perception/`): Event filtering and prioritization
+  - PerceptionFilter: multi-dimensional event/entity filtering
+    - 4-stage pipeline: excluded types → allowed types → severity threshold → distance
+    - Entity filtering: type → distance → FOV (with visibility map)
+    - PerceptionFilterTypes: PerceptionSeverity (low/medium/high/critical), PerceptionEvent, PerceptibleEntity, FilterConfig
+    - 1 unit test (integration)
+  - AttentionSystem: weighted event prioritization
+    - Priority formula: (severityWeight*severityScore + distanceWeight*distanceScore + recencyWeight*recencyScore) / totalWeight + typeBonus*0.2
+    - prioritizeEvents: sort by priority descending
+    - getTopEvents: top-N within attention span (maxEventsPerTick)
+    - applyAttentionDecay: exponential decay (simulates forgetting)
+    - setTypeImportance: per-type importance bonus
+    - 1 unit test (integration)
+- **SoulPerceptionSystem Multi-Modal Integration** (`src/entity/SoulPerceptionSystem.ts`)
+  - SoulPerceptionConfig新增6个可选字段: visionCone/soundPerception/perceptionFilter/attentionSystem/visionObserverId/soundListenerId
+  - PerceptionFrame新增3个字段: auditoryEvents/fovFiltered/attentionSorted
+  - buildFrame集成: FOV过滤visibleEntities + 听觉感知auditoryEvents + PerceptionFilter过滤events + AttentionSystem排序events
+  - 所有M10系统可选集成——不配置时行为完全不变（向后兼容）
+  - 9 integration tests
+- **M10 End-to-End Demo** (`examples/m10-demo.ts`): 35 assertions, all pass
+  - Phase 1: VisionConeSystem FOV filtering (6 assertions)
+  - Phase 2: SoundPerceptionSystem auditory perception (5 assertions)
+  - Phase 3: PerceptionFilter event filtering (3 assertions)
+  - Phase 4: AttentionSystem event prioritization (7 assertions)
+  - Phase 5: Full multi-modal integration (14 assertions)
+
+#### Changed
+- SoulPerceptionSystem: buildFrame now supports optional M10 multi-modal perception systems
+- PerceptionFrame: added optional auditoryEvents, fovFiltered, attentionSorted fields
+- SoulPerceptionConfig: added optional visionCone, soundPerception, perceptionFilter, attentionSystem, visionObserverId, soundListenerId fields
+
+#### Fixed
+- AttentionSystem recencyScore clamp: future-dated events (event.tick > currentTick) could produce recencyScore > 1; added Math.min(1, ...)
+- M10 integration fovFiltered/attentionSorted default values: changed from false to undefined for backward compatibility
+
+#### Test Statistics
+- Total tests: 1208 (was 1101 in v2.5.0, +107)
+- M10 new tests: 26 (vision) + 32 (sound) + 40 (filter/attention) + 9 (integration) = 107
+
 ## [2.5.0] - 2026-09-06
 
 ### Milestone M9: AI Navigation Enhancement + Group Behavior + Formation Control
