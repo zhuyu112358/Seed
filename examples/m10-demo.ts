@@ -1,4 +1,4 @@
-// M10 End-to-End Demo: Multi-Modal Perception System
+﻿// M10 End-to-End Demo: Multi-Modal Perception System
 //
 // Demonstrates the full M10 perception pipeline:
 //   1. VisionConeSystem - FOV-based entity visibility filtering
@@ -73,7 +73,7 @@ console.log("\n🔊 Phase 2: SoundPerceptionSystem (Auditory Perception)");
   assert(Math.abs(heard.directionAngle) < 1, `Direction angle ~0 degrees (${heard.directionAngle.toFixed(1)})`);
 
   // Quiet whisper far away - should be inaudible.
-  const quiet = sound.addSource("whisper", { x: 40, z: 0 }, 0.01);
+  const quiet = sound.addSource("speech", { x: 40, z: 0 }, 0.01);
   sound.addListener({ x: 0, z: 0 }, 0.5, "listener_2");
   const heardQuiet = sound.getHeardSound(quiet.sourceId!, "listener_2")!;
   assert(!heardQuiet.audible, "Quiet whisper at 40m with high threshold is NOT audible");
@@ -139,7 +139,7 @@ console.log("\n⚡ Phase 4: AttentionSystem (Event Prioritization)");
 // --- Phase 5: Full Multi-Modal Integration ---
 console.log("\n🌐 Phase 5: SoulPerceptionSystem Multi-Modal Integration");
 {
-  const world = new World({ tickRate: 60 });
+  const world = new World({ name: 'm10-demo', tickRate: 60 });
 
   // Initialize all four M10 systems.
   const visionCone = new VisionConeSystem();
@@ -147,7 +147,7 @@ console.log("\n🌐 Phase 5: SoulPerceptionSystem Multi-Modal Integration");
 
   const soundPerception = new SoundPerceptionSystem();
   soundPerception.addSource("alert", { x: 8, z: 0 }, 1.0);
-  soundPerception.addSource("whisper", { x: -5, z: 5 }, 0.2);
+  soundPerception.addSource("speech", { x: -5, z: 5 }, 0.2);
   soundPerception.addListener({ x: 0, z: 0 }, 0.05, "listener_1");
 
   const perceptionFilter = new PerceptionFilter({ minSeverity: "medium" });
@@ -167,9 +167,9 @@ console.log("\n🌐 Phase 5: SoulPerceptionSystem Multi-Modal Integration");
 
   // Add soul and entities.
   const soul = new GameObject({ id: "soul_1", type: "soul", name: "TestSoul", position: { x: 0, y: 0, z: 0 } });
-  const frontEntity = new GameObject({ id: "item_front", type: "item", name: "Front Item", position: { x: 10, y: 0, z: 0 } });
-  const backEntity = new GameObject({ id: "item_back", type: "item", name: "Back Item", position: { x: -10, y: 0, z: 0 } });
-  const sideEntity = new GameObject({ id: "item_side", type: "item", name: "Side Item", position: { x: 0, y: 0, z: 10 } });
+  const frontEntity = new GameObject({ id: "item_front", type: "dynamic", name: "Front Item", position: { x: 10, y: 0, z: 0 } });
+  const backEntity = new GameObject({ id: "item_back", type: "dynamic", name: "Back Item", position: { x: -10, y: 0, z: 0 } });
+  const sideEntity = new GameObject({ id: "item_side", type: "dynamic", name: "Side Item", position: { x: 0, y: 0, z: 10 } });
 
   world.addEntity(soul);
   world.addEntity(frontEntity);
@@ -222,3 +222,5 @@ console.log("=".repeat(60));
 if (failed > 0) {
   process.exit(1);
 }
+
+

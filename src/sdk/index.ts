@@ -1,4 +1,4 @@
-// Seed SDK v1.0.0 - Public API exports
+﻿// Seed SDK v1.0.0 - Public API exports
 //
 // This is the single entry point for external applications (e.g. SoulGame)
 // that want to build virtual worlds on top of the Seed engine.
@@ -441,3 +441,15 @@ export {
   DEFAULT_ATTENTION_CONFIG,
   AttentionSystem,
 } from '../perception/index.js';
+
+// --- Action System (M11) ---
+export type {
+  ActionCategory,
+  ActionState,
+  ActionDefinition,
+  ActionInstance,
+  ActionStartResult,
+  ActionEventPayload,
+} from '../action/index.js';
+export { DEFAULT_ACTION_DEFINITION, ActionStateMachine, ActionSystem } from '../action/index.js';
+

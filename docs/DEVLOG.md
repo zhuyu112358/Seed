@@ -8084,3 +8084,97 @@ M10（感知系统深化）全部5个阶段完成：
 - SDK版本：v2.6.0（M10完成）
 - Git tag：seed-sdk-v2.6.0（本地，待推送）
 
+
+
+---
+
+## 2026-09-06 M11阶段1：动作状态机核心（第95轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M10 SDK v2.6.0完全发布（commits+tag均已推送GitHub）
+- 0待推送，工作区干净
+- M11方向已确认：动作系统增强+交互系统深化+性能优化（SDK v2.7.0）
+
+#### 2. M11阶段1：ActionStateMachine动作状态机核心
+- 创建src/action/模块目录
+- **ActionTypes.ts**：
+  - ActionCategory: idle/move/attack/defend/interact/harvest/build/communicate/use/custom（10种）
+  - ActionState: idle/casting/active/cooling/interrupted（5种状态）
+  - ActionDefinition: type/name/category/castTime/duration/cooldown/range/cancellable/animationEvent/metadata
+  - DEFAULT_ACTION_DEFINITION: 默认值（castTime=0/duration=0/cooldown=0/cancellable=true）
+  - ActionInstance: definition/state/elapsedTicks/progress/targetId/startedTick/stateEnteredTick
+  - ActionStartResult: success/reason/instance
+  - ActionEventPayload: entityId/actionType/actionName/category/state/progress/targetId
+- **ActionStateMachine.ts**：
+  - 每实体一个状态机，管理动作生命周期
+  - 状态流：idle → casting → active → cooling → idle（可被interrupted中断）
+  - registerDefinition/getDefinition/getDefinitions/hasDefinition：动作定义管理
+  - getCurrentAction/getState/isIdle/isOnCooldown/getCooldownRemaining/canStartAction：状态查询
+  - startAction(type, targetId)：启动动作（检查注册/空闲/冷却）
+  - interrupt()：中断当前动作（casting可中断，active需cancellable=true）
+  - cancel()：立即取消（无冷却）
+  - update()：每tick推进状态（casting进度→active→cooling→idle）
+  - onStateChange回调：状态变化事件
+  - serialize/deserialize：持久化
+- **ActionSystem.ts**（WorldSystem）：
+  - 管理多个实体的ActionStateMachine
+  - registerEntity/unregisterEntity/getMachine/isRegistered/getRegisteredEntities
+  - registerDefaultDefinition/getDefaultDefinitions：默认动作定义（应用到所有实体）
+  - startAction/interruptAction/cancelAction/getActionState/getCurrentAction：统一API
+  - tick(dt, world, events)：更新所有状态机，发射action.{state}事件到EventSystem
+  - stop()：清理
+  - serialize/deserialize：持久化
+- **index.ts**：barrel导出
+- SDK导出新增action模块
+
+#### 3. 测试（35个，全部通过）
+- ActionStateMachine定义管理（3测试）
+- ActionStateMachine状态查询（3测试）
+- ActionStateMachine动作执行（10测试：启动/casting/active/cooling/即时动作/进度）
+- ActionStateMachine中断取消（6测试）
+- ActionStateMachine事件（2测试）
+- ActionStateMachine序列化（1测试）
+- ActionSystem WorldSystem（10测试）
+- ActionSystem序列化（1测试）
+
+#### 4. 修复预存构建错误
+- examples/m10-demo.ts：
+  - "whisper"→"speech"（SoundType无效值，2处）
+  - WorldConfig添加name字段
+  - "item"→"dynamic"（EntityType无效值，3处）
+- 构建0错误，m10-demo 35/35仍通过
+
+### 验证结果
+
+- **单元测试**：1243/1243 全绿（M10结束1208，+35）
+- **构建**：0错误
+- **m10-demo**：35/35通过
+- **GitHub**：待推送
+
+### M11阶段规划
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | ActionStateMachine动作状态机核心 | ✅ 完成（本轮） |
+| 2 | 动作系统扩展（攻击/防御/交互/采集/建造动作+与感知/导航集成） | ⏳ 待开发 |
+| 3 | 交互系统深化（NPC-NPC交互+NPC-环境交互+交互事件系统） | ⏳ 待开发 |
+| 4 | 性能优化（空间分区+对象池+帧率优化+基准测试） | ⏳ 待开发 |
+| 5 | 端到端演示+SDK v2.7.0发布 | ⏳ 待开发 |
+
+### 下一轮计划
+
+1. 推送本轮commit
+2. M11阶段2：动作系统扩展（攻击/防御/交互/采集/建造动作定义+与SoulActionSystem集成+动作动画事件感知）
+3. 运行npm test确认无回归
+
+### 迭代统计
+
+- 总迭代轮数：95轮
+- 单元测试：1243个（M10结束1208，M11阶段1+35）
+- 测试文件：84个
+- 活跃bug：0个
+- SDK版本：v2.6.0（M10），目标v2.7.0（M11）
+- M11进度：阶段1完成（20%）
+
