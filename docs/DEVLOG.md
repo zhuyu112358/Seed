@@ -9573,3 +9573,99 @@ M11结束1306 + M12新增261 = **1567测试**
 - M12完成日期：2026-09-06
 - 代码推送状态：全部同步
 
+
+
+---
+
+## 2026-09-06 M13阶段1：SocialRelationGraph增强社会关系网络（第112轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M12已完成（SDK v2.8.0，1567测试，全部推送）
+- M13方向已确认：社会模拟与文化演化（Social Simulation & Cultural Evolution），目标SDK v2.9.0
+- 预研报告无新增（仍为001/002）
+
+#### 2. M13阶段1：SocialRelationGraph增强社会关系网络
+
+**创建文件：**
+- `src/social/SocialRelationTypes.ts`：M13增强类型定义
+  - RelationCategory：8大类（family/friendship/enmity/hierarchy/partnership/romance/mentorship/neutral）
+  - RelationSubtype：40+细分类型（parent/child/sibling/spouse/friend/enemy/lord/vassal/master/apprentice/business_partner/ally/lover/teacher/student等）
+  - RelationStrength：5维度强度（trust/intimacy/respect/fear/influence，各0-100）
+  - RichSocialRelation：丰富关系实体（含强度/总体评分/互易性/建立时间/交互计数/活跃状态）
+  - RelationEventType：16种关系事件（established/strengthened/weakened/severed/reconciled/betrayed/alliance_formed/alliance_broken/marriage/divorce/birth/death/promotion/demotion/apprenticeship_started/apprenticeship_completed）
+  - SocialPathResult：社交路径查询结果
+  - SocialGroup：检测到的社会群体/派系
+  - SocialRelationGraphConfig + DEFAULT配置
+- `src/social/SocialRelationGraph.ts`：增强关系图系统（非WorldSystem，独立类）
+  - 关系管理：addRelation/getRelation/hasRelation/removeRelation/getRelations/getRelationsByCategory/getConnectedEntities
+  - 强度管理：modifyStrength（单维度修改+0-100钳制）/recordInteraction（交互记录+强度影响）
+  - 关系事件：emitRelationEvent/getRecentEvents/getEventsForEntity
+  - 路径查询：findSocialPath（BFS最短社交路径+平均信任度）/findCommonConnections（共同连接）/getSocialDegree（社交度数）
+  - 群体检测：detectGroups（基于阈值的连通分量检测+凝聚力计算+主导关系类别）
+  - 动态衰减：tick()中自动衰减不活跃关系强度（可配置decayRate）
+  - 序列化：serialize/deserialize
+  - 统计：getStats（总关系数/活跃数/实体数/事件数/平均评分/类别分布）
+  - 总体评分计算：加权平均（trust*0.3 + intimacy*0.25 + respect*0.2 + influence*0.15 + fear*0.1）
+
+**修改文件：**
+- `src/social/index.ts`：新增M13 SocialRelationGraph导出（类型+常量+系统）
+- `src/sdk/index.ts`：新增M13 SocialRelationGraph SDK导出
+- `examples/m12-demo.ts`：修复预存构建错误（WorldState boolean→string、BehaviorTree.tick参数、Blackboard.get空值处理、boolean字面量类型窄化）
+
+**测试文件：**
+- `tests/social-relation-graph.test.ts`：38个测试，8个测试套件
+  - Relation Management（14测试）：创建/更新/查询/删除/对称/过滤/连接/上限
+  - Multi-dimensional Strength（8测试）：默认值/覆盖/修改/钳制/总体评分/交互记录
+  - Relation Events（4测试）：发射/查询/过滤/事件历史上限
+  - Path Queries（7测试）：直接路径/链式路径/自身路径/不可达/最大深度/共同连接/社交度数
+  - Group Detection（2测试）：紧密集群检测/弱连接忽略
+  - Serialization（1测试）：序列化/反序列化保留关系
+  - Statistics（1测试）：统计计数正确
+  - Configuration（2测试）：默认配置/部分覆盖
+
+#### 3. 验证结果
+
+- **SocialRelationGraph测试**：38/38 全绿
+- **全量单元测试**：1605/1605 全绿（M12结束1567，+38）
+- **构建**：0错误（修复了m12-demo.ts预存类型错误）
+- **M12端到端演示**：50/50 通过（修复后仍正常运行）
+- **GitHub**：待推送
+
+### M13进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | SocialRelationGraph社会关系网络 | ✅ 完成（本轮，38测试） |
+| 2 | SocialNormSystem社会规范系统 | ⏳ 待开发 |
+| 3 | SocialEventSystem社会事件系统 | ⏳ 待开发 |
+| 4 | GroupBehaviorEngine群体行为引擎 | ⏳ 待开发 |
+| 5 | InformationSpreadModel信息传播模型 | ⏳ 待开发 |
+| 6 | SocialMobility社会流动机制 | ⏳ 待开发 |
+| 7 | CulturalEvolution文化演化系统 | ⏳ 待开发 |
+| 8 | 与M12 NPC AI和叙事系统集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.9.0发布 | ⏳ 待开发 |
+
+**M13整体进度：11%（阶段1完成）**
+
+### 关键设计决策
+
+1. **与M7 SocialGraph共存**：M7已有基础SocialGraph（6种关系+trust/familiarity），M13创建独立的增强版SocialRelationGraph（8大类+40+细分+5维度强度+路径查询+群体检测），不破坏M7已有功能
+2. **关系键对称化**：relationKey(a,b) = min(a,b) + "::" + max(a,b)，确保关系查询顺序无关
+3. **总体评分加权**：trust(0.3) > intimacy(0.25) > respect(0.2) > influence(0.15) > fear(0.1)，信任是关系质量的首要指标
+4. **WorldState类型**：GoapTypes中WorldState = Record<string, string>，M12 demo中误用boolean值导致构建错误，已修复为字符串
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M13阶段2：SocialNormSystem社会规范系统（习俗/禁忌/价值观/传统/礼仪+规范形成传播演化+违规检测与社会反馈）
+
+### 迭代统计
+
+- 总迭代轮数：112轮
+- 单元测试：1605个（M12结束1567，M13阶段1+38）
+- 测试文件：97个
+- 活跃bug：0个
+- SDK版本：v2.8.0（M12），目标v2.9.0（M13）
+

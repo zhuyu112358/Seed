@@ -311,6 +311,25 @@ export {
 } from '../social/SocialEvents.js';
 export { SocialGraph } from '../social/SocialGraph.js';
 
+// --- Enhanced Social Relation Graph (M13) ---
+export type {
+  RelationCategory,
+  RelationSubtype,
+  RelationStrength,
+  RichSocialRelation,
+  RelationEventType,
+  RelationEventPayload,
+  RelationModificationResult,
+  SocialPathResult,
+  SocialGroup,
+  SocialRelationGraphConfig,
+} from '../social/SocialRelationTypes.js';
+export {
+  DEFAULT_RELATION_STRENGTH,
+  DEFAULT_SOCIAL_RELATION_CONFIG,
+} from '../social/SocialRelationTypes.js';
+export { SocialRelationGraph } from '../social/SocialRelationGraph.js';
+
 // --- Trading System (M7) ---
 export type {
   TradeStatus,

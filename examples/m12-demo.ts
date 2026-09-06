@@ -152,21 +152,21 @@ console.log("\n🎯  Phase 3: GOAP Goal-Oriented Action Planning");
     id: "goal_well_fed",
     name: "Be well-fed",
     priority: 10,
-    targetState: { fed: true },
+    targetState: { fed: "true" },
     relevant: true,
   };
   goapSystem.addGoal("npc_1", goal);
 
   // Define actions.
   const actions: GoapAction[] = [
-    { id: "action_hunt", name: "Hunt", preconditions: { hasWeapon: true }, effects: { hasFood: true }, cost: 5, duration: 3 },
-    { id: "action_cook", name: "Cook", preconditions: { hasFood: true }, effects: { fed: true }, cost: 2, duration: 2 },
-    { id: "action_get_weapon", name: "Get Weapon", preconditions: {}, effects: { hasWeapon: true }, cost: 1, duration: 1 },
+    { id: "action_hunt", name: "Hunt", preconditions: { hasWeapon: "true" }, effects: { hasFood: "true" }, cost: 5, duration: 3 },
+    { id: "action_cook", name: "Cook", preconditions: { hasFood: "true" }, effects: { fed: "true" }, cost: 2, duration: 2 },
+    { id: "action_get_weapon", name: "Get Weapon", preconditions: {}, effects: { hasWeapon: "true" }, cost: 1, duration: 1 },
   ];
   for (const a of actions) goapSystem.addAction("npc_1", a);
 
   // Set initial world state.
-  goapSystem.setWorldState("npc_1", { hasWeapon: false, hasFood: false, fed: false });
+  goapSystem.setWorldState("npc_1", { hasWeapon: "false", hasFood: "false", fed: "false" });
 
   // Plan (plans for highest priority relevant goal).
   const plan = goapSystem.plan("npc_1");
@@ -202,7 +202,7 @@ console.log("\n🌳  Phase 4: Behavior Tree Enhancement");
     new Selector()
       .addChild(
         new Sequence()
-          .addChild(new ConditionNode("is hungry", () => blackboard.get<number>("hunger") > 50))
+          .addChild(new ConditionNode("is hungry", () => (blackboard.get<number>("hunger") ?? 0) > 50))
           .addChild(new ConditionNode("has food", () => blackboard.get<boolean>("has_food") === true))
           .addChild(new Cooldown(2, eatAction))
       )
@@ -211,13 +211,13 @@ console.log("\n🌳  Phase 4: Behavior Tree Enhancement");
 
   // Tick the tree.
   const agent = { id: "npc_1", position: { x: 0, y: 0, z: 0 } };
-  const result1 = tree.tick(agent, blackboard);
+  const result1 = tree.tick(agent);
   assert(result1 === BehaviorStatus.Success, `Behavior tree tick 1: success (got ${result1})`);
   assert(blackboard.get<number>("hunger") === 20, `Hunger reduced to 20 (got ${blackboard.get("hunger")})`);
 
   // Test cooldown: second tick should skip eat (cooldown active).
   blackboard.set("hunger", 80);
-  const result2 = tree.tick(agent, blackboard);
+  const result2 = tree.tick(agent);
   assert(result2 === BehaviorStatus.Success, `Behavior tree tick 2: success (got ${result2})`);
 
   // Test blackboard scoped access.
@@ -418,12 +418,12 @@ console.log("\n🔗  Phase 8: Narrative Integration");
     narrative: { type: "world", title: "Crowded Village", description: "Many souls in the village" },
   });
 
-  let worldStateEvent = false;
+  let worldStateEvent: boolean = false;
   world.events.on("narrative.world_state", () => { worldStateEvent = true; });
 
   world.addEntity(new GameObject({ id: "soul_2", type: "soul", name: "Villager", position: { x: 5, y: 0, z: 5 } }));
   world.step(1 / 60);
-  assert(worldStateEvent === true, "World state narrative rule triggered");
+  assert(worldStateEvent, "World state narrative rule triggered");
 
   // 8c: NPC-Narrative bridge (NPC behavior → narrative).
   npcBridge.addMapping({
@@ -433,10 +433,10 @@ console.log("\n🔗  Phase 8: Narrative Integration");
     narrativeTemplate: { type: "character", title: "Hero at Work", description: "The hero begins working", severity: "low" },
   });
 
-  let npcNarrativeEvent = false;
+  let npcNarrativeEvent: boolean = false;
   world.events.on("narrative.npc_behavior", () => { npcNarrativeEvent = true; });
   npcBridge.triggerNarrativeFromBehavior("schedule.activity_started", "npc_hero", { activity: "work" });
-  assert(npcNarrativeEvent === true, "NPC behavior triggered narrative event");
+  assert(npcNarrativeEvent, "NPC behavior triggered narrative event");
 
   // 8d: Narrative → NPC behavior influence.
   npcBridge.applyInfluence({
