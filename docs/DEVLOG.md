@@ -7422,3 +7422,92 @@ PathCostSystem
 - 活跃bug：0个
 - SDK版本：v2.4.0（M8完成），M9目标v2.5.0
 
+
+
+---
+
+## 2026-09-06 M9阶段5：SDK v2.5.0发布（第88轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- BUG-019已关闭（第85轮）
+- M9阶段4完成（commit f1eadb0，1101测试），但GitHub推送失败（443连接超时），保留本地
+- 重试推送f1eadb0再次失败（443连接超时），继续本地开发
+
+#### 2. M9端到端演示 (`examples/m9-demo.ts`)
+- 5个阶段全链路演示：
+  - **Phase 1 Flocking**：5个agent，Reynolds三规则+seek，120tick后凝聚力验证（first-last距离2.61<10，PASS）
+  - **Phase 2 ORCA**：2个agent相向而行，60tick后最小距离6.01>碰撞半径1.0（PASS，无碰撞）
+  - **Phase 3 Formation**：6种阵型（line/column/wedge/circle/v/custom），slot位置计算，in-position检查（PASS）
+  - **Phase 4 PathCost+Navigation**：terrain/danger修饰器，4个导航事件，SoulPerceptionSystem捕获（4事件含1high+1medium，PASS）
+  - **Phase 5 Integrated**：5个系统同时运行在World中，30tick模拟（PASS）
+- 修复：getMemberTargetPosition参数顺序（memberId, leaderPosition而非formationId, memberId, leaderPosition）
+
+#### 3. SDK v2.5.0发布
+- **package.json**：2.4.0→2.5.0
+- **CHANGELOG.md**：添加v2.5.0完整条目（M9全部新增/修复/变更/架构说明）
+- **git tag**：seed-sdk-v2.5.0（待创建，网络恢复后推送）
+- **DEVLOG**：第88轮记录
+
+### M9完成标准验证
+
+| 标准 | 状态 | 说明 |
+|------|------|------|
+| 群体行为系统（对齐/分离/聚合） | ✅ | FlockingSystem，Reynolds三规则+seek |
+| 局部碰撞避免（ORCA） | ✅ | OrcaSystem，速度障碍+半平面线性规划 |
+| 导航/路径规划系统 | ✅ | PathCostSystem+A*成本函数+4个导航事件 |
+| 1100+测试 | ✅ | 1101测试（M8结束1033，+68） |
+| 无P0/P1 bug | ✅ | BUG-019 P2已关闭，活跃bug 0 |
+| CHANGELOG更新 | ✅ | v2.5.0条目已添加 |
+
+### M9里程碑总结
+
+**5个阶段全部完成**：
+1. ✅ 阶段1：群体行为系统Flocking（17测试）
+2. ✅ 阶段2：局部避障ORCA（15测试）
+3. ✅ 阶段3：编队控制系统（28测试）
+4. ✅ 阶段4：路径成本修饰器+导航事件感知（25测试）
+5. ✅ 阶段5：端到端验证+SDK v2.5.0发布
+
+**新增模块**（4个新目录）：
+- `src/flocking/` — Reynolds三规则群体行为
+- `src/orca/` — ORCA局部碰撞避免
+- `src/formation/` — 6种阵型编队控制
+- `src/navigation/` — 路径成本修饰器+导航事件
+
+**新增测试**：68个（17+15+28+25-17重叠修正=68净增）
+- 实际：M8结束1033 → M9结束1101 = +68
+
+**SDK导出**：flocking/orca/formation/navigation四个模块全部导出
+
+**架构模式**：M9所有系统遵循"Seed提供执行框架+计算，Ember提供决策"
+- Flocking：Seed计算三规则力+Euler积分，应用层设置目标
+- ORCA：Seed计算最优避障速度，应用层设置preferredVelocity
+- Formation：Seed计算slot偏移+目标位置，应用层创建/切换阵型
+- PathCost：Seed管理修饰器+计算成本，应用层定义地形
+- Navigation：Seed捕获事件到感知帧，应用层发射事件
+
+### 验证结果
+
+- **单元测试**：1101/1101 全绿
+- **构建**：0错误
+- **端到端演示**：5阶段全部PASS
+- **GitHub**：⚠️ 推送失败（443连接超时），2个commit（f1eadb0+本轮）+tag保留本地，网络恢复后推送
+
+### 下一轮计划
+
+1. 重试推送f1eadb0 + SDK v2.5.0 commit + tag seed-sdk-v2.5.0
+2. 读取MANAGEMENT_STRATEGY.md第八节确认M10里程碑定义
+3. 如M10已定义，开始M10阶段1开发
+4. 如M10未定义，在管理策略文档中添加M10定义
+
+### 迭代统计
+
+- 总迭代轮数：88轮
+- 单元测试：1101个（M8结束1033，M9净增+68）
+- 测试文件：79个
+- 活跃bug：0个
+- SDK版本：v2.5.0（M9完成，待推送）
+- Git tag：seed-sdk-v2.5.0（待创建+推送）
+

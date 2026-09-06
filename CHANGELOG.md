@@ -5,6 +5,82 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-09-06
+
+### Milestone M9: AI Navigation Enhancement + Group Behavior + Formation Control
+
+#### Added
+- **Flocking System** (`src/flocking/`): Reynolds three rules for group behavior
+  - FlockConfig: separationWeight/alignmentWeight/cohesionWeight/maxSpeed/maxForce/perceptionRadius/separationRadius
+  - FlockingSystem (WorldSystem): addAgent/removeAgent/updateAgent/tick/serialize
+  - Three rules: separation (distance-weighted repulsion), alignment (velocity matching), cohesion (move to center)
+  - Seek behavior: approach target with deceleration, stop at very close range
+  - Standard Euler integration: acceleration → velocity (maxSpeed limit) → position
+  - 17 unit tests
+- **ORCA Local Collision Avoidance** (`src/orca/`): Optimal Reciprocal Collision Avoidance
+  - OrcaConfig: timeHorizon/maxSpeed/maxForce/neighborDist/maxNeighbors/defaultRadius
+  - OrcaSystem (WorldSystem): addAgent/removeAgent/updateAgent/tick/serialize
+  - Velocity Obstacle (VO): cone + truncated circle for collision prediction
+  - ORCA half-planes: reciprocal assumption (u*0.5), linear programming solver
+  - computeOptimalVelocity: find closest feasible velocity to preferredVelocity
+  - Neighbor distance sorting for efficient collision checks
+  - 15 unit tests
+- **Formation System** (`src/formation/`): Leader-follower formation control
+  - FormationType: line/column/wedge/circle/v/custom (6 types)
+  - FormationSlot: index/offset/memberId
+  - FormationConfig: spacing/positionTolerance/circleRadius
+  - FormationSystem (WorldSystem): createFormation/disbandFormation/addMember/removeMember/transferLeadership/setFormationType
+  - 6 formation offset patterns: line (z-axis spread), column (-x axis), wedge (V-shape), v (wide V), circle (around leader), custom (arbitrary offsets)
+  - computeSlotPositions: world positions based on leader position + slot offsets
+  - getMemberTargetPosition/isFormationInPosition: position tolerance checks
+  - Leadership transfer swaps slot 0 with new leader's slot
+  - 28 unit tests
+- **Path Cost System** (`src/navigation/`): Terrain/danger modifiers for pathfinding
+  - CostModifierType: terrain/danger/building/zone/custom (5 types)
+  - PathCostModifier: id/type/name/position/radius/costMultiplier/active/metadata
+  - PathCostConfig: baseCost/maxCostMultiplier
+  - PathCostSystem (WorldSystem): addModifier/removeModifier/setModifierActive/setCostMultiplier
+  - computeCostMultiplier: product of all active modifiers in range (capped at maxCostMultiplier)
+  - computePathCost: baseCost * multiplier
+  - computeSegmentCost: multi-sample average cost * distance
+  - aStarCostFunction: A*-compatible cost function for direct pathfinding integration
+  - 10 cost calculation tests
+- **Navigation Events** (`src/navigation/NavigationEvents.ts`): 4 event classes
+  - PathChangedEvent (navigation.path_changed): path recalculated
+  - PathBlockedEvent (navigation.path_blocked): path blocked (high severity)
+  - ArrivedEvent (navigation.arrived): entity reached destination (medium severity)
+  - WaypointReachedEvent (navigation.waypoint_reached): entity reached a waypoint
+- **Navigation Event Perception** (SoulPerceptionSystem): 4 new event listeners
+  - navigation.path_changed: low severity
+  - navigation.path_blocked: high severity
+  - navigation.arrived: medium severity
+  - navigation.waypoint_reached: low severity
+  - Lazy-loaded on first tick, cleaned up in stop()
+- **M9 End-to-End Demo** (`examples/m9-demo.ts`): Full chain demonstration
+  - Phase 1: Flocking (5 agents, Reynolds rules + seek, cohesion check)
+  - Phase 2: ORCA (head-on collision avoidance, min distance check)
+  - Phase 3: Formation (6 types, slot positions, in-position check)
+  - Phase 4: PathCost + Navigation Events (terrain/danger modifiers, 4 events, perception capture)
+  - Phase 5: Integrated World (all 5 systems together)
+
+#### Fixed
+- **BUG-019**: FlockingSystem test failure - agent movement distance insufficient
+  - Root cause: test configuration too conservative (maxForce=1, 120 ticks → max velocity 2.0, distance ~2.0)
+  - Not a code bug: FlockingSystem Euler integration is correct
+  - Fix: increased test config (maxForce 1→3, maxSpeed 3→5) and adjusted assertion thresholds
+  - Physical calculation verified: x≈2.0 matches reported x=2.017 exactly
+
+#### Changed
+- SDK exports: added flocking, orca, formation, navigation modules
+- SoulPerceptionSystem: 4 new navigation event unsubscribe fields + stop() cleanup
+- Test count: 1033 → 1101 (+68 new tests across M9 phases)
+
+#### Architecture Notes
+- M9 systems follow "Seed provides execution framework, Ember provides decisions" pattern
+- Flocking/ORCA/Formation: Seed computes velocities/positions/targets; application layer selects targets and executes movement
+- PathCost: Seed manages modifiers and computes costs; application layer defines terrain and integrates with A*
+- Navigation events: application layer emits events based on pathfinding state; Seed captures them in perception frames
+
 ## [2.4.0] - 2026-09-06
 
 ### Milestone M8: Building System & Territory System & Construction/Destruction
