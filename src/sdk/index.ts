@@ -353,3 +353,13 @@ export {
   TerritoryLeftEvent,
 } from '../territory/TerritoryEvents.js';
 export { TerritorySystem } from '../territory/TerritorySystem.js';
+
+// --- Flocking System (M9) ---
+export type {
+  FlockConfig,
+  FlockVector2,
+  FlockAgent,
+  FlockResult,
+} from '../flocking/FlockingTypes.js';
+export { DEFAULT_FLOCK_CONFIG } from '../flocking/FlockingTypes.js';
+export { FlockingSystem } from '../flocking/FlockingSystem.js';

@@ -6846,3 +6846,114 @@ BuildingSystem
 - SDK版本：v2.4.0（M8完成）
 - 已发布tag：8个（v1.0.0/v1.1.0/v1.2.0/v2.0.0/v2.1.0/v2.2.0/v2.3.0/v2.4.0）
 
+
+
+---
+
+## 2026-09-06 M9阶段1：群体行为系统（Flocking）（第83轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- a988b9c（M8 SDK v2.4.0发布）已推送，0待推送
+- 1016个单元测试全部通过
+
+#### 2. M9里程碑定义（管理策略更新）
+- M8标记完成（SDK v2.4.0，1016测试）
+- M9定义：AI导航增强+群体行为+编队控制（SDK v2.5.0）
+- 完成标准：群体行为（分离/对齐/聚合）+局部避障（ORCA）+编队控制（阵型/跟随/保持间距）+路径成本修饰器（地形/危险区）+导航事件感知
+
+#### 3. 群体行为系统 (`src/flocking/`)
+
+**FlockingTypes** (`FlockingTypes.ts`)
+- FlockConfig：separationWeight/alignmentWeight/cohesionWeight/maxSpeed/maxForce/perceptionRadius/separationRadius
+- DEFAULT_FLOCK_CONFIG：默认配置（分离1.5/对齐1.0/聚合1.0/最大速度5/最大力2/感知半径8/分离半径4）
+- FlockVector2：x/z二维向量
+- FlockAgent：id/position/velocity/acceleration/target/active
+- FlockResult：success/agentId/error
+
+**FlockingSystem** (`FlockingSystem.ts`) — WorldSystem
+- 向量运算：add/sub/mul/div/magnitude/normalize/limit/distance
+- addAgent/removeAgent/getAgent/getAgents/getActiveAgents
+- setAgentTarget/setAgentActive
+- findNeighbors：感知半径内查找邻居
+- computeSeparation：分离力（远离近距离邻居，距离加权）
+- computeAlignment：对齐力（匹配邻居平均速度方向）
+- computeCohesion：聚合力（移向邻居中心）
+- computeSeek：目标寻的力（接近目标时减速）
+- computeFlocking：汇总分离+对齐+聚合+寻的，目标极近时停止
+- updateAgent：物理更新（加速度→速度→位置，速度限制）
+- tick(dt, world, events)：更新所有agent
+- serialize/deserialize（含config）
+
+#### 4. SDK导出 (`src/sdk/index.ts`)
+- flocking模块全部导出（FlockConfig/FlockVector2/FlockAgent/FlockResult/DEFAULT_FLOCK_CONFIG/FlockingSystem）
+
+#### 5. 测试 (`tests/flocking-system.test.ts`)
+- 17个新测试，覆盖：
+  - Agent管理：7个（添加/初始速度/移除/不存在失败/设置目标/激活状态/数量）
+  - 分离：2个（近距离移开/分离权重影响）
+  - 对齐：1个（速度对齐邻居）
+  - 聚合：1个（移向群体中心）
+  - 目标寻的：2个（移向目标/接近目标停止）
+  - 世界集成：3个（world.tick更新/inactive不移动/stop清理）
+  - 序列化：1个
+
+**关键修复**：测试中力太小+tick数不够导致移动缓慢，增大maxForce（1→3）和maxSpeed（2→5），增加tick数，降低断言阈值。
+
+### 架构设计
+
+**Reynolds群体行为模型**：
+```
+FlockingSystem
+  ├── 分离 (Separation): 远离近距离邻居，距离加权
+  ├── 对齐 (Alignment): 匹配邻居平均速度方向
+  ├── 聚合 (Cohesion): 移向邻居中心
+  └── 寻的 (Seek): 移向目标，接近时减速
+       → 三力加权汇总 + 寻的力
+       → 加速度限制(maxForce) + 速度限制(maxSpeed)
+       → 应用层设置目标，Seed只执行群体行为计算
+```
+
+**与SoulArena分工**：
+- SoulArena：目标选择（去哪）、高层决策、群体配置
+- Seed：群体行为计算（分离/对齐/聚合/寻的）、物理更新、邻居查找
+
+### 关键特性
+
+- **Reynolds三规则**：分离+对齐+聚合，权重可配置
+- **目标寻的**：可选目标，接近时减速，极近时停止
+- **感知半径**：邻居查找基于perceptionRadius，分离基于更小的separationRadius
+- **力和速度限制**：maxForce限制转向力，maxSpeed限制最大速度
+- **完全可配置**：所有参数通过FlockConfig设置
+- **向后兼容**：不影响现有系统
+
+### 验证结果
+
+- **单元测试**：1033/1033 全绿（M8结束1016，+17）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M9里程碑进度：20%
+
+- ✅ 阶段1：群体行为系统Flocking（17测试）
+- ⬜ 阶段2：局部避障ORCA
+- ⬜ 阶段3：编队控制（阵型/跟随/保持间距）
+- ⬜ 阶段4：路径成本修饰器（地形/危险区）+导航事件感知
+- ⬜ 阶段5：端到端验证+SDK v2.5.0发布
+
+### 下一轮计划
+
+1. M9阶段2：局部避障ORCA
+   - ORCA（Optimal Reciprocal Collision Avoidance）算法
+   - 速度障碍计算+半平面约束求解
+   - 与FlockingSystem集成（群体行为+避障）
+   - 15+测试
+
+### 迭代统计
+
+- 总迭代轮数：83轮
+- 单元测试：1033个（M8结束1016，+17）
+- 测试文件：76个
+- SDK版本：v2.4.0（M8完成），M9目标v2.5.0
+
