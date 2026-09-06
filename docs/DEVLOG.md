@@ -9211,3 +9211,116 @@ M11已完成，M12里程碑方向尚未在MANAGEMENT_STRATEGY.md中定义。按�
 - 活跃bug：0个
 - SDK版本：v2.7.0（M11），目标v2.8.0（M12）
 
+
+
+---
+
+## 2026-09-06 M12阶段8：世界状态叙事+叙事事件感知+NPC与叙事集成（第108轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M12阶段1-7已完成并推送（1545测试），0待推送
+- 预研报告无新增
+
+#### 2. M12阶段8：叙事集成（三部分）
+
+##### 2.1 叙事事件感知（SoulPerceptionSystem扩展）
+- 修改src/entity/SoulPerceptionSystem.ts
+  - 新增6个M12事件监听器unsubscribe字段
+  - 新增4个动态叙事事件监听器：
+    - narrative.event_recorded → 记录叙事事件（climax/resolution为high，其他medium）
+    - narrative.arc_started → 记录故事弧开始（high）
+    - narrative.phase_changed → 记录故事阶段变化（medium）
+    - narrative.choice_selected → 记录玩家/NPC选择（medium）
+  - 新增2个任务链事件监听器：
+    - taskchain.step_completed → 记录任务步骤完成（low）
+    - taskchain.chain_completed → 记录任务链完成（high）
+  - 所有监听器遵循现有模式：懒加载注册（首次tick）+recordEvent写入PerceptionFrame.events
+  - stop()中添加对应清理
+  - 新增Event类导入
+
+##### 2.2 世界状态叙事（WorldStateNarrativeSystem）
+- 创建src/narrative/NarrativeIntegration.ts（包含WorldStateNarrativeSystem+NpcNarrativeBridge）
+- WorldStateNarrativeRule: 规则定义（id/name/condition回调/narrative模板/cooldown/enabled）
+- WorldStateSnapshot: 世界状态快照（tick/worldTime/entityCount/soulCount/weather/timeOfDay/custom）
+- WorldStateNarrativeSystem（WorldSystem）：
+  - 规则管理：addRule/removeRule/getRules/setRuleEnabled
+  - 自定义状态：setCustomState/getCustomState
+  - buildSnapshot: 构建世界状态快照（从WeatherSimulator/WorldClock获取天气和时间）
+  - tick(): 评估所有启用规则，条件满足时发射narrative.world_state事件
+  - 支持cooldown（冷却ticks内不重复触发）
+  - 支持maxRulesPerTick性能限制
+  - serialize/deserialize（规则不含函数不序列化，需反序列化后重新注册）
+
+##### 2.3 NPC与叙事集成（NpcNarrativeBridge）
+- NpcNarrativeMapping: NPC行为→叙事映射（id/npcId/behaviorType/narrativeTemplate/enabled）
+- NarrativeInfluence: 叙事→NPC行为影响（id/narrativeEventType/npcId/modifier/duration/active/expiresAt）
+- NpcNarrativeBridge（WorldSystem）：
+  - 映射管理：addMapping/removeMapping/getMappings
+  - triggerNarrativeFromBehavior: 手动触发NPC行为→叙事事件（支持npcId="*"通配）
+  - 影响管理：applyInfluence/removeInfluence/getActiveInfluences/getAllInfluences
+  - getCombinedModifier: 合并所有活跃影响的modifier
+  - tick(): 自动过期到期的影响
+  - serialize/deserialize
+
+#### 3. 测试（22个，全部通过）
+- 世界状态叙事规则管理（4测试：添加获取/删除/启用切换/自定义状态）
+- 世界状态叙事规则评估（4测试：条件满足触发/不满足不触发/cooldown/禁用不触发）
+- 世界状态快照（1测试）
+- NPC叙事映射（5测试：添加获取/删除/匹配触发/不匹配NPC/通配符）
+- NPC叙事影响（4测试：应用获取/合并modifier/过期/删除）
+- 叙事事件感知（2测试：动态叙事事件被灵魂感知/任务链完成事件被灵魂感知）
+- 配置默认值（2测试）
+
+**关键修复**：
+- GameObject类在src/entity/Entity.ts中（非独立文件）
+- ESM模块不支持require，需用import导入Event
+
+### 验证结果
+
+- **单元测试**：1567/1567 全绿（M12阶段7结束1545，+22）
+- **构建**：0错误
+- **GitHub**：待推送
+
+### M12进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1-5 | NPC AI深化（记忆/个性/GOAP/行为树/作息） | ✅ 全部完成 |
+| 6 | 动态叙事生成 | ✅ 完成 |
+| 7 | 任务链深化 | ✅ 完成 |
+| 8 | 世界状态叙事+叙事事件感知+NPC与叙事集成 | ✅ 完成（本轮） |
+| 9 | 端到端演示+SDK v2.8.0发布 | ⏳ 下一轮 |
+
+**M12整体进度：89%（阶段1-8完成）**
+**M12完成标准检查**：
+1. ✅ NPC AI深化（5/5子系统）
+2. ✅ 世界叙事增强（5/5：动态叙事+任务链+世界状态叙事+玩家行为影响+叙事事件感知）
+3. ✅ NPC与叙事集成（NPC行为驱动叙事+叙事事件影响NPC行为）
+4. ✅ 1400+测试（1567）
+5. ✅ 无P0/P1 bug（0活跃）
+6. ⏳ M12端到端演示（待创建）
+
+**仅剩阶段9：端到端演示+SDK v2.8.0发布！**
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M12阶段9：端到端演示+SDK v2.8.0发布
+   - 创建examples/m12-demo.ts（M12全链路演示：NPC记忆+个性+GOAP+行为树+作息+动态叙事+任务链+叙事集成）
+   - package.json 2.7.0→2.8.0
+   - 更新CHANGELOG.md（v2.8.0完整条目）
+   - git tag seed-sdk-v2.8.0
+   - 运行npm test确认全通过
+   - 运行端到端演示确认通过
+3. 推送（含tag）
+
+### 迭代统计
+
+- 总迭代轮数：108轮
+- 单元测试：1567个（M11结束1306，M12阶段1+24，阶段2+41，阶段3+36，阶段4+40，阶段5+32，阶段6+36，阶段7+30，阶段8+22）
+- 测试文件：96个
+- 活跃bug：0个
+- SDK版本：v2.7.0（M11），目标v2.8.0（M12，下一轮发布）
+

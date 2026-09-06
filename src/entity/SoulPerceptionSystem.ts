@@ -12,6 +12,7 @@
 
 import type { World, WorldSystem } from "../engine/World.js";
 import type { EventSystem } from "../event/EventSystem.js";
+import { Event } from "../event/Event.js";
 import { WeatherSimulator } from "../event/WeatherSimulator.js";
 import { LightSystem } from "../event/LightSystem.js";
 import { ThermalSystem } from "../event/ThermalSystem.js";
@@ -231,6 +232,19 @@ export class SoulPerceptionSystem implements WorldSystem {
   private narrativeBranchUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for narrative.completed event, set on first tick. */
   private narrativeCompletedUnsubscribe: (() => void) | null = null;
+  // --- M12 Phase 8: Dynamic narrative + task chain event perception ---
+  /** Unsubscribe function for narrative.event_recorded event, set on first tick. */
+  private dynNarrativeEventUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for narrative.arc_started event, set on first tick. */
+  private dynNarrativeArcStartedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for narrative.phase_changed event, set on first tick. */
+  private dynNarrativePhaseChangedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for narrative.choice_selected event, set on first tick. */
+  private dynNarrativeChoiceSelectedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for taskchain.step_completed event, set on first tick. */
+  private taskchainStepCompletedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for taskchain.chain_completed event, set on first tick. */
+  private taskchainChainCompletedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for social.relation_changed event, set on first tick. */
   private socialRelationChangedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for social.trust_changed event, set on first tick. */
@@ -744,6 +758,98 @@ export class SoulPerceptionSystem implements WorldSystem {
           `narrative_completed_${p.chainId}_${evt.timestamp}`,
           "narrative.completed",
           `Narrative completed: ${p.chainName} (${p.nodesEntered} nodes)`,
+          "high",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // --- M12 Phase 8: Dynamic narrative event perception ---
+    // Listen for dynamic narrative event recorded events.
+    if (!this.dynNarrativeEventUnsubscribe) {
+      this.dynNarrativeEventUnsubscribe = events.on("narrative.event_recorded", (evt: Event) => {
+        const p = evt.payload as Record<string, unknown>;
+        this.recordEvent(
+          `dyn_narrative_event_${p.eventId ?? "unknown"}_${evt.timestamp}`,
+          "narrative.event_recorded",
+          `Narrative event: ${p.title ?? p.type ?? "unknown"}`,
+          (p.type === "climax" || p.type === "resolution") ? "high" : "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for dynamic narrative arc started events.
+    if (!this.dynNarrativeArcStartedUnsubscribe) {
+      this.dynNarrativeArcStartedUnsubscribe = events.on("narrative.arc_started", (evt: Event) => {
+        const p = evt.payload as Record<string, unknown>;
+        this.recordEvent(
+          `dyn_narrative_arc_started_${p.arcId ?? "unknown"}_${evt.timestamp}`,
+          "narrative.arc_started",
+          `Story arc started: ${p.arcName ?? "unknown"}`,
+          "high",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for dynamic narrative phase changed events.
+    if (!this.dynNarrativePhaseChangedUnsubscribe) {
+      this.dynNarrativePhaseChangedUnsubscribe = events.on("narrative.phase_changed", (evt: Event) => {
+        const p = evt.payload as Record<string, unknown>;
+        this.recordEvent(
+          `dyn_narrative_phase_${p.arcId ?? "unknown"}_${p.newPhaseId ?? "unknown"}_${evt.timestamp}`,
+          "narrative.phase_changed",
+          `Story phase: ${p.newPhaseName ?? p.newPhaseId ?? "unknown"}`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for dynamic narrative choice selected events.
+    if (!this.dynNarrativeChoiceSelectedUnsubscribe) {
+      this.dynNarrativeChoiceSelectedUnsubscribe = events.on("narrative.choice_selected", (evt: Event) => {
+        const p = evt.payload as Record<string, unknown>;
+        this.recordEvent(
+          `dyn_narrative_choice_${p.branchId ?? "unknown"}_${p.choiceId ?? "unknown"}_${evt.timestamp}`,
+          "narrative.choice_selected",
+          `Choice made: ${p.choiceText ?? "unknown"}`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // --- M12 Phase 8: Task chain event perception ---
+    // Listen for task chain step completed events.
+    if (!this.taskchainStepCompletedUnsubscribe) {
+      this.taskchainStepCompletedUnsubscribe = events.on("taskchain.step_completed", (evt: Event) => {
+        const p = evt.payload as Record<string, unknown>;
+        this.recordEvent(
+          `taskchain_step_${p.chainId ?? "unknown"}_${p.stepId ?? "unknown"}_${evt.timestamp}`,
+          "taskchain.step_completed",
+          `Task step completed: ${p.stepName ?? p.stepId ?? "unknown"}`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for task chain completed events.
+    if (!this.taskchainChainCompletedUnsubscribe) {
+      this.taskchainChainCompletedUnsubscribe = events.on("taskchain.chain_completed", (evt: Event) => {
+        const p = evt.payload as Record<string, unknown>;
+        this.recordEvent(
+          `taskchain_chain_${p.chainId ?? "unknown"}_${evt.timestamp}`,
+          "taskchain.chain_completed",
+          `Task chain completed: ${p.chainName ?? "unknown"}`,
           "high",
           { x: 0, y: 0, z: 0 },
           true,
@@ -1670,6 +1776,31 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.narrativeCompletedUnsubscribe) {
       this.narrativeCompletedUnsubscribe();
       this.narrativeCompletedUnsubscribe = null;
+    }
+    // --- M12 Phase 8 cleanup ---
+    if (this.dynNarrativeEventUnsubscribe) {
+      this.dynNarrativeEventUnsubscribe();
+      this.dynNarrativeEventUnsubscribe = null;
+    }
+    if (this.dynNarrativeArcStartedUnsubscribe) {
+      this.dynNarrativeArcStartedUnsubscribe();
+      this.dynNarrativeArcStartedUnsubscribe = null;
+    }
+    if (this.dynNarrativePhaseChangedUnsubscribe) {
+      this.dynNarrativePhaseChangedUnsubscribe();
+      this.dynNarrativePhaseChangedUnsubscribe = null;
+    }
+    if (this.dynNarrativeChoiceSelectedUnsubscribe) {
+      this.dynNarrativeChoiceSelectedUnsubscribe();
+      this.dynNarrativeChoiceSelectedUnsubscribe = null;
+    }
+    if (this.taskchainStepCompletedUnsubscribe) {
+      this.taskchainStepCompletedUnsubscribe();
+      this.taskchainStepCompletedUnsubscribe = null;
+    }
+    if (this.taskchainChainCompletedUnsubscribe) {
+      this.taskchainChainCompletedUnsubscribe();
+      this.taskchainChainCompletedUnsubscribe = null;
     }
     if (this.socialRelationChangedUnsubscribe) {
       this.socialRelationChangedUnsubscribe();

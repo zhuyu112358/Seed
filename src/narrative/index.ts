@@ -29,3 +29,19 @@ export type {
 } from "./DynamicNarrativeTypes.js";
 export { DEFAULT_DYNAMIC_NARRATIVE_CONFIG } from "./DynamicNarrativeTypes.js";
 export { DynamicNarrativeSystem } from "./DynamicNarrativeSystem.js";
+
+// --- Narrative Integration (M12 Phase 8) ---
+export type {
+  WorldStateNarrativeRule,
+  WorldStateSnapshot,
+  WorldStateNarrativeConfig,
+  NpcNarrativeMapping,
+  NarrativeInfluence,
+  NpcNarrativeBridgeConfig,
+} from "./NarrativeIntegration.js";
+export {
+  DEFAULT_WORLD_STATE_NARRATIVE_CONFIG,
+  DEFAULT_NPC_NARRATIVE_BRIDGE_CONFIG,
+  WorldStateNarrativeSystem,
+  NpcNarrativeBridge,
+} from "./NarrativeIntegration.js";
