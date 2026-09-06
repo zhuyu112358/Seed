@@ -409,3 +409,15 @@ export type {
 } from '../vision/VisionConeTypes.js';
 export { DEFAULT_VISION_CONE_CONFIG } from '../vision/VisionConeTypes.js';
 export { VisionConeSystem } from '../vision/VisionConeSystem.js';
+
+// --- Sound Perception System (M10) ---
+export type {
+  SoundType,
+  SoundSource,
+  SoundListener,
+  HeardSound,
+  SoundConfig,
+  SoundResult,
+} from '../sound/SoundTypes.js';
+export { DEFAULT_SOUND_CONFIG } from '../sound/SoundTypes.js';
+export { SoundPerceptionSystem } from '../sound/SoundPerceptionSystem.js';

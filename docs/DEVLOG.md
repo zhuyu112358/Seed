@@ -7625,3 +7625,122 @@ PathCostSystem
 - 活跃bug：0个
 - SDK版本：v2.5.0（M9完成），M10目标v2.6.0
 
+
+
+---
+
+## 2026-09-06 M10阶段2：听觉感知增强（第90轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M10阶段1（视野锥）已完成推送（commit e9a7a9c，1127测试），0待推送
+- M9 SDK v2.5.0已发布，BUG-019已关闭
+
+#### 2. 听觉感知系统 (`src/sound/`)
+
+**SoundTypes** (`SoundTypes.ts`)
+- SoundType：speech/noise/music/footstep/impact/alert/custom（7种）
+- SoundSource：id/type/position/intensity(0-1)/frequency/duration(0=持续)/createdTick/active/metadata
+- SoundListener：id/position/hearingThreshold/active
+- HeardSound：sourceId/type/sourcePosition/receivedIntensity/distance/directionAngle/audible
+- SoundConfig：attenuation/absorption/maxRadius/minAudible
+- DEFAULT_SOUND_CONFIG：attenuation=0.02, absorption=0.01, maxRadius=50, minAudible=0.05
+- SoundResult：success/sourceId/listenerId/error
+
+**SoundPerceptionSystem** (`SoundPerceptionSystem.ts`) — WorldSystem
+- addSource：添加声源（7种类型，强度0-1，持续时间0=循环）
+- removeSource/getSource/getSources/getActiveSources/getSourcesByType
+- setSourcePosition/setSourceIntensity/setSourceActive
+- addListener：添加听者（可指定ID，听阈可配置）
+- removeListener/getListener/getListeners
+- setListenerPosition/setListenerThreshold/setListenerActive
+- computeReceivedIntensity：距离衰减计算（反平方+线性吸收，与AcousticPropagation相同模型）
+- computeDistance/computeDirectionAngle
+- isAudible：检查声源是否可被听者听到（强度>听阈 AND 距离<=maxRadius）
+- getHeardSound：获取详细听觉信息（接收强度/距离/方向角/可听性）
+- getHeardSounds：获取听者能听到的所有声音（按接收强度排序，最响优先）
+- findListenersHearingSource：反向查询：所有能听到声源的听者
+- tick：临时声音过期（duration>0时自动失效）
+- serialize/deserialize（含config+currentTick）
+
+#### 3. SDK导出 (`src/sdk/index.ts`)
+- sound模块全部导出（SoundType/SoundSource/SoundListener/HeardSound/SoundConfig/SoundResult/DEFAULT_SOUND_CONFIG/SoundPerceptionSystem）
+
+#### 4. 测试 (`tests/sound-perception-system.test.ts`)
+- 32个新测试，覆盖：
+  - 声源管理：8个（添加/各类型/无效强度拒绝/移除/设置位置/设置强度/设置激活/按类型查询）
+  - 听者管理：7个（添加/指定ID/重复ID拒绝/移除/设置位置/设置听阈/计数）
+  - 强度与距离：6个（距离衰减/距离0=源强度/maxRadius外=0/计算距离/计算方向角/衰减系数影响）
+  - 可听性：7个（近响可听/远轻不可听/非激活不可听/高听阈更少/详细听觉信息/按强度排序/反向查询）
+  - 时间与序列化：4个（临时声音过期/持续声音不过期/序列化反序列化/stop清理）
+
+**关键修复**：makeSystem()不接受config参数，"intensity beyond maxRadius"测试改用new SoundPerceptionSystem({maxRadius:10})
+
+### 架构设计
+
+**声音传播模型**（与AcousticPropagation一致）：
+```
+receivedIntensity = sourceIntensity
+                  * (1 / (1 + attenuation * distance²))   [反平方衰减]
+                  * (1 - absorption * distance)             [介质吸收]
+                  
+可听条件：receivedIntensity > hearingThreshold AND distance <= maxRadius
+```
+
+**与VisionConeSystem的关系**（M10多模态感知）：
+- VisionConeSystem：视觉感知（FOV角度+距离，方向敏感）
+- SoundPerceptionSystem：听觉感知（全向+距离衰减，方向可计算）
+- M10阶段4将两者集成到SoulPerceptionSystem，实现多模态感知
+
+**与AcousticPropagation的关系**：
+- AcousticPropagation：通信层的消息传播（含遮挡/衍射），用于灵魂间通信
+- SoundPerceptionSystem：感知层的环境声音感知，用于灵魂感知世界
+- 两者使用相同的衰减模型，可未来集成遮挡检测
+
+**与Ember分工**：
+- Ember：配置声源/听者，处理听觉信息的认知（识别/定位/反应）
+- Seed：计算声音传播衰减，过滤可听声音，提供方向角
+
+### 关键特性
+
+- **7种声音类型**：speech/noise/music/footstep/impact/alert/custom
+- **距离衰减**：反平方+线性吸收，与AcousticPropagation一致
+- **可配置听阈**：每个听者独立hearingThreshold
+- **方向感知**：directionAngle提供声音来源方向（度）
+- **临时/持续声音**：duration=0持续，>0自动过期
+- **多听者/多声源**：支持任意数量的声源和听者
+- **反向查询**：findListenersHearingSource查找能听到声源的所有听者
+- **序列化支持**：完整状态可保存/恢复
+
+### 验证结果
+
+- **单元测试**：1159/1159 全绿（M10阶段1结束1127，+32）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M10里程碑进度：40%
+
+- ✅ 阶段1：视野锥（FOV）感知系统（26测试）
+- ✅ 阶段2：听觉感知增强（32测试）
+- ⬜ 阶段3：感知过滤/注意力机制（距离/类型/严重度过滤+重要事件优先）
+- ⬜ 阶段4：SoulPerceptionSystem集成（FOV过滤+多模态感知事件）
+- ⬜ 阶段5：端到端验证+SDK v2.6.0发布
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M10阶段3：感知过滤/注意力机制
+   - PerceptionFilter：按距离/类型/严重度过滤感知事件
+   - AttentionSystem：重要事件优先（高严重度/近距离/特定类型）
+   - 感知事件优先级排序
+   - 15+测试
+
+### 迭代统计
+
+- 总迭代轮数：90轮
+- 单元测试：1159个（M10阶段1结束1127，+32）
+- 测试文件：81个
+- 活跃bug：0个
+- SDK版本：v2.5.0（M9完成），M10目标v2.6.0
+
