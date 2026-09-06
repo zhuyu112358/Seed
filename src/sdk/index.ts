@@ -330,6 +330,26 @@ export {
 } from '../social/SocialRelationTypes.js';
 export { SocialRelationGraph } from '../social/SocialRelationGraph.js';
 
+// --- Social Norm System (M13) ---
+export type {
+  SocialNorm,
+  SocialNormType,
+  NormViolation,
+  NormViolationSeverity,
+  SocialFeedback,
+  SocialFeedbackType,
+  SocialNormSystemConfig,
+  NormModificationResult,
+  NormSystemEvent,
+  NormSystemEventType,
+  ComplianceCheckResult,
+  SocialNormStats,
+  NormScope,
+  NormMutation,
+} from '../social/SocialNormTypes.js';
+export { DEFAULT_SOCIAL_NORM_CONFIG } from '../social/SocialNormTypes.js';
+export { SocialNormSystem } from '../social/SocialNormSystem.js';
+
 // --- Trading System (M7) ---
 export type {
   TradeStatus,

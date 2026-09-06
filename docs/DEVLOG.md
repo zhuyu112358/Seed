@@ -9669,3 +9669,103 @@ M11结束1306 + M12新增261 = **1567测试**
 - 活跃bug：0个
 - SDK版本：v2.8.0（M12），目标v2.9.0（M13）
 
+
+
+---
+
+## 2026-09-06 M13阶段2：SocialNormSystem社会规范系统（第113轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M13阶段1（SocialRelationGraph）已完成，commit 5bd4808本地待推送
+- GitHub 443端口仍间歇性不可用，推送重试失败，commit保留本地下轮重试
+- 预研报告无新增（仍为001/002）
+
+#### 2. M13阶段2：SocialNormSystem社会规范系统
+
+**创建文件：**
+- `src/social/SocialNormTypes.ts`：社会规范类型定义
+  - SocialNormType：6大类（custom习俗/taboo禁忌/value价值观/tradition传统/etiquette礼仪/law法律）
+  - NormViolationSeverity：4级违规严重度（minor/moderate/major/catastrophic）
+  - SocialFeedbackType：6种社会反馈（approval赞许/praise赞扬/disapproval不赞成/ostracism排斥/punishment惩罚/reward奖励）
+  - NormScope：规范适用范围（appliesTo/excludes/context）
+  - SocialNorm：规范实体（类型/名称/描述/合规行为/违规行为/范围/重要性/合规率/执行者/活跃状态/建立时间/演化历史）
+  - NormMutation：规范变异记录（ID/时间/变更/是否采纳/采纳率）
+  - NormViolation：违规记录（规范ID/违规者/上下文/严重度/社会响应/时间/是否解决）
+  - SocialFeedback：社会反馈（类型/目标/来源/强度/关联规范/关联违规/时间）
+  - SocialNormSystemConfig + DEFAULT配置
+  - NormSystemEventType：10种事件（established/updated/abolished/evolved/weakened/strengthened/violation.detected/violation.resolved/feedback.given）
+  - ComplianceCheckResult：合规检查结果
+  - SocialNormStats：统计信息
+- `src/social/SocialNormSystem.ts`：社会规范系统（非WorldSystem，独立类）
+  - 规范管理：addNorm/getNorm/getActiveNorms/getNormsByType/getNormsForEntity/updateNorm/abolishNorm
+  - 违规检测：recordViolation（自动生成社会反馈+降低合规率）/resolveViolation/getViolations/getUnresolvedViolations/getViolationsForEntity
+  - 合规检查：checkCompliance（基于行为描述匹配合规/违规行为，返回检查结果）
+  - 社会反馈：generateFeedback（违规自动反馈）/givePositiveFeedback（正面反馈+提升合规率）/getFeedbacks
+  - 规范演化：evolveNorms（变异率×弱势因子随机变异）/mutateNorm（4种变异类型：描述/合规率/重要性/范围）/getEvolutionHistory
+  - 序列化：serialize/deserialize
+  - 统计：getStats（总规范数/活跃数/类型分布/违规数/未解决数/反馈数/平均合规率/弱规范数/总变异数）
+  - 社会响应决策：禁忌和法律类规范违规得到更严厉响应（punishment vs disapproval）
+  - 违规影响：minor=-2%/moderate=-5%/major=-10%/catastrophic=-20%合规率
+
+**修改文件：**
+- `src/social/index.ts`：新增M13 SocialNormSystem导出（类型+常量+系统）
+- `src/sdk/index.ts`：新增M13 SocialNormSystem SDK导出
+
+**测试文件：**
+- `tests/social-norm-system.test.ts`：37个测试，8个测试套件
+  - Norm Management（14测试）：创建/事件/自定义选项/上限/查询/活跃过滤/类型过滤/范围/更新/删除
+  - Violation Detection（10测试）：记录/合规率降低/自动反馈/无效规范/解决/未解决过滤/按实体过滤
+  - Compliance Check（4测试）：违规检测/合规检测/中性行为/范围过滤
+  - Social Feedback（4测试）：正面反馈/强度钳制/提升合规率/禁忌更严厉
+  - Norm Evolution（3测试）：自动变异/禁用演化/弱规范事件
+  - Serialization（1测试）：序列化/反序列化
+  - Statistics（1测试）：统计计数
+  - Configuration（2测试）：默认配置/部分覆盖
+
+#### 3. 验证结果
+
+- **SocialNormSystem测试**：37/37 全绿
+- **全量单元测试**：1642/1642 全绿（M13阶段1结束1605，+37）
+- **构建**：0错误
+- **GitHub**：2个commit待推送（5bd4808阶段1 + 本轮阶段2）
+
+### M13进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | SocialRelationGraph社会关系网络 | ✅ 完成（38测试） |
+| 2 | SocialNormSystem社会规范系统 | ✅ 完成（本轮，37测试） |
+| 3 | SocialEventSystem社会事件系统 | ⏳ 下一轮 |
+| 4 | GroupBehaviorEngine群体行为引擎 | ⏳ 待开发 |
+| 5 | InformationSpreadModel信息传播模型 | ⏳ 待开发 |
+| 6 | SocialMobility社会流动机制 | ⏳ 待开发 |
+| 7 | CulturalEvolution文化演化系统 | ⏳ 待开发 |
+| 8 | 与M12 NPC AI和叙事系统集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.9.0发布 | ⏳ 待开发 |
+
+**M13整体进度：22%（阶段1+2完成）**
+
+### 关键设计决策
+
+1. **规范范围（NormScope）**：支持appliesTo白名单+excludes黑名单+context上下文，空appliesTo表示适用于所有人
+2. **违规自动社会反馈**：recordViolation自动生成SocialFeedback，禁忌/法律类规范得到更严厉响应
+3. **规范演化机制**：变异率×弱势因子（合规率越低越容易变异），4种变异类型，采纳率=当前合规率
+4. **合规检查基于行为描述匹配**：checkCompliance通过行为描述文本匹配规范的compliantBehavior/violatingBehavior，简单有效
+5. **与M7 SocialGraph共存**：M13所有社会系统使用独立命名空间，不破坏已有功能
+
+### 下一轮计划
+
+1. 重试推送2个待推送commit
+2. M13阶段3：SocialEventSystem社会事件系统（婚礼/葬礼/节日/庆典/集会/冲突/战争/迁徙+事件触发与参与+事件叙事生成）
+
+### 迭代统计
+
+- 总迭代轮数：113轮
+- 单元测试：1642个（M13阶段1结束1605，阶段2+37）
+- 测试文件：98个
+- 活跃bug：0个
+- SDK版本：v2.8.0（M12），目标v2.9.0（M13）
+- 待推送commit：2个（5bd4808阶段1 + 本轮阶段2）
+

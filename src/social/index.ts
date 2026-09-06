@@ -30,3 +30,23 @@ export {
   DEFAULT_SOCIAL_RELATION_CONFIG,
 } from "./SocialRelationTypes.js";
 export { SocialRelationGraph } from "./SocialRelationGraph.js";
+
+// M13 Social Norm System
+export type {
+  SocialNorm,
+  SocialNormType,
+  NormViolation,
+  NormViolationSeverity,
+  SocialFeedback,
+  SocialFeedbackType,
+  SocialNormSystemConfig,
+  NormModificationResult,
+  NormSystemEvent,
+  NormSystemEventType,
+  ComplianceCheckResult,
+  SocialNormStats,
+  NormScope,
+  NormMutation,
+} from "./SocialNormTypes.js";
+export { DEFAULT_SOCIAL_NORM_CONFIG } from "./SocialNormTypes.js";
+export { SocialNormSystem } from "./SocialNormSystem.js";
