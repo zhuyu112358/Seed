@@ -11055,3 +11055,92 @@ M11结束1306 + M12新增261 = **1567测试**
 2. 如M14方向已确定，按新里程碑开始开发（可参考docs/M14_PREARCH_ECONOMY_CIVILIZATION.md）
 3. 如M14未确定，继续维护性工作或测试增强
 
+
+
+---
+
+## 2026-09-07 M14集成点分析文档（第130轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M13已100%完成，SDK v2.9.0已发布并推送
+- M14方向**仍待监控评估决策确定**
+- 已连续9轮维护（122-130）
+
+#### 2. 全量验证
+- **单元测试**：1943/1943 全绿
+- **构建**：0错误
+
+#### 3. M14经济与文明系统集成点分析
+创建 `docs/M14_INTEGRATION_POINTS_ANALYSIS.md`，详细分析M14经济与文明系统与现有Arboreus系统的集成点：
+
+**现有经济相关系统分析**：
+- **ResourceSystem（M3）**：ResourceType/ResourceNode/ResourceInventory/HarvestSystem/CraftingSystem/ConsumptionSystem/GrowthSystem
+- **TradingSystem（M7）**：createOffer/acceptOffer/rejectOffer/cancelOffer/getPendingOffers/getActiveOffers（当前限制：仅以物易物，无货币/定价/历史）
+- **BuildingSystem（M8）**：placeBuilding/upgradeBuilding/destroyBuilding/repairBuilding/getTotalProduction/getTotalDefense（当前限制：静态生产，无工人/经济统计）
+- **TerritorySystem（M7）**：claimTerritory/abandonTerritory/expandTerritory/isPositionInTerritory（当前限制：仅空间范围，无经济属性）
+
+**M14候选系统集成点**（7个系统，每个系统分析5-8个集成对象）：
+
+| M14系统 | 主要集成对象 | 集成数 |
+|---------|------------|--------|
+| CurrencySystem | TradingSystem/ResourceInventory/SocialMobility/NPCMemory | 4 |
+| MarketSystem | TradingSystem/ResourceSystem/CurrencySystem/BuildingSystem/InformationSpread/SocialEvent | 6 |
+| ProductionSystem | BuildingSystem/ResourceSystem/CraftingSystem/SocialMobility/NPCSchedule/CulturalEvolution | 6 |
+| CitySystem | BuildingSystem/TerritorySystem/SocialRelationGraph/SocialMobility/CulturalEvolution/InformationSpread/SocialEvent/GroupBehavior | 8 |
+| SettlementGenerator | BuildingSystem/TerritorySystem/CitySystem/CulturalEvolution/ResourceSystem | 5 |
+| TradeRouteSystem | TradingSystem/CitySystem/TerritorySystem/CurrencySystem/MarketSystem/InformationSpread/SocialEvent/SocialRelationGraph | 8 |
+| CivilizationExchangeSystem | CulturalEvolution/InformationSpread/SocialRelationGraph/CitySystem/TradeRoute/SocialMobility/NPCPersonality/DynamicNarrative | 8 |
+
+**经济系统内部依赖链**：
+```
+CurrencySystem → MarketSystem → ProductionSystem → TradingSystem → BuildingSystem → CitySystem → TradeRouteSystem → CivilizationExchangeSystem
+```
+
+**3个关键集成场景**：
+1. 城市经济循环：City→Building→Production→Market→Currency→Trading
+2. 跨城市贸易：TradeRoute→Market(价格差)→Currency(利润)→Trading→CivilizationExchange→InformationSpread
+3. 文明兴衰：CulturalEvolution→City→CivilizationExchange→SocialMobility→DynamicNarrative→SocialEvent
+
+**实施优先级建议**：
+- Phase 1（高）：CurrencySystem + MarketSystem（经济基础）
+- Phase 2（中）：ProductionSystem + CitySystem（生产与城市）
+- Phase 3（中）：TradeRouteSystem + CivilizationExchangeSystem（贸易与文明）
+- Phase 4（低）：SettlementGenerator（定居点生成）
+
+**测试计划**：200+新增单元测试 + 集成测试 + M14端到端演示
+
+**风险与注意事项**：
+- 架构约束：WorldSystem接口/不硬编码/接口变更先更新spec
+- 性能考虑：城市大量实体/市场价格缓存/贸易路线预计算
+- 向后兼容：扩展TradingSystem/BuildingSystem时保持现有API兼容
+
+#### 4. 全量验证
+- **单元测试**：1943/1943 全绿
+- **构建**：0错误
+- **新增文档**：docs/M14_INTEGRATION_POINTS_ANALYSIS.md
+
+### 迭代统计
+
+- 总迭代轮数：130轮
+- 单元测试：1943个（稳定）
+- 测试文件：107个
+- 活跃bug：0个（Arboreus）
+- SDK版本：v2.9.0（M13完成）
+- M14状态：待定义，预研架构+集成点分析已完成
+- 待推送commit：0
+
+### M14准备文档汇总
+
+| 文档 | 创建轮次 | 内容 |
+|------|---------|------|
+| docs/M14_PREARCH_ECONOMY_CIVILIZATION.md | 第124轮 | M14预研架构（7候选系统设计+6实施阶段+测试计划+6大集成点+风险） |
+| docs/M14_INTEGRATION_POINTS_ANALYSIS.md | 第130轮 | M14集成点分析（现有系统API分析+7系统集成点+依赖链+场景+优先级+测试计划） |
+
+### 下一轮计划
+
+1. 检查M14方向是否已由监控评估决策确定
+2. 如M14方向已确定为"经济与文明系统"，按Phase 1（CurrencySystem+MarketSystem）开始开发
+3. 如M14未确定，继续维护性工作或M14准备
+
