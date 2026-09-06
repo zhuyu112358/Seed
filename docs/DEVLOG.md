@@ -8178,3 +8178,91 @@ M10（感知系统深化）全部5个阶段完成：
 - SDK版本：v2.6.0（M10），目标v2.7.0（M11）
 - M11进度：阶段1完成（20%）
 
+
+
+---
+
+## 2026-09-06 M11阶段2：动作预设+动作事件感知集成（第96轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M11阶段1（ActionStateMachine核心）已完成并推送（1243测试）
+- 0待推送，工作区干净
+
+#### 2. M11阶段2：ActionPresets动作预设
+- 创建src/action/ActionPresets.ts
+- 7种标准动作预设工厂函数：
+  - createAttackPreset(): castTime=3, duration=5, cooldown=10, range=3, cancellable=true
+  - createDefendPreset(): castTime=1, duration=30, cooldown=5, cancellable=true
+  - createInteractPreset(): castTime=2, duration=3, cooldown=2, range=2
+  - createHarvestPreset(): castTime=5, duration=10, cooldown=3, range=2
+  - createBuildPreset(): castTime=10, duration=20, cooldown=5, cancellable=false
+  - createMovePreset(): castTime=0, duration=0, cooldown=0（即时动作）
+  - createCommunicatePreset(): castTime=1, duration=2, cooldown=1, range=10
+- PresetOptions接口：可覆盖任意属性（castTime/duration/cooldown/range/cancellable/animationEvent/metadata）
+- getAllPresets(): 返回7种标准预设
+- 所有预设可配置，无硬编码世界特定值
+
+#### 3. 动作事件感知集成（SoulPerceptionSystem）
+- SoulPerceptionSystem新增3个动作事件监听器（懒加载，首次tick设置）：
+  - action.started: 动作启动事件（攻击类severity=high，其他low）
+  - action.completed: 动作完成事件（severity=low）
+  - action.interrupted: 动作中断事件（severity=medium）
+- 新增3个unsubscribe字段：actionStartedUnsubscribe/actionCompletedUnsubscribe/actionInterruptedUnsubscribe
+- stop()方法中添加清理逻辑
+- 事件通过recordEvent记录到eventBuffer，自动包含在PerceptionFrame.events中
+
+#### 4. ActionSystem语义事件发射
+- ActionSystem新增previousStates Map跟踪每个实体的前一状态
+- handleStateChange方法增强：
+  - 发射通用状态事件：action.{state}（casting/active/cooling/interrupted/idle）
+  - 发射语义事件：
+    - action.started: 从idle进入casting或active时
+    - action.completed: 从cooling进入idle，或即时动作从active进入idle时
+    - action.interrupted: 状态变为interrupted时
+- 修复：使用Event类实例而非纯对象发射事件（解决event.isCancelled is not a function错误）
+- ActionStateMachine.completeAction()修改：清除前先发射idle状态事件（用于检测动作完成）
+
+#### 5. 测试（15个，全部通过）
+- ActionPresets工厂函数（9测试：7种预设+选项覆盖+getAllPresets）
+- ActionPresets与ActionSystem集成（2测试：注册预设启动动作+动作完成发射事件）
+- 动作事件感知集成（4测试：action.started/action.interrupted/action.completed+攻击事件severity=high）
+
+**关键修复**：
+- 测试中事件过滤用e.type而非e.name（name是描述文本，type是事件类型）
+- 测试中事件字段用e.name而非e.description
+- 大小写敏感问题：includes("attack")改为toLowerCase().includes("attack")
+
+### 验证结果
+
+- **单元测试**：1258/1258 全绿（M11阶段1结束1243，+15）
+- **构建**：0错误
+- **GitHub**：待推送
+
+### M11进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | ActionStateMachine动作状态机核心 | ✅ 完成 |
+| 2 | ActionPresets+动作事件感知集成 | ✅ 完成（本轮） |
+| 3 | 交互系统深化（NPC-NPC+NPC-环境+交互事件） | ⏳ 待开发 |
+| 4 | 性能优化（空间分区+对象池+帧率优化+基准） | ⏳ 待开发 |
+| 5 | 端到端演示+SDK v2.7.0发布 | ⏳ 待开发 |
+
+**M11整体进度：40%（阶段1-2完成）**
+
+### 下一轮计划
+
+1. 推送本轮commit
+2. M11阶段3：交互系统深化（NPC-NPC交互增强+NPC-环境交互+交互事件系统+与感知集成）
+3. 运行npm test确认无回归
+
+### 迭代统计
+
+- 总迭代轮数：96轮
+- 单元测试：1258个（M10结束1208，M11阶段1+35，阶段2+15）
+- 测试文件：85个
+- 活跃bug：0个
+- SDK版本：v2.6.0（M10），目标v2.7.0（M11）
+

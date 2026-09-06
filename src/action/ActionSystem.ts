@@ -7,6 +7,7 @@
 
 import type { World, WorldSystem } from "../engine/World.js";
 import type { EventSystem } from "../event/EventSystem.js";
+import { Event } from "../event/Event.js";
 import { ActionStateMachine } from "./ActionStateMachine.js";
 import type {
   ActionDefinition,
@@ -21,6 +22,7 @@ export class ActionSystem implements WorldSystem {
 
   private readonly machines = new Map<string, ActionStateMachine>();
   private readonly defaultDefinitions = new Map<string, ActionDefinition>();
+  private readonly previousStates = new Map<string, ActionState>();
   private events: EventSystem | null = null;
 
   // --- Entity state machine management ---
@@ -143,13 +145,49 @@ export class ActionSystem implements WorldSystem {
 
   private handleStateChange(payload: ActionEventPayload): void {
     if (!this.events) return;
-    // Emit a generic action state change event.
-    const eventType = `action.${payload.state}`;
-    this.events.emit({
-      type: eventType,
+    const entityId = payload.entityId;
+    const prevState = this.previousStates.get(entityId) ?? "idle";
+    const newState = payload.state;
+
+    // Emit generic action state change event.
+    this.events.emit(new Event({
+      type: `action.${newState}`,
       payload,
-      sourceId: payload.entityId,
-    } as any);
+      sourceId: entityId,
+    }));
+
+    // Emit semantic events based on state transitions.
+    if ((prevState === "idle" || prevState === undefined) && (newState === "casting" || newState === "active")) {
+      this.events.emit(new Event({
+        type: "action.started",
+        payload,
+        sourceId: entityId,
+      }));
+    }
+    if (newState === "interrupted") {
+      this.events.emit(new Event({
+        type: "action.interrupted",
+        payload,
+        sourceId: entityId,
+      }));
+    }
+    if (prevState === "cooling" && newState === "idle") {
+      this.events.emit(new Event({
+        type: "action.completed",
+        payload,
+        sourceId: entityId,
+      }));
+    }
+    // Also emit completed for instant actions (active → idle with no cooling).
+    if (prevState === "active" && newState === "idle" && payload.progress >= 1) {
+      this.events.emit(new Event({
+        type: "action.completed",
+        payload,
+        sourceId: entityId,
+      }));
+    }
+
+    this.previousStates.set(entityId, newState);
   }
 
   // --- Serialization ---

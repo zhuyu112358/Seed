@@ -231,6 +231,10 @@ export class ActionStateMachine {
 
   private completeAction(): void {
     if (!this.current) return;
+    // Emit idle state transition before clearing, so listeners can detect completion.
+    this.current.state = "idle";
+    this.current.progress = 1;
+    this.emitStateChange();
     this.current = null;
   }
 
