@@ -5,6 +5,111 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-09-06
+
+### Milestone M12: NPC AI Deepening + World Narrative Enhancement
+
+#### Added
+- **NPC Memory System** (`src/npc/NPCMemorySystem.ts`): Short/long term memory with decay and retrieval
+  - MemoryType: 7 types (interaction/emotion/knowledge/action/location/sensory/custom)
+  - MemoryImportance: 5 levels (trivial/low/medium/high/critical) with importance weights
+  - NPCMemoryConfig: maxShortTermMemories=50, maxLongTermMemories=200, decay rates, auto-forget
+  - Memory storage: short-term (decay over time) + long-term (promoted from high-importance)
+  - Memory retrieval: filter by type/importance/relatedEntity/minDecay, with limit
+  - Auto-promotion: high-importance memories promoted to long-term after decay threshold
+  - Auto-forget: low-decay memories removed when autoForget enabled
+  - Events: memory.created/promoted/forgotten
+  - serialize/deserialize support
+- **NPC Personality System** (`src/npc/NPCPersonalitySystem.ts`): Big Five OCEAN personality model
+  - BigFiveTraits: openness/conscientiousness/extraversion/agreeableness/neuroticism (0-100)
+  - 8 personality archetypes: socialite/guardian/explorer/warrior/diplomat/worrier/achiever/laidback
+  - BehavioralTendencies: 8 derived tendencies (social/risk/aggression/cooperation/curiosity/patience/anxiety/leadership)
+  - DecisionStyle: 5 dimensions (riskPreference/patienceLevel/socialPreference/conflictStyle/infoProcessing)
+  - Behavior modifiers: per-action-type modifier based on personality
+  - Memory importance modifiers: per-memory-type modifier based on personality
+  - Events: personality.changed/trait_changed
+  - setPersonalityFromArchetype: quick setup from 8 archetypes
+- **GOAP (Goal-Oriented Action Planning)** (`src/npc/GoapSystem.ts` + `GoapPlanner.ts`):
+  - WorldState: flat key-value pair state representation
+  - GoapGoal: id/name/priority/targetState/relevant flag
+  - GoapAction: id/name/preconditions/effects/cost/duration/available
+  - GoapPlanner: A* search planner with heuristic = unmatched goal state keys
+  - Config: maxSearchDepth=20, maxNodesExplored=1000
+  - Plan execution: startPlan/completeCurrentAction/interruptPlan, tick-based duration advancement
+  - Events: goap.plan_started/action_started/action_completed/plan_completed/plan_interrupted
+  - Goal selection: highest priority relevant goal
+- **Behavior Tree Enhancement** (`src/behavior/BehaviorEnhanced.ts` + `BehaviorTreeBuilder.ts`):
+  - Enhanced composites: RandomSequence/RandomSelector (random child order), StatefulSelector (remembers Running child)
+  - Enhanced decorators: Cooldown (post-success cooldown), TimeLimit (tick deadline), ForceSuccess/ForceFailure, RepeatUntil (repeat until target status), Counter (count ticks, success at target)
+  - Utility nodes: SubTree (reference child tree), LogNode (log tick)
+  - BehaviorTreeBuilder: fluent API for building behavior trees
+  - Blackboard enhancement: getOrDefault/consume/increment, scoped access (setScoped/getScoped/keysInScope)
+- **NPC Daily Schedule** (`src/npc/ScheduleSystem.ts`): Time-based daily routine system
+  - ScheduleActivity: id/name/startTime/endTime/location/priority/actionType/enabled/metadata
+  - 3 schedule templates: diurnal/nocturnal/shift_worker
+  - getActivityAtTime: supports cross-midnight wrap-around
+  - Manual control: startActivity/completeActivity/skipActivity
+  - Auto-transition: tick reads WorldClock time and switches activities
+  - Conflict resolution: highest priority activity wins
+  - Events: schedule.activity_started/completed/skipped
+  - serialize/deserialize support
+- **Dynamic Narrative System** (`src/narrative/DynamicNarrativeSystem.ts`): Dynamic narrative generation
+  - DynamicNarrativeArc: multi-phase narrative arc with status (available/active/completed/failed/paused)
+  - NarrativePhase: id/name/description/isFinal
+  - DynamicNarrativeEvent: 7 types (plot/character/setting/theme/conflict/climax/resolution), auto-linked event chains
+  - DynamicNarrativeBranch + DynamicNarrativeChoice: branching narrative with weighted random selection
+  - Consequences: auto-applied to narrativeState on event recording
+  - Player influence: recordPlayerAction/getPlayerInfluence
+  - Narrative state: get/set/getAll
+  - Events: narrative.arc_started/completed/failed/phase_changed/event_recorded/branch_created/choice_selected
+  - maxEventHistory=500 default
+  - serialize/deserialize support
+  - Note: coexists with M6 NarrativeSystem (uses Dynamic* prefix naming)
+- **Task Chain System** (`src/task/TaskChainSystem.ts`): Multi-step task chains with dependencies
+  - TaskChainStep: id/name/description/dependencies/status/narrative
+  - ChainStepStatus: 6 states (locked/available/active/completed/failed/skipped)
+  - TaskChain: id/name/description/status/priority/participants/narrative/steps
+  - Step state machine: startStep/completeStep/failStep/skipStep
+  - Dependency resolution: checkDependencies (completed OR skipped = satisfied)
+  - Auto-unlock: completeStep/skipStep unlocks dependent steps
+  - Auto-complete: chain completes when all steps finished
+  - failChainOnStepFailure config: step failure may cause chain failure
+  - Progress: getChainProgress (0-1), getNextStep
+  - Events: taskchain.chain_started/completed/failed/step_started/completed/failed/skipped/unlocked
+  - serialize/deserialize support
+  - Note: coexists with M6 TaskSystem (uses TaskChain* naming)
+- **Narrative Integration** (`src/narrative/NarrativeIntegration.ts`): World state narrative + NPC-narrative bridge
+  - WorldStateNarrativeSystem: rule-based world state narrative generation
+    - WorldStateNarrativeRule: condition callback + narrative template + cooldown + enabled
+    - WorldStateSnapshot: tick/worldTime/entityCount/soulCount/weather/timeOfDay/custom
+    - Rule evaluation in tick, emits narrative.world_state events
+    - maxRulesPerTick performance limit
+  - NpcNarrativeBridge: two-way NPC-narrative integration
+    - NpcNarrativeMapping: NPC behavior type → narrative template (supports npcId="*" wildcard)
+    - triggerNarrativeFromBehavior: manually trigger NPC behavior → narrative event
+    - NarrativeInfluence: narrative event → NPC behavior modifier with duration
+    - getCombinedModifier: merge all active influences
+    - Auto-expiry: tick removes expired influences
+    - Events: narrative.npc_behavior
+  - serialize/deserialize support
+- **SoulPerceptionSystem M12 Event Integration** (`src/entity/SoulPerceptionSystem.ts`):
+  - 6 new event listeners: narrative.event_recorded/arc_started/phase_changed/choice_selected + taskchain.step_completed/chain_completed
+  - All events recorded in PerceptionFrame.events with appropriate severity levels
+  - Lazy registration on first tick, cleanup in stop()
+
+#### Changed
+- SoulPerceptionSystem: extended with M12 narrative/task chain event perception (backward compatible, new fields optional)
+- Blackboard: enhanced with getOrDefault/consume/increment and scoped access methods
+- SDK exports: added npc (memory/personality/GOAP/schedule), narrative (dynamic + integration), task (task chain) modules
+
+#### Fixed
+- No bug fixes in this release (M12 was feature-focused; BUG-019 was fixed in M9)
+
+#### Tests
+- 1567 total tests (M11: 1306, M12 added 261 tests across 8 phases)
+- M12 phase breakdown: memory(24) + personality(41) + GOAP(36) + behavior tree(40) + schedule(32) + dynamic narrative(36) + task chain(30) + narrative integration(22)
+- M12 end-to-end demo: examples/m12-demo.ts (50/50 assertions pass)
+
 ## [2.7.0] - 2026-09-06
 
 ### Milestone M11: Action System Enhancement + Interaction System Deepening + Performance Optimization

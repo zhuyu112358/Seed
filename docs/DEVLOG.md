@@ -9324,3 +9324,105 @@ M11已完成，M12里程碑方向尚未在MANAGEMENT_STRATEGY.md中定义。按�
 - 活跃bug：0个
 - SDK版本：v2.7.0（M11），目标v2.8.0（M12，下一轮发布）
 
+
+
+---
+
+## 2026-09-06 M12阶段9：端到端演示+SDK v2.8.0发布（第109轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M12阶段1-8已完成并推送（1567测试），0待推送
+- 预研报告无新增
+
+#### 2. M12端到端演示（examples/m12-demo.ts）
+- 创建完整M12端到端演示，覆盖全部8个阶段：
+  - Phase 1: NPC Memory System（4断言：添加记忆/按类型检索/长期记忆提升/关键记忆保留）
+  - Phase 2: NPC Personality System（6断言：原型创建/倾向推导/决策风格/特质修改）
+  - Phase 3: GOAP（4断言：规划生成/动作数量/首动作/计划执行）
+  - Phase 4: Behavior Tree Enhancement（6断言：树执行/饥饿减少/冷却/作用域访问/Counter）
+  - Phase 5: NPC Daily Schedule（6断言：模板设置/睡眠/工作/地点偏好/手动控制）
+  - Phase 6: Dynamic Narrative（11断言：弧启动/事件记录/后果应用/阶段推进/分支/选择/玩家影响）
+  - Phase 7: Task Chain（7断言：链启动/步骤可用/步骤完成/依赖解锁/自动完成/进度）
+  - Phase 8: Narrative Integration（6断言：叙事事件感知/世界状态叙事/NPC行为→叙事/叙事→NPC影响）
+- **50/50断言全部通过**
+- 关键API修正（演示开发过程中发现）：
+  - NPCMemorySystem: 无registerNPC（addMemory自动注册），getMemoryStats返回totalCount（非totalMemories），getMemories返回{totalCount, memories[]}（非直接数组）
+  - NPCPersonalitySystem: setPersonalityFromArchetype(entityId, name)（非setPersonality(entityId, archetype)），deriveTendencies(traits)（非deriveBehavioralTendencies(entityId)），modifyTrait用delta（非绝对值），BehavioralTendencies字段为aggressionTendency/socialTendency（非aggression/sociability），DecisionStyle字段为riskPreference（非riskTaking）
+  - GoapSystem: 无registerNPC，GoapGoal需要relevant: true，plan(entityId)返回GoapPlanResult（含success字段，非null判断），actions为GoapAction[]（需用.id访问）
+  - BehaviorTree: Counter达到targetCount后重置count，第N tick返回Success后第N+1 tick回到Failure
+  - ScheduleSystem: diurnal模板中work活动无location（只有sleep有），startActivity需要activityId存在于模板中（leisure不在模板中，应用evening）
+
+#### 3. SDK v2.8.0发布
+- package.json: version 2.7.0→2.8.0
+- CHANGELOG.md: 添加v2.8.0完整条目（M12全部新增/变更/测试统计）
+- git tag: seed-sdk-v2.8.0
+
+### 验证结果
+
+- **单元测试**：1567/1567 全绿
+- **构建**：0错误
+- **M12端到端演示**：50/50 通过
+- **GitHub**：待推送
+
+### 🏆 M12里程碑完成！
+
+| 完成标准 | 状态 |
+|----------|------|
+| NPC AI深化（行为树增强+GOAP+NPC记忆+NPC个性+NPC日常作息） | ✅ 5/5子系统 |
+| 世界叙事增强（动态叙事+任务链+世界状态叙事+玩家行为影响+叙事事件感知） | ✅ 5/5 |
+| NPC与叙事集成（NPC行为驱动叙事+叙事事件影响NPC行为） | ✅ |
+| 1400+测试 | ✅（1567，超出167） |
+| 无P0/P1 bug | ✅（0活跃） |
+| M12端到端演示 | ✅（50/50通过） |
+
+**M12整体进度：100% 🎉**
+
+### M12各阶段测试统计
+
+| 阶段 | 内容 | 测试数 |
+|------|------|--------|
+| 1 | NPC记忆系统 | 24 |
+| 2 | NPC个性系统 | 41 |
+| 3 | GOAP目标导向行动规划 | 36 |
+| 4 | 行为树增强 | 40 |
+| 5 | NPC日常作息 | 32 |
+| 6 | 动态叙事生成 | 36 |
+| 7 | 任务链深化 | 30 |
+| 8 | 叙事集成 | 22 |
+| **合计** | | **261** |
+
+M11结束1306 + M12新增261 = **1567测试**
+
+### SDK版本历史
+
+| 版本 | 里程碑 | 测试数 | 发布日期 |
+|------|--------|--------|----------|
+| v1.0.0 | M2 SDK重写 | - | 2026-09 |
+| v1.1.0 | M2碰撞/感知完善 | 550 | 2026-09 |
+| v1.2.0 | M3资源系统 | - | 2026-09 |
+| v2.0.0 | M4序列化/生成 | - | 2026-09 |
+| v2.1.0 | M5世界规则/生态 | - | 2026-09 |
+| v2.2.0 | M6行为树/任务/叙事 | - | 2026-09 |
+| v2.3.0 | M7社交/交易/组队 | - | 2026-09 |
+| v2.4.0 | M8建筑/领地 | 1033 | 2026-09 |
+| v2.5.0 | M9群体行为/导航 | - | 2026-09 |
+| v2.6.0 | M10感知系统深化 | 1208 | 2026-09 |
+| v2.7.0 | M11动作/交互/性能 | 1306 | 2026-09 |
+| **v2.8.0** | **M12 NPC AI/叙事** | **1567** | **2026-09-06** |
+
+### 下一轮计划
+
+1. 重试推送本轮commit（含tag seed-sdk-v2.8.0）
+2. M12完成确认，更新MANAGEMENT_STRATEGY.md M12状态为完成
+3. 进入M13里程碑（待定义：可能方向——多人在线/网络同步/持久化/编辑器工具等，需用户确认）
+
+### 迭代统计
+
+- 总迭代轮数：109轮
+- 单元测试：1567个
+- 测试文件：96个
+- 活跃bug：0个
+- SDK版本：**v2.8.0（M12，本轮发布）**
+
