@@ -478,13 +478,26 @@ export type {
 export { DEFAULT_PROFILER_CONFIG, PerformanceProfiler, DEFAULT_BENCHMARK_CONFIG, runBenchmark } from '../performance/index.js';
 
 
-// --- NPC System (M12 Phase 1) ---
+// --- NPC System (M12) ---
 export type {
   MemoryType,
   MemoryImportance,
   MemoryEntry,
   NPCMemoryConfig,
   MemoryQueryResult,
+  BigFiveTraits,
+  BehavioralTendencies,
+  DecisionStyle,
+  PersonalityProfile,
+  PersonalityConfig,
 } from '../npc/index.js';
-export { DEFAULT_NPC_MEMORY_CONFIG, IMPORTANCE_WEIGHT, NPCMemorySystem } from '../npc/index.js';
+export {
+  DEFAULT_NPC_MEMORY_CONFIG,
+  IMPORTANCE_WEIGHT,
+  NPCMemorySystem,
+  NEUTRAL_PERSONALITY,
+  PERSONALITY_ARCHETYPES,
+  DEFAULT_PERSONALITY_CONFIG,
+  NPCPersonalitySystem,
+} from '../npc/index.js';
 

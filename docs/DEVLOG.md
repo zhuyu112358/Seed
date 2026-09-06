@@ -8669,3 +8669,92 @@ M11已完成，M12里程碑方向尚未在MANAGEMENT_STRATEGY.md中定义。按�
 - 活跃bug：0个
 - SDK版本：v2.7.0（M11），目标v2.8.0（M12）
 
+
+
+---
+
+## 2026-09-06 M12阶段2：NPC个性系统（第102轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M12阶段1（NPC记忆系统）已完成并推送（1330测试）
+- 0待推送，版本2.7.0
+- 预研报告无新增（上一轮已查看001_world_models_multiagent_frontier.md）
+
+#### 2. M12阶段2：NPC个性系统
+- 创建src/npc/PersonalityTypes.ts
+  - BigFiveTraits: 大五人格OCEAN（openness/conscientiousness/extraversion/agreeableness/neuroticism），每项0-100
+  - NEUTRAL_PERSONALITY: 全50中性人格
+  - PERSONALITY_ARCHETYPES: 8种预设原型（socialite/guardian/explorer/warrior/diplomat/worrier/achiever/laidback）
+  - BehavioralTendencies: 8种行为倾向（social/risk/aggression/cooperation/curiosity/patience/anxiety/leadership），0-1
+  - DecisionStyle: 5维决策风格（riskPreference/patienceLevel/socialPreference/conflictStyle/learningStyle），每维5档
+  - PersonalityProfile: entityId/traits/tendencies/decisionStyle/archetype/metadata
+  - PersonalityConfig: autoDeriveTendencies/autoDeriveDecisionStyle/minTrait/maxTrait
+  - DEFAULT_PERSONALITY_CONFIG
+- 创建src/npc/NPCPersonalitySystem.ts（WorldSystem）
+  - setPersonality(entityId, traits, options?): 设置人格，自动钳制0-100，自动推导倾向和决策风格
+  - setPersonalityFromArchetype(entityId, archetypeName): 从预设原型设置人格
+  - getPersonality/getOrCreatePersonality/hasPersonality/removePersonality: 人格查询管理
+  - modifyTrait(entityId, trait, delta): 修改单个人格特质，重新推导倾向和决策风格
+  - deriveTendencies(traits): 从大五人格推导8种行为倾向（加权公式）
+  - deriveDecisionStyle(traits): 从行为倾向推导5维决策风格（分桶）
+  - getBehaviorModifier(entityId, actionType): 基于人格的行为修正器（0.5-1.5），支持attack/talk/trade/explore/gather/flee/lead/follow等
+  - getMemoryImportanceModifier(entityId, memoryType): 基于人格的记忆重要性修正器，支持interaction/emotion/knowledge/action/location
+  - getArchetypeNames/getArchetype: 原型查询
+  - 事件发射：personality.changed/personality.trait_changed
+  - serialize/deserialize: 持久化
+- 更新src/npc/index.ts: barrel导出包含记忆和个性模块
+- 更新src/sdk/index.ts: SDK导出包含个性类型和系统
+
+#### 3. 测试（41个，全部通过）
+- 人格管理（10测试：创建/钳制/自动推导/原型/查询/创建默认/存在检查/删除）
+- 特质修改（4测试：修改/钳制/重新推导/未知实体）
+- 倾向推导（6测试：高外向→高社交/低宜人→高攻击/高尽责→高耐心/高神经质→高焦虑/高外向尽责→高领导力/中性人格→中性倾向）
+- 决策风格推导（4测试：高风险/低风险/高社交/高攻击→竞争）
+- 行为修正器（6测试：高攻击→>1攻击/低攻击→<1攻击/高社交→>1交谈/高焦虑→>1逃跑/未知实体→1.0/未知动作→1.0）
+- 记忆重要性修正器（2测试：高社交→>1交互记忆/高好奇→>1知识记忆）
+- 原型（3测试：获取所有/获取单个/所有原型有效值）
+- 事件（2测试：personality.changed/personality.trait_changed）
+- 序列化（1测试）
+- 配置（3测试：默认配置/中性人格/禁用自动推导）
+
+**关键修复**：
+- PersonalityTypes.ts中3处JSDoc注释`**`应为`/**`，导致esbuild解析失败
+
+### 验证结果
+
+- **单元测试**：1371/1371 全绿（M12阶段1结束1330，+41）
+- **构建**：0错误
+- **GitHub**：待推送
+
+### M12进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | NPC记忆系统 | ✅ 完成 |
+| 2 | NPC个性系统（大五人格+行为倾向+决策风格） | ✅ 完成（本轮） |
+| 3 | GOAP目标导向行动规划 | ⏳ 下一轮 |
+| 4 | 行为树增强 | ⏳ 待开发 |
+| 5 | NPC日常作息 | ⏳ 待开发 |
+| 6 | 动态叙事生成 | ⏳ 待开发 |
+| 7 | 任务链深化 | ⏳ 待开发 |
+| 8 | 世界状态叙事+叙事事件感知+集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.8.0发布 | ⏳ 待开发 |
+
+**M12整体进度：22%（阶段1-2完成）**
+
+### 下一轮计划
+
+1. 推送本轮commit
+2. M12阶段3：GOAP目标导向行动规划（Goal+Action+Cost+Planner+目标优先级+动态重规划）
+3. 运行npm test确认无回归
+
+### 迭代统计
+
+- 总迭代轮数：102轮
+- 单元测试：1371个（M11结束1306，M12阶段1+24，阶段2+41）
+- 测试文件：90个
+- 活跃bug：0个
+- SDK版本：v2.7.0（M11），目标v2.8.0（M12）
+

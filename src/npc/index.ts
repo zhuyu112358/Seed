@@ -1,4 +1,4 @@
-// NPC module exports (M12 Phase 1).
+// NPC module exports (M12).
 export type {
   MemoryType,
   MemoryImportance,
@@ -8,3 +8,17 @@ export type {
 } from "./MemoryTypes.js";
 export { DEFAULT_NPC_MEMORY_CONFIG, IMPORTANCE_WEIGHT } from "./MemoryTypes.js";
 export { NPCMemorySystem } from "./NPCMemorySystem.js";
+
+export type {
+  BigFiveTraits,
+  BehavioralTendencies,
+  DecisionStyle,
+  PersonalityProfile,
+  PersonalityConfig,
+} from "./PersonalityTypes.js";
+export {
+  NEUTRAL_PERSONALITY,
+  PERSONALITY_ARCHETYPES,
+  DEFAULT_PERSONALITY_CONFIG,
+} from "./PersonalityTypes.js";
+export { NPCPersonalitySystem } from "./NPCPersonalitySystem.js";
