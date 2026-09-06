@@ -374,3 +374,15 @@ export type {
 } from '../orca/OrcaTypes.js';
 export { DEFAULT_ORCA_CONFIG } from '../orca/OrcaTypes.js';
 export { OrcaSystem } from '../orca/OrcaSystem.js';
+
+// --- Formation System (M9) ---
+export type {
+  FormationType,
+  FormationSlot,
+  FormationConfig,
+  Formation,
+  FormationResult,
+  FormationSlotPosition,
+} from '../formation/FormationTypes.js';
+export { DEFAULT_FORMATION_CONFIG } from '../formation/FormationTypes.js';
+export { FormationSystem } from '../formation/FormationSystem.js';

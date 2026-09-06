@@ -7152,3 +7152,128 @@ BUG-019**不是代码bug**，而是测试配置与期望不匹配。FlockingSyst
 - 活跃bug：0个（BUG-019已关闭）
 - SDK版本：v2.4.0（M8完成），M9目标v2.5.0
 
+
+
+---
+
+## 2026-09-06 M9阶段3：编队控制系统（第86轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- BUG-019已关闭（第85轮），0待推送，1048/1048全绿
+- BUG-019根因：测试配置过于保守（maxForce=1时120tick只能移动x≈2.0），非代码bug
+
+#### 2. 编队控制系统 (`src/formation/`)
+
+**FormationTypes** (`FormationTypes.ts`)
+- FormationType：line/column/wedge/circle/v/custom（6种阵型）
+- FormationSlot：index+offset+memberId
+- FormationConfig：spacing/positionTolerance/circleRadius
+- DEFAULT_FORMATION_CONFIG：spacing=2.0, positionTolerance=0.5, circleRadius=3.0
+- Formation：id/type/leaderId/name/slots/customOffsets/active/createdTick
+- FormationResult：success/formationId/slotIndex/error
+- FormationSlotPosition：slotIndex/memberId/position/inPosition
+
+**FormationSystem** (`FormationSystem.ts`) — WorldSystem
+- createFormation：创建编队（6种类型，custom需提供customOffsets）
+- disbandFormation：解散编队（清理所有member映射）
+- getFormation/getFormations/getFormationsByLeader/getMemberFormation
+- addMember：添加成员（自动分配下一个空槽位，或指定slotIndex）
+- removeMember：移除成员（不能移除leader）
+- transferLeadership：转让领导权（交换slot 0与新leader的slot）
+- setFormationType：切换阵型类型（自动重算所有slot offset）
+- computeSlotOffsets：6种阵型的slot偏移计算
+  - line：z轴展开（1=+z, 2=-z, 3=+2z...）
+  - column：x轴负方向展开（纵队）
+  - wedge：V形/楔形（1=(-s,+s), 2=(-s,-s), 3=(-2s,+2s)...）
+  - v：宽V形（z展开更大，x展开更小）
+  - circle：圆形围绕leader
+  - custom：自定义偏移数组
+- computeSlotPositions：基于leader位置计算所有slot的世界坐标
+- getMemberTargetPosition：获取单个成员的目标位置
+- isFormationInPosition：检查所有成员是否在位置容差内
+- tick：WorldSystem接口（编队系统按需计算，无状态更新）
+- serialize/deserialize（含config+memberToFormation映射）
+
+#### 3. SDK导出 (`src/sdk/index.ts`)
+- formation模块全部导出（FormationType/FormationSlot/FormationConfig/Formation/FormationResult/FormationSlotPosition/DEFAULT_FORMATION_CONFIG/FormationSystem）
+
+#### 4. 测试 (`tests/formation-system.test.ts`)
+- 28个新测试，覆盖：
+  - 编队管理：8个（创建line/各类型/custom失败/custom成功/leader重复/解散/不存在/按leader查询）
+  - 成员管理：7个（添加/多成员line/指定slot/重复编队/移除/不能移除leader/转让领导权）
+  - Slot偏移：6个（column/wedge/v/custom/切换类型重算）
+  - 位置计算：6个（line位置/成员目标/非成员null/inPosition/不在位置/全员就位）
+  - 序列化：2个（序列化反序列化/stop清理）
+
+**关键修复**：
+1. "get formations by leader"：同一leader不能创建2个编队，修复为3个不同leader
+2. "isFormationInPosition"：需包含leader位置在memberPositions中，否则leader的inPosition为false
+
+### 架构设计
+
+**6种阵型slot偏移模式**：
+```
+line（横队）:     column（纵队）:   wedge（楔形）:
+  L                  L                  L
+  1 2              1                1   2
+  3 4              2              3       4
+                                     5   6
+
+v（宽V形）:       circle（圆形）:    custom（自定义）:
+    L                  2                  L
+  1   2              1   3            1   2
+  3   4                4              3   4
+```
+
+**与Flocking/ORCA的关系**：
+- FormationSystem：计算编队成员的目标位置（stateless，按需计算）
+- FlockingSystem：提供群体行为（分离/对齐/聚合），可用于编队移动
+- ORCA：提供局部避障，确保编队成员移动时不碰撞
+- 应用层：将FormationSystem的目标位置作为Flocking/ORCA的preferredVelocity，实现编队移动
+
+**与SoulArena分工**：
+- SoulArena：编队创建/解散决策、leader选择、阵型切换、成员分配
+- Seed：编队slot偏移计算、目标位置计算、位置容差检查
+
+### 关键特性
+
+- **6种阵型**：line/column/wedge/circle/v/custom，可运行时切换
+- **自定义阵型**：custom类型支持任意offset数组
+- **领导权转让**：自动交换slot，保持编队结构
+- **位置容差检查**：positionTolerance可配置，判断成员是否就位
+- **完全可配置**：spacing/positionTolerance/circleRadius通过FormationConfig设置
+- **向后兼容**：不影响现有系统
+
+### 验证结果
+
+- **单元测试**：1076/1076 全绿（M9阶段2结束1048，+28）
+- **构建**：0错误
+- **GitHub**：待推送（本轮commit）
+
+### M9里程碑进度：60%
+
+- ✅ 阶段1：群体行为系统Flocking（17测试，BUG-019已关闭）
+- ✅ 阶段2：局部避障ORCA（15测试）
+- ✅ 阶段3：编队控制系统（28测试）
+- ⬜ 阶段4：路径成本修饰器+导航事件感知
+- ⬜ 阶段5：端到端验证+SDK v2.5.0发布
+
+### 下一轮计划
+
+1. M9阶段4：路径成本修饰器+导航事件感知
+   - PathCostModifier：地形类型/危险区/建筑影响路径成本
+   - 与A*寻路集成（cost函数可配置）
+   - 导航事件（path_changed/path_blocked/arrived）
+   - SoulPerceptionSystem集成导航事件
+   - 15+测试
+
+### 迭代统计
+
+- 总迭代轮数：86轮
+- 单元测试：1076个（M9阶段2结束1048，+28）
+- 测试文件：78个
+- 活跃bug：0个
+- SDK版本：v2.4.0（M8完成），M9目标v2.5.0
+
