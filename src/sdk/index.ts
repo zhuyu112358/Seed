@@ -453,3 +453,16 @@ export type {
 } from '../action/index.js';
 export { DEFAULT_ACTION_DEFINITION, ActionStateMachine, ActionSystem } from '../action/index.js';
 
+
+// --- Interaction System (M11 phase 3) ---
+export type {
+  InteractionType,
+  InteractionState,
+  InteractionDefinition,
+  InteractionParticipant,
+  InteractionSession,
+  InteractionStartResult,
+  InteractionEventPayload,
+} from '../interaction/index.js';
+export { DEFAULT_INTERACTION_DEFINITION, InteractionSessionSystem } from '../interaction/index.js';
+

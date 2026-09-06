@@ -295,6 +295,12 @@ export class SoulPerceptionSystem implements WorldSystem {
   private actionCompletedUnsubscribe: (() => void) | null = null;
   /** Unsubscribe function for action.interrupted event (M11), set on first tick. */
   private actionInterruptedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for interaction.started event (M11 phase 3), set on first tick. */
+  private interactionStartedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for interaction.completed event (M11 phase 3), set on first tick. */
+  private interactionCompletedUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe function for interaction.interrupted event (M11 phase 3), set on first tick. */
+  private interactionInterruptedUnsubscribe: (() => void) | null = null;
 
   constructor(config?: SoulPerceptionConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -1226,6 +1232,51 @@ export class SoulPerceptionSystem implements WorldSystem {
       });
     }
 
+    // Listen for interaction started events (M11 phase 3).
+    if (!this.interactionStartedUnsubscribe) {
+      this.interactionStartedUnsubscribe = events.on("interaction.started", (evt: any) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `interaction_started_${p.sessionId}_${evt.timestamp}`,
+          "interaction.started",
+          `Interaction started: ${p.initiatorId}${p.targetId ? ` ↔ ${p.targetId}` : ""} (${p.interactionName})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for interaction completed events (M11 phase 3).
+    if (!this.interactionCompletedUnsubscribe) {
+      this.interactionCompletedUnsubscribe = events.on("interaction.completed", (evt: any) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `interaction_completed_${p.sessionId}_${evt.timestamp}`,
+          "interaction.completed",
+          `Interaction completed: ${p.initiatorId}${p.targetId ? ` ↔ ${p.targetId}` : ""} (${p.interactionName})`,
+          "low",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
+    // Listen for interaction interrupted events (M11 phase 3).
+    if (!this.interactionInterruptedUnsubscribe) {
+      this.interactionInterruptedUnsubscribe = events.on("interaction.interrupted", (evt: any) => {
+        const p = evt.payload;
+        this.recordEvent(
+          `interaction_interrupted_${p.sessionId}_${evt.timestamp}`,
+          "interaction.interrupted",
+          `Interaction interrupted: ${p.initiatorId}${p.targetId ? ` ↔ ${p.targetId}` : ""} (${p.interactionName})`,
+          "medium",
+          { x: 0, y: 0, z: 0 },
+          true,
+        );
+      });
+    }
+
     // Lazy-locate WeatherSimulator.
     if (!this.weather || !world.systems.includes(this.weather)) {
       this.weather = world.systems.find(s => s instanceof WeatherSimulator) as WeatherSimulator | null ?? null;
@@ -1728,5 +1779,9 @@ export class SoulPerceptionSystem implements WorldSystem {
     if (this.actionStartedUnsubscribe) { this.actionStartedUnsubscribe(); this.actionStartedUnsubscribe = null; }
     if (this.actionCompletedUnsubscribe) { this.actionCompletedUnsubscribe(); this.actionCompletedUnsubscribe = null; }
     if (this.actionInterruptedUnsubscribe) { this.actionInterruptedUnsubscribe(); this.actionInterruptedUnsubscribe = null; }
+    // M11 phase 3 interaction event cleanup.
+    if (this.interactionStartedUnsubscribe) { this.interactionStartedUnsubscribe(); this.interactionStartedUnsubscribe = null; }
+    if (this.interactionCompletedUnsubscribe) { this.interactionCompletedUnsubscribe(); this.interactionCompletedUnsubscribe = null; }
+    if (this.interactionInterruptedUnsubscribe) { this.interactionInterruptedUnsubscribe(); this.interactionInterruptedUnsubscribe = null; }
   }
 }

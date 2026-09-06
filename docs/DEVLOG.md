@@ -8266,3 +8266,95 @@ M10（感知系统深化）全部5个阶段完成：
 - 活跃bug：0个
 - SDK版本：v2.6.0（M10），目标v2.7.0（M11）
 
+
+
+---
+
+## 2026-09-06 M11阶段3：交互系统深化（第97轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M11阶段1-2已完成（1258测试）
+- 重试推送commit 74d28d9（M11阶段2）成功
+- 0待推送，工作区干净
+
+#### 2. M11阶段3：InteractionSessionSystem交互会话系统
+- 创建src/interaction/模块目录
+- **InteractionTypes.ts**：
+  - InteractionType: dialogue/trade/party_invite/inspect/use_object/harvest/craft/build/greet/follow/custom（11种）
+  - InteractionState: pending/active/completed/interrupted/cancelled（5种状态）
+  - InteractionDefinition: type/name/duration/range/minParticipants/maxParticipants/interruptible/requireMutualRange/metadata
+  - DEFAULT_INTERACTION_DEFINITION: 默认值（duration=0/range=0/minParticipants=1/maxParticipants=0/interruptible=true）
+  - InteractionParticipant: entityId/role(initiator/target/observer/participant)/joinedAt
+  - InteractionSession: id/type/definition/state/participants/elapsedTicks/progress/createdAt/startedAt/endedAt/context
+  - InteractionStartResult: success/reason/session
+  - InteractionEventPayload: sessionId/type/interactionName/state/progress/initiatorId/targetId/participantIds
+- **InteractionSessionSystem.ts**（WorldSystem）：
+  - registerDefinition/getDefinition/getDefinitions：交互定义管理
+  - startInteraction(type, initiatorId, targetId?, context?)：启动交互会话
+    - 检查定义存在/发起者是否已在交互中/参与者数量限制
+    - 即时交互（duration=0）立即完成，持续交互进入active状态
+    - 自动注册参与者到entitySessions映射
+  - getSession/getActiveSessions/getEntitySessions/isInteracting：会话查询
+  - interruptSession(sessionId)：中断可中断的活跃会话
+  - cancelSession(sessionId)：取消会话（完成/中断/已取消的不可取消）
+  - addParticipant/removeParticipant：参与者管理（发起者离开自动取消会话）
+  - tick(dt, world, events)：更新活跃会话进度
+    - 25%/50%/75%进度里程碑发射interaction.progress事件
+    - 持续时间结束自动完成并发射interaction.completed事件
+    - 旧会话清理（保留最近100个）
+  - 事件发射：interaction.started/interaction.progress/interaction.completed/interaction.interrupted/interaction.cancelled
+  - serialize/deserialize：持久化
+- **index.ts**：barrel导出
+- SDK导出新增interaction模块
+
+#### 3. 交互事件感知集成（SoulPerceptionSystem）
+- SoulPerceptionSystem新增3个交互事件监听器（懒加载）：
+  - interaction.started: 交互开始事件（severity=low）
+  - interaction.completed: 交互完成事件（severity=low）
+  - interaction.interrupted: 交互中断事件（severity=medium）
+- 新增3个unsubscribe字段：interactionStartedUnsubscribe/interactionCompletedUnsubscribe/interactionInterruptedUnsubscribe
+- stop()方法中添加清理逻辑
+- 事件自动包含在PerceptionFrame.events中
+
+#### 4. 测试（24个，全部通过）
+- 定义管理（3测试）
+- 会话生命周期（10测试：即时/持续/失败场景/进度/中断/取消/不可中断/isInteracting）
+- 参与者管理（4测试）
+- 事件发射（3测试）
+- 交互事件感知集成（3测试）
+- 序列化（1测试）
+
+### 验证结果
+
+- **单元测试**：1282/1282 全绿（M11阶段2结束1258，+24）
+- **构建**：0错误
+- **GitHub**：待推送
+
+### M11进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | ActionStateMachine动作状态机核心 | ✅ 完成 |
+| 2 | ActionPresets+动作事件感知集成 | ✅ 完成 |
+| 3 | InteractionSessionSystem交互会话系统+交互事件感知 | ✅ 完成（本轮） |
+| 4 | 性能优化（空间分区+对象池+帧率优化+基准） | ⏳ 下一轮 |
+| 5 | 端到端演示+SDK v2.7.0发布 | ⏳ 待开发 |
+
+**M11整体进度：60%（阶段1-3完成）**
+
+### 下一轮计划
+
+1. 推送本轮commit
+2. M11阶段4：性能优化（空间分区优化+对象池扩展+帧率基准测试+100+NPC性能验证）
+3. 运行npm test确认无回归
+
+### 迭代统计
+
+- 总迭代轮数：97轮
+- 单元测试：1282个（M10结束1208，M11阶段1+35，阶段2+15，阶段3+24）
+- 测试文件：86个
+- 活跃bug：0个
+- SDK版本：v2.6.0（M10），目标v2.7.0（M11）
+
