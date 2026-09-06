@@ -6,3 +6,4 @@ snapshots/
 .env
 .DS_Store
 coverage/
+test_r*.txt
