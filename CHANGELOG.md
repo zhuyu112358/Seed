@@ -5,6 +5,81 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-09-06
+
+### Milestone M8: Building System & Territory System & Construction/Destruction
+
+#### Added
+- **Building System** (`src/building/`): Placeable, upgradable, destructible buildings
+  - BuildingType: structure/defense/production/residential/storage/custom (6 types)
+  - Building: id/type/name/position/size/ownerId/health/maxHealth/level/active/createdTick
+  - BuildingSystem (WorldSystem): placeBuilding/upgradeBuilding/destroyBuilding/damageBuilding/repairBuilding
+  - AABB overlap detection prevents building placement on occupied positions
+  - Full lifecycle: place -> upgrade -> damage -> repair -> destroy
+  - Upgrade increases maxHealth (+25) and full heals
+  - BuildingProductionHandler/BuildingDefenseHandler callbacks (application layer)
+  - getTotalProduction/getTotalDefense aggregate active buildings
+  - 6 event classes (Placed/Upgraded/Destroyed/Damaged/Repaired/Production)
+  - 25 unit tests
+- **Territory System** (`src/territory/`): Claimable territories with boundary management
+  - TerritoryBoundary: minX/maxX/minZ/maxZ (x/z plane AABB)
+  - Territory: id/name/ownerId/boundary/claimedTick
+  - TerritorySystem (WorldSystem): claimTerritory/abandonTerritory/expandTerritory
+  - AABB boundary overlap detection prevents overlapping claims
+  - updateEntityPosition auto-detects territory entry/exit and emits events
+  - Cross-territory movement emits both left (old) + entered (new)
+  - Owner-only operations for abandon/expand
+  - 5 event classes (Claimed/Abandoned/Expanded/Entered/Left)
+  - 23 unit tests
+- **Building + Territory Event Perception** in SoulPerceptionSystem
+  - 11 new event listeners (lazy-loaded on first tick):
+    - `building.placed`: low
+    - `building.upgraded`: medium
+    - `building.destroyed`: high
+    - `building.damaged`: low
+    - `building.repaired`: low
+    - `building.production`: low
+    - `territory.claimed`: low
+    - `territory.abandoned`: medium
+    - `territory.expanded`: low
+    - `territory.entered`: low
+    - `territory.left`: low
+  - stop() cleanup for all 11 listeners
+  - 12 unit tests
+- **Building Effect Integration** (M8 phase 4)
+  - Production tick: periodic production every productionIntervalTicks (default 60)
+    - Calls productionHandler for each active production building
+    - Emits BuildingProductionEvent with output
+    - Inactive buildings do not produce
+  - Defense damage reduction: damageBuilding() applies total defense
+    - actualDamage = max(1, damage - totalDefense)
+    - Minimum 1 damage prevents invulnerability
+  - Territory association: optional territorySystem reference
+    - placeBuilding() validates position is within owner's territory
+    - No territory system = buildings can be placed anywhere (backward compatible)
+  - 10 unit tests
+- **M8 End-to-End Demo** (`examples/m8-demo.ts`): Full building & territory pipeline
+  - Phase 1: Territory claim
+  - Phase 2: Building placement (sawmill, wall, cottage) + outside-territory rejection
+  - Phase 3: Building production (periodic wood/stone output)
+  - Phase 4: Building upgrade (level 1->2, maxHealth +25)
+  - Phase 5: Building damage with defense reduction (20 damage - 3 defense = 17 actual)
+  - Phase 6: Building repair
+  - Phase 7: Entity territory enter/leave
+  - Phase 8: Building destruction
+  - Phase 9: Perception summary (10 events: 8 building + 2 territory, 1 high + 1 medium)
+
+#### Architecture
+- All building/territory content (types, effects, costs, rules) defined by application layer
+- Seed only manages state, lifecycle, boundary detection, and event emission
+- Production/defense via callbacks - Seed only aggregates, application defines logic
+- Territory association is optional - backward compatible with existing usage
+- SoulPerceptionSystem now listens to 54+ events across all subsystems
+
+#### Tests
+- Total: 1016 unit tests (up from 946 in v2.3.0, +70)
+- M8 new tests: 25 (building) + 23 (territory) + 12 (perception) + 10 (effect integration) = 70
+
 ## [2.3.0] - 2026-09-06
 
 ### Milestone M7: Multiplayer Interaction & Social Relationships & Trading & Party

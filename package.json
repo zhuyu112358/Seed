@@ -1,6 +1,6 @@
 {
   "name": "seed-system",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Seed System - a virtual physical world engine that runs beneath SoulArena, providing a configurable world container, physics, events, communication and soul interaction layer.",
   "type": "module",
   "main": "dist/sdk/index.js",
