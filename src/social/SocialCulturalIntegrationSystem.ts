@@ -144,18 +144,12 @@ export class SocialCulturalIntegrationSystem {
     return result;
   }
 
-  /** Apply social influence to all NPCs in the personality system. */
-  applySocialInfluenceToAll(): SocialInfluenceResult[] {
-    if (!this.npcPersonalitySystem) return [];
-    // Get all entity IDs from personality system.
+  /** Apply social influence to a list of NPC entities. */
+  applySocialInfluenceToAll(entityIds: string[]): SocialInfluenceResult[] {
     const results: SocialInfluenceResult[] = [];
-    const personalities = (this.npcPersonalitySystem as any).getAllPersonalities?.() ?? [];
-    for (const profile of personalities) {
-      const entityId = profile.entityId ?? profile.id;
-      if (entityId) {
-        const result = this.applySocialInfluence(entityId);
-        if (result) results.push(result);
-      }
+    for (const entityId of entityIds) {
+      const result = this.applySocialInfluence(entityId);
+      if (result) results.push(result);
     }
     return results;
   }
@@ -335,7 +329,7 @@ export class SocialCulturalIntegrationSystem {
 
   // --- Full Sync ---
 
-  /** Run a full integration sync cycle. */
+  /** Run a full integration sync cycle (bridges social events to narrative). */
   sync(): {
     socialInfluences: SocialInfluenceResult[];
     socialEventBridges: SocialNarrativeBridgeResult[];
@@ -343,12 +337,13 @@ export class SocialCulturalIntegrationSystem {
   } {
     this.syncCounter++;
 
-    const socialInfluences = this.applySocialInfluenceToAll();
+    // Social influence is applied on demand via applySocialInfluence(entityId).
+    const socialInfluences: SocialInfluenceResult[] = [];
     const socialEventBridges = this.bridgeRecentSocialEvents();
-    // Cultural influence is applied on demand, not automatically to all.
+    // Cultural influence is applied on demand via applyCulturalInfluence(entityId, cultureId).
 
     this.makeEvent("integration.sync_completed", undefined, undefined, undefined,
-      `Sync cycle ${this.syncCounter}: ${socialInfluences.length} social influences, ${socialEventBridges.length} event bridges`);
+      `Sync cycle ${this.syncCounter}: ${socialEventBridges.length} event bridges`);
 
     return { socialInfluences, socialEventBridges, culturalInfluences: [] };
   }

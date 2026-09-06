@@ -5,6 +5,116 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] - 2026-09-07
+
+### Milestone M13: Social Simulation & Cultural Evolution
+
+#### Added
+- **Social Relation Graph** (`src/social/SocialRelationGraph.ts`): Enhanced social relationship network
+  - 8 RelationCategory: family/friendship/enmity/hierarchy/partnership/romance/mentorship/neutral
+  - 40+ RelationSubtype: parent/child/sibling/friend/close_friend/enemy/rival/lord/vassal/business_partner/lover/teacher/student etc.
+  - 5-dimensional RelationStrength: trust/intimacy/respect/fear/influence (0-100)
+  - 16 RelationEventType: established/strengthened/weakened/severed/reconciled/betrayed/alliance_formed/alliance_broken/marriage/divorce/birth/death/promotion/demotion/apprenticeship_started/apprenticeship_completed
+  - Social path finding (BFS) with distance and average trust calculation
+  - Group detection (connected components with cohesion calculation)
+  - Auto-decay of inactive relations
+  - serialize/deserialize support
+  - 38 tests
+- **Social Norm System** (`src/social/SocialNormSystem.ts`): Social norms with violation detection and evolution
+  - 6 SocialNormType: custom/taboo/value/tradition/etiquette/law
+  - 4 NormViolationSeverity: minor/moderate/major/catastrophic
+  - 6 SocialFeedbackType: approval/praise/disapproval/ostracism/punishment/reward
+  - Norm scope: global/regional/faction/specific
+  - Violation detection with auto-generated social feedback
+  - Compliance checking based on behavior description matching
+  - Norm evolution: mutation rate × weakness factor, 4 mutation types
+  - serialize/deserialize support
+  - 37 tests
+- **Social Event System** (`src/social/SocialEventSystem.ts`): Social events with lifecycle and narrative
+  - 18 SocialEventType: wedding/funeral/festival/celebration/gathering/conflict/war/migration/birth/coming_of_age/graduation/coronation/treaty/trade_fair/religious_ceremony/protest/riot/diplomatic_meeting
+  - 4 SocialEventStatus: scheduled/ongoing/completed/cancelled
+  - 8 EventParticipantRole: organizer/host/guest_of_honor/attendee/performer/security/speaker/witness
+  - Event lifecycle: scheduled→ongoing→completed based on time
+  - Narrative generation: 18 event types each with exclusive narrative templates
+  - Social impact application
+  - serialize/deserialize support
+  - 40 tests
+- **Group Behavior Engine** (`src/social/GroupBehaviorEngine.ts`): Group behavior with mob psychology
+  - 10 GroupEmotionType: calm/excited/angry/fearful/joyful/anxious/hostile/euphoric/sad/determined
+  - 10 CollectiveActionType: protest/celebration/migration/attack/defense/construction/ritual/strike/feast/pilgrimage
+  - 5 DecisionMethod: majority_vote/consensus/leader_decides/sortition/weighted_vote
+  - Mob psychology: 5 dimensions (polarization/deindividuation/irrationality/actionTendency/suggestibility)
+  - Emotion propagation: influence-based spread model
+  - Collective action: start/participate/complete, mob state can turn violent
+  - Group decision: propose/vote/resolve with 5 decision methods
+  - Auto-update: emotion spread + mob psychology + action progress
+  - serialize/deserialize support
+  - 54 tests
+- **Information Spread Model** (`src/social/InformationSpreadModel.ts`): SIR information spread with credibility
+  - 9 InformationType: idea/rumor/news/gossip/propaganda/knowledge/meme/warning/tradition
+  - 5 SIR states: susceptible/exposed/infected/recovered/ignored
+  - Infection probability: baseRate × (infectivity/50) × (sourceInfluence/50) × (connectionWeight/50) × (1 - targetSkepticism/150), cap 0.95
+  - Recovery: based on infection duration
+  - Extinction: auto-extinct when no active infected nodes
+  - Information mutation: probability mutation during spread, reduces credibility
+  - Credibility assessment: source×0.35 + type×0.35 - mutation penalty - spread penalty
+  - Social influence network with connection weights
+  - serialize/deserialize support
+  - 38 tests
+- **Social Mobility System** (`src/social/SocialMobilitySystem.ts`): Social mobility with class and prestige
+  - 8 SocialClass: serf/commoner/artisan/merchant/clergy/noble/aristocrat/royal (rank 0-7)
+  - 8 MobilityType: upward/downward/lateral/migration/intermarriage/appointment/inheritance/disgrace
+  - Prestige system: 0-1000 clamp, per-class promotion thresholds
+  - Promotion: prestige threshold check + prestige gain
+  - Demotion: prestige loss
+  - Disgrace: multi-level demotion + massive prestige loss
+  - Migration: location change + history
+  - Intermarriage: marriage + auto-promotion of lower-class spouse
+  - Divorce: prestige loss
+  - Prestige decay via tick
+  - serialize/deserialize support
+  - 40 tests
+- **Cultural Evolution System** (`src/social/CulturalEvolutionSystem.ts`): Darwinian cultural evolution
+  - 17 CulturalTraitType: language/religion/custom/art/music/food/dress/architecture/ritual/value/technology/myth/etiquette/holiday/economy/governance
+  - Culture management with parent/child relationships
+  - Trait management: create/add/remove/get
+  - Cultural transmission: probability = baseRate × (transmissibility/50) × (sourceInfluence/50) × (adaptability/50), cap 0.95
+  - Cultural mutation: name variant + increased mutation rate + transmissibility change
+  - Cultural selection: prune low-adaptability traits (natural selection)
+  - Cultural distance: 0-100 score based on shared/unique traits, differing types
+  - Cultural fusion: merge two cultures into new culture with combined traits/population
+  - Auto-evolution: aging + transmission + mutation + selection via tick
+  - serialize/deserialize support (Set→Array conversion)
+  - 32 tests
+- **Social-Cultural Integration System** (`src/social/SocialCulturalIntegrationSystem.ts`): Integration with M12 NPC AI and narrative
+  - Three bridge mechanisms:
+    1. Social relation → NPC behavior: behavior modifier (0.5-1.5) based on relation strength
+       - Positive categories (friendship/family/romance/partnership/mentorship): (strength-50)×weight
+       - Negative category (enmity): -strength×weight
+    2. Social event → dynamic narrative: bridge SocialEventSystem events to DynamicNarrativeSystem as world-type narrative events, dedup via Set
+    3. Culture → NPC personality: 17 cultural trait types mapped to Big Five dimensions
+       - religion/ritual/custom → conscientiousness
+       - art/music/myth → openness
+       - language/etiquette → agreeableness
+       - technology/architecture → conscientiousness + openness
+       - food/dress/holiday → extraversion
+  - System registration: registerSocialSystems + registerM12Systems (loose coupling)
+  - Full sync cycle: bridges social events to narrative
+  - Events: social_influence_applied/social_event_bridged/cultural_influence_applied/sync_completed
+  - serialize/deserialize support
+  - 22 tests
+- **M13 End-to-End Demo** (`examples/m13-demo.ts`): 73 assertions covering all 8 phases
+
+#### Changed
+- `src/social/index.ts`: Added M13 system exports (SocialRelationGraph/SocialNormSystem/SocialEventSystem/GroupBehaviorEngine/InformationSpreadModel/SocialMobilitySystem/CulturalEvolutionSystem/SocialCulturalIntegrationSystem)
+- `src/sdk/index.ts`: Added M13 system SDK exports
+
+#### Stats
+- Total tests: 1868 (M12: 1567, M13: +301)
+- Test suites: 104
+- M13 demo: 73/73 assertions passing
+- Build: 0 errors
+
 ## [2.8.0] - 2026-09-06
 
 ### Milestone M12: NPC AI Deepening + World Narrative Enhancement
