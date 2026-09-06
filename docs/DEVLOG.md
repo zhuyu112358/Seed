@@ -10729,3 +10729,70 @@ M11结束1306 + M12新增261 = **1567测试**
 2. 如M14方向已确定，按新里程碑开始开发（可参考预研架构文档）
 3. 如M14未确定，继续维护性工作
 
+
+
+---
+
+## 2026-09-07 M13跨系统集成测试增强（第126轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M13已100%完成，SDK v2.9.0已发布并推送
+- M14方向**仍待监控评估决策确定**
+- 已连续5轮维护（122-126），本轮做有价值的测试增强
+
+#### 2. M13跨系统集成测试
+创建 `tests/m13-cross-system-integration.test.ts`，13个测试，验证M13各系统之间的协同工作：
+
+**测试套件1：SocialEvent → Integration → DynamicNarrative（3测试）**
+- 创建社会事件并桥接到叙事系统
+- 桥接的叙事事件出现在叙事系统中
+- sync周期桥接多个社会事件到叙事
+
+**测试套件2：InformationSpread → GroupBehavior（2测试）**
+- 信息传播与群体情绪的协同（信息提供上下文，群体可做出反应）
+- 信息可信度评估与群体决策的协同（低可信度谣言，群体可决策是否行动）
+
+**测试套件3：SocialMobility → SocialRelationGraph（2测试）**
+- 实体晋升后社会关系的相应调整（晋升后加强与领主的关系）
+- 通婚改变社会阶层并创建家庭关系（低阶层配偶自动晋升）
+
+**测试套件4：CulturalEvolution → NPCPersonality（2测试）**
+- 创建文化特质并应用文化影响到个性系统
+- 两种不同文化产生不同的个性影响（艺术开放文化 vs 纪律传统文化）
+
+**测试套件5：SocialNorm → SocialEvent（2测试）**
+- 规范违规产生社会反馈并可触发社会事件（冲突事件）
+- 积极行为可触发庆祝性社会事件（英雄盛宴）
+
+**测试套件6：Full M13 Ecosystem（2测试）**
+- 所有8个M13系统可在单个世界中共存
+- 社会事件在完整生态系统中通过集成流向叙事
+
+#### 3. API对齐修复（测试开发中发现）
+- `SocialCulturalIntegrationSystem.bridgeSocialEventToNarrative` 返回 `SocialNarrativeBridgeResult`，属性是 `narrativeTriggered` 不是 `success`
+- `SocialRelationGraph` 用 `modifyStrength` 修改关系强度，不是 `strengthenRelation`
+- `SocialNormSystem` 用 `getFeedbacks` 获取反馈，不是 `getRecentFeedbacks`
+- 系统名称：`social-cultural-integration-system`（不是social-cultural-integration）
+
+#### 4. 全量验证
+- **单元测试**：1881/1881 全绿（M13结束1868 + 本轮新增13）
+- **构建**：0错误
+- **新增测试文件**：tests/m13-cross-system-integration.test.ts
+
+### 迭代统计
+
+- 总迭代轮数：126轮
+- 单元测试：1881个（M13结束1868 + 本轮+13）
+- 测试文件：105个
+- 活跃bug：0个（Arboreus）
+- SDK版本：v2.9.0（M13完成）
+- M14状态：待定义
+
+### 下一轮计划
+
+1. 检查M14方向是否已由监控评估决策确定
+2. 如M14方向已确定，按新里程碑开始开发
+3. 如M14未确定，继续维护性工作或测试增强
+
