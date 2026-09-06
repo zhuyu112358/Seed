@@ -535,3 +535,19 @@ export {
   ScheduleSystem,
 } from '../npc/index.js';
 
+
+// --- Narrative System (M12 Phase 6) ---
+export type {
+  DynamicNarrativeArc,
+  DynamicNarrativeArcStatus,
+  NarrativePhase,
+  DynamicNarrativeEvent,
+  DynamicNarrativeEventType,
+  DynamicNarrativeBranch,
+  DynamicNarrativeChoice,
+  DynamicNarrativeConfig,
+  DynamicArcAdvancementResult,
+} from '../narrative/index.js';
+export { DEFAULT_DYNAMIC_NARRATIVE_CONFIG, DynamicNarrativeSystem } from '../narrative/index.js';
+
+

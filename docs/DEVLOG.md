@@ -9046,3 +9046,86 @@ M11已完成，M12里程碑方向尚未在MANAGEMENT_STRATEGY.md中定义。按�
 - 活跃bug：0个
 - SDK版本：v2.7.0（M11），目标v2.8.0（M12）
 
+
+
+---
+
+## 2026-09-06 M12阶段6：动态叙事生成（第106轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M12阶段1-5已完成并推送（1479测试）
+- 0待推送
+- 预研报告无新增
+
+#### 2. M12阶段6：动态叙事生成
+- 创建src/narrative/DynamicNarrativeTypes.ts
+  - DynamicNarrativeArcStatus: locked/available/active/completed/failed
+  - NarrativePhase: 叙事阶段（id/name/description/entryConditions/events/isFinal）
+  - DynamicNarrativeArc: 叙事弧（id/name/description/status/phases/currentPhaseIndex/priority/participants/startedAt/endedAt/metadata）
+  - DynamicNarrativeEventType: plot/character/world/player/random/climax/resolution（7种）
+  - DynamicNarrativeEvent: 叙事事件（id/type/title/description/timestamp/participants/location/arcId/previousEventId/consequences/playerTriggered/metadata）
+  - DynamicNarrativeBranch: 叙事分支（id/description/choices/selectedChoiceId/resolved/createdAt/resolvedAt/arcId）
+  - DynamicNarrativeChoice: 分支选择（id/text/weight/consequences/triggeredEvents/available/requirements）
+  - DynamicNarrativeConfig: maxEventHistory(500)/autoAdvanceArcs/emitEvents/playerInfluenceEnabled/randomSeed
+  - DEFAULT_DYNAMIC_NARRATIVE_CONFIG
+  - DynamicArcAdvancementResult
+- 创建src/narrative/DynamicNarrativeSystem.ts（WorldSystem）
+  - 叙事弧管理：addArc/getArc/getAllArcs/getArcsByStatus/getCurrentPhase/startArc/advanceArc/failArc/updateArc
+  - 事件链管理：recordEvent（自动链接前一事件+应用consequences到narrativeState+maxEventHistory限制）/getEvents/getEventsByArc/getEventsByType/getRecentEvents/getEvent
+  - 分支叙事：createBranch/selectChoice（应用consequences）/autoSelectChoice（加权随机选择）/getBranch/getUnresolvedBranches
+  - 玩家影响：recordPlayerAction/getPlayerInfluence
+  - 叙事状态：getState/setState/getAllState
+  - 事件：narrative.arc_started/arc_completed/arc_failed/phase_changed/event_recorded/branch_created/choice_selected
+  - serialize/deserialize
+- 更新src/narrative/index.ts: 合并M6原有导出+M12动态叙事导出
+- 更新src/sdk/index.ts: SDK导出包含动态叙事类型和系统
+
+**关键修复**：
+- M6已有narrative模块（NarrativeSystem/NarrativeChainDefinition等），最初覆盖了原文件导致构建失败。恢复原文件后，将新类型命名为Dynamic*前缀，新文件命名为DynamicNarrativeTypes.ts，与M6模块共存
+- DynamicNarrativeSystem中events字段命名冲突（同时用作EventSystem和NarrativeEvent数组），重命名EventSystem字段为eventSystem
+
+#### 3. 测试（36个，全部通过）
+- 叙事弧管理（12测试：添加获取/全部/按状态/当前阶段/开始/重复开始/推进/完成/非活跃推进/失败/更新）
+- 事件链（8测试：创建存储/链接前一事件/consequences应用/按弧过滤/按类型过滤/最近N个/指定事件/历史上限）
+- 分支叙事（7测试：创建/选择/未知选择/已解决分支/自动选择/已解决自动选择/未解决列表）
+- 玩家影响（2测试：记录玩家动作/影响计数）
+- 叙事状态（3测试：设置获取/缺失键/全部状态）
+- 事件发射（3测试：arc_started/event_recorded/branch_created+choice_selected）
+- 配置（1测试）
+- 序列化（1测试）
+
+### 验证结果
+
+- **单元测试**：1515/1515 全绿（M12阶段5结束1479，+36）
+- **构建**：0错误
+- **GitHub**：待推送
+
+### M12进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1-5 | NPC AI深化（记忆/个性/GOAP/行为树/作息） | ✅ 全部完成 |
+| 6 | 动态叙事生成 | ✅ 完成（本轮） |
+| 7 | 任务链深化 | ⏳ 下一轮 |
+| 8 | 世界状态叙事+叙事事件感知+集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.8.0发布 | ⏳ 待开发 |
+
+**M12整体进度：67%（阶段1-6完成）**
+**世界叙事增强子目标：1/5完成（动态叙事生成）**
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M12阶段7：任务链深化（TaskChain多步骤任务+任务依赖+任务状态机+任务叙事）
+3. 运行npm test确认无回归
+
+### 迭代统计
+
+- 总迭代轮数：106轮
+- 单元测试：1515个（M11结束1306，M12阶段1+24，阶段2+41，阶段3+36，阶段4+40，阶段5+32，阶段6+36）
+- 测试文件：94个
+- 活跃bug：0个
+- SDK版本：v2.7.0（M11），目标v2.8.0（M12）
+
