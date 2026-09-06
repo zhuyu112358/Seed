@@ -230,6 +230,20 @@ export {
 export type { BehaviorAgent } from '../behavior/BehaviorNode.js';
 export { BehaviorTree } from '../behavior/BehaviorTree.js';
 export { BehaviorTreeSystem } from '../behavior/BehaviorTreeSystem.js';
+export { BehaviorTreeBuilder } from '../behavior/BehaviorTreeBuilder.js';
+export {
+  RandomSequence,
+  RandomSelector,
+  StatefulSelector,
+  Cooldown,
+  TimeLimit,
+  ForceSuccess,
+  ForceFailure,
+  RepeatUntil,
+  Counter,
+  SubTree,
+  LogNode,
+} from '../behavior/BehaviorEnhanced.js';
 
 // --- Task System (M6) ---
 export { TaskInstance } from '../task/TaskTypes.js';

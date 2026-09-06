@@ -61,6 +61,60 @@ export class Blackboard {
     return this.data.size;
   }
 
+  /** Get a value with a default if not set. */
+  getOrDefault<T = unknown>(key: string, defaultValue: T): T {
+    const value = this.data.get(key);
+    return value === undefined ? defaultValue : value as T;
+  }
+
+  /** Get and delete a value (atomic consume). */
+  consume<T = unknown>(key: string): T | undefined {
+    const value = this.data.get(key) as T | undefined;
+    this.data.delete(key);
+    return value;
+  }
+
+  /** Increment a numeric value. Returns the new value. */
+  increment(key: string, amount = 1): number {
+    const current = (this.data.get(key) as number) ?? 0;
+    const newValue = current + amount;
+    this.set(key, newValue);
+    return newValue;
+  }
+
+  /** Set a scoped value (key prefixed with scope). */
+  setScoped(scope: string, key: string, value: unknown): void {
+    this.set(`${scope}:${key}`, value);
+  }
+
+  /** Get a scoped value. */
+  getScoped<T = unknown>(scope: string, key: string): T | undefined {
+    return this.get<T>(`${scope}:${key}`);
+  }
+
+  /** Check if a scoped key exists. */
+  hasScoped(scope: string, key: string): boolean {
+    return this.has(`${scope}:${key}`);
+  }
+
+  /** Get all keys in a scope. */
+  keysInScope(scope: string): string[] {
+    const prefix = `${scope}:`;
+    return Array.from(this.data.keys())
+      .filter(k => k.startsWith(prefix))
+      .map(k => k.slice(prefix.length));
+  }
+
+  /** Clear all keys in a scope. */
+  clearScope(scope: string): void {
+    const prefix = `${scope}:`;
+    for (const key of Array.from(this.data.keys())) {
+      if (key.startsWith(prefix)) {
+        this.data.delete(key);
+      }
+    }
+  }
+
   /** Serialize to plain object. */
   toJSON(): Record<string, unknown> {
     const obj: Record<string, unknown> = {};

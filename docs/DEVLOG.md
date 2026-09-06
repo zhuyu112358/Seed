@@ -8851,3 +8851,111 @@ M11已完成，M12里程碑方向尚未在MANAGEMENT_STRATEGY.md中定义。按�
 - 活跃bug：0个
 - SDK版本：v2.7.0（M11），目标v2.8.0（M12）
 
+
+
+---
+
+## 2026-09-06 M12阶段4：行为树增强（第104轮迭代）
+
+### 本轮完成
+
+#### 1. 状态确认
+- M12阶段1-3已完成并推送（1407测试）
+- 0待推送（之前的commit已推送成功）
+- 新预研报告：002_ecosystem_social_simulation_emergence.md（生态模拟/社会模拟/涌现行为，对M12的NPC AI和叙事有参考价值）
+
+#### 2. 预研成果查看
+- 读取 D:\Sojourn\research\arboreus\002_ecosystem_social_simulation_emergence.md
+- 核心内容：生态模拟（Lotka-Volterra/ABM/功能响应）、社会模拟（从ABM到LLM驱动的生成式智能体，Stanford Smallville）、涌现行为
+- 对M12的启示：行为树是传统NPC AI的核心，增强行为树的复合节点/装饰器/构建器可以支持更复杂的NPC行为模式；社会模拟的涌现行为需要NPC之间的交互和状态共享，行为树+黑板模式可以支持
+- 关键洞察：Dwarf Fortress/RimWorld证明了深度AI和涌现叙事的游戏价值，M12的NPC AI深化和世界叙事增强方向正确
+
+#### 3. M12阶段4：行为树增强
+- 创建src/behavior/BehaviorEnhanced.ts
+  - **增强复合节点**：
+    - RandomSequence: 随机顺序执行子节点，全部成功才成功
+    - RandomSelector: 随机顺序执行子节点，第一个成功就成功
+    - StatefulSelector: 有状态选择器，记住最后Running的子节点，下次从该节点恢复
+  - **增强装饰器**：
+    - Cooldown: 子节点完成后冷却N tick，冷却期间返回Failure
+    - TimeLimit: 子节点必须在N tick内完成，超时返回Failure并重置子节点
+    - ForceSuccess: 无论子节点结果如何都返回Success（Running除外）
+    - ForceFailure: 无论子节点结果如何都返回Failure（Running除外）
+    - RepeatUntil: 重复子节点直到返回指定状态，超过最大迭代次数返回Failure
+    - Counter: 计数节点，达到目标次数后返回Success并重置
+  - **工具节点**：
+    - SubTree: 引用并执行另一个BehaviorTree（通过blackboard的subtrees映射注册）
+    - LogNode: 记录消息到blackboard日志数组，用于调试
+- 创建src/behavior/BehaviorTreeBuilder.ts
+  - fluent API构建行为树
+  - 支持所有复合节点（sequence/selector/parallel/randomSequence/randomSelector/statefulSelector）
+  - 支持所有装饰器（inverter/repeater/untilFail/cooldown/timeLimit/forceSuccess/forceFailure/repeatUntil）
+  - 支持所有叶子节点（action/condition/wait/counter/subTree/log）
+  - 支持自定义blackboard
+  - build()构建BehaviorTree
+- 修改src/behavior/Blackboard.ts
+  - 新增getOrDefault(key, defaultValue): 带默认值获取
+  - 新增consume(key): 获取并删除（原子消费）
+  - 新增increment(key, amount): 数值递增
+  - 新增setScoped/getScoped/hasScoped: 作用域键值访问（scope:key格式）
+  - 新增keysInScope(scope): 获取作用域内所有键
+  - 新增clearScope(scope): 清除作用域内所有键
+- 更新src/behavior/index.ts: 导出增强节点和构建器
+- 更新src/sdk/index.ts: SDK导出增强节点和构建器
+
+#### 4. 测试（40个，全部通过）
+- 增强复合节点（7测试：RandomSequence成功/失败/Running、RandomSelector成功/失败、StatefulSelector恢复/失败）
+- Cooldown（3测试：正常运行/冷却期间Failure/Running不启动冷却）
+- TimeLimit（3测试：限时内成功/超时失败/完成后重置计时器）
+- ForceSuccess（2测试：子节点失败也成功/Running透传）
+- ForceFailure（2测试：子节点成功也失败/Running透传）
+- RepeatUntil（3测试：达到目标状态成功/超过最大迭代失败/Running透传）
+- Counter（2测试：达到目标前失败/达到后重置）
+- SubTree（2测试：执行已注册子树/未注册失败）
+- LogNode（2测试：记录消息到blackboard/总是返回成功）
+- BehaviorTreeBuilder（6测试：简单树/所有复合类型/装饰器/冷却+限时/自定义blackboard/未设置root抛异常）
+- 增强Blackboard（7测试：getOrDefault/consume/increment/作用域set-get-has/keysInScope/clearScope）
+- 集成测试（1测试：饥饿→找食物→吃东西+冷却的完整行为树）
+
+**关键修复**：
+- TimeLimit完成后需reset子节点（否则Running类子节点状态不重置）
+- 测试中runningAction(1)第一tick就返回Success（count从0开始++后=1>=1），需用runningAction(2)才能得到Running→Success
+- 集成测试中selector的"has food"分支在找到食物后直接成功，不会走到cooldown的eat，需调整树结构使eat总是被执行
+
+### 验证结果
+
+- **单元测试**：1447/1447 全绿（M12阶段3结束1407，+40）
+- **构建**：0错误
+- **GitHub**：待推送
+
+### M12进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 1 | NPC记忆系统 | ✅ 完成 |
+| 2 | NPC个性系统 | ✅ 完成 |
+| 3 | GOAP目标导向行动规划 | ✅ 完成 |
+| 4 | 行为树增强 | ✅ 完成（本轮） |
+| 5 | NPC日常作息 | ⏳ 下一轮 |
+| 6 | 动态叙事生成 | ⏳ 待开发 |
+| 7 | 任务链深化 | ⏳ 待开发 |
+| 8 | 世界状态叙事+叙事事件感知+集成 | ⏳ 待开发 |
+| 9 | 端到端演示+SDK v2.8.0发布 | ⏳ 待开发 |
+
+**M12整体进度：44%（阶段1-4完成）**
+**NPC AI深化子目标：5/5完成（记忆+个性+GOAP+行为树+待日常作息）**
+
+### 下一轮计划
+
+1. 重试推送本轮commit
+2. M12阶段5：NPC日常作息（NPCSchedule作息表+活动切换+地点偏好+作息与感知/导航集成）
+3. 运行npm test确认无回归
+
+### 迭代统计
+
+- 总迭代轮数：104轮
+- 单元测试：1447个（M11结束1306，M12阶段1+24，阶段2+41，阶段3+36，阶段4+40）
+- 测试文件：92个
+- 活跃bug：0个
+- SDK版本：v2.7.0（M11），目标v2.8.0（M12）
+

@@ -17,3 +17,17 @@ export {
 export type { BehaviorAgent } from "./BehaviorNode.js";
 export { BehaviorTree } from "./BehaviorTree.js";
 export { BehaviorTreeSystem } from "./BehaviorTreeSystem.js";
+export { BehaviorTreeBuilder } from "./BehaviorTreeBuilder.js";
+export {
+  RandomSequence,
+  RandomSelector,
+  StatefulSelector,
+  Cooldown,
+  TimeLimit,
+  ForceSuccess,
+  ForceFailure,
+  RepeatUntil,
+  Counter,
+  SubTree,
+  LogNode,
+} from "./BehaviorEnhanced.js";
