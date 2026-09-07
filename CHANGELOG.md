@@ -67,6 +67,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Event system: 14 event types (CREATED/UPDATED/STATE_CHANGED/GOLDEN_AGE_STARTED/ENDED/CRISIS_TRIGGERED/RESOLVED/COLLAPSE_TRIGGERED/REVIVAL_TRIGGERED/INTERACTION_STARTED/ENDED/DOMAIN_SCORE_CHANGED/MILESTONE_REACHED)
   - Full serialization/deserialization support
   - 42 tests
+- **Large Scale Simulation System** (`src/performance/LargeScaleSimulationSystem.ts`): M14 Phase 6 - Performance optimization and large-scale validation
+  - Entity management: create/batch create/destroy/batch destroy/retrieve/list/filter by type/count, 8 entity types (NPC/BUILDING/RESOURCE_NODE/ITEM/PROJECTILE/PARTICLE/CIVILIZATION/CUSTOM), peak entity count tracking
+  - Component management: attach/detach/update data/get data, 11 component types (POSITION/VELOCITY/HEALTH/INVENTORY/AI/RENDER/COLLISION/ECONOMIC/SOCIAL/CULTURAL/CUSTOM), component entity index, multi-component intersection query (AND)
+  - Benchmarking: 10 scenarios (ENTITY_CREATION/ENTITY_DESTRUCTION/COMPONENT_UPDATE/SYSTEM_TICK/QUERY/SERIALIZATION/MEMORY_ALLOCATION/EVENT_DISPATCH/FULL_SIMULATION/CUSTOM), results (total time/avg per entity/ops per sec/min/max/std dev/passed/peak memory), multi-iteration averaging, performance thresholds, history (last 100)
+  - ECS Architecture Evaluation: total entities/components, avg components per entity, component density, query/update performance, memory efficiency, overall score (0-100), auto-generated improvement recommendations
+  - Statistics: total created/destroyed/active, by type, component updates, benchmarks, peak count, total ticks
+  - Large Scale Validation: 1000 entity creation, efficient query (<100ms), component update (<500ms), scale benchmark
+  - Full serialization/deserialization support with auto component index rebuild
+  - 41 tests
 
 ## [2.9.0] - 2026-09-07
 

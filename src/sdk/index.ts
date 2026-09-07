@@ -644,6 +644,23 @@ export type {
 } from '../performance/index.js';
 export { DEFAULT_PROFILER_CONFIG, PerformanceProfiler, DEFAULT_BENCHMARK_CONFIG, runBenchmark } from '../performance/index.js';
 
+// --- Large Scale Simulation System (M14 Phase 6) ---
+export type {
+  LargeScaleEntity,
+  ECSComponent,
+  LargeScaleBenchmarkResult,
+  LargeScaleSimulationConfig,
+  ECSEvaluationReport,
+  LargeScaleSimulationStats,
+} from '../performance/index.js';
+export {
+  LargeScaleEntityType,
+  ECSComponentType,
+  BenchmarkScenarioType,
+  DEFAULT_LARGE_SCALE_CONFIG,
+  LargeScaleSimulationSystem,
+} from '../performance/index.js';
+
 
 // --- NPC System (M12) ---
 export type {
