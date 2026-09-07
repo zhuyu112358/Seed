@@ -32,6 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Event system: 18 event types (market/order/trade/price/route/caravan events)
   - Full serialization/deserialization support
   - 60 tests
+- **Distribution System** (`src/economy/DistributionSystem.ts`): M14 Phase 3 - Wealth/resource distribution and inequality
+  - Economic agent management: 8 economic classes (DESTITUTE/POOR/WORKING/MIDDLE/UPPER_MIDDLE/RICH/WEALTHY/ULTRA_RICH), wealth sources tracking, tax brackets, mobility scores, intergenerational tracking, auto class calculation
+  - Distribution pools: 9 allocation methods (EQUAL/PROPORTIONAL/NEED_BASED/MERIT_BASED/RANDOM/FIRST_COME/AUCTION/LOTTERY/CUSTOM), eligible agents, allocation records, expiration, completion tracking
+  - Allocation methods: equal split, proportional to wealth, need-based (poorer gets more), merit-based (higher income gets more), random, first-come-first-served
+  - Wealth transfers: agent-to-agent transfers, reason tracking, redistribution marking, transfer history with filtering
+  - Inequality measurement: Gini coefficient, Palma ratio, quintile share ratio, top 1%/10% wealth share, bottom 50% share, wealth gap, mean/median/std dev/coefficient of variation, poverty metrics (count/rate/line)
+  - Class distribution: class counts/percentages, class wealth/share/average, economic class calculation from wealth thresholds
+  - Social mobility: intergenerational elasticity, upward/downward mobility rates, class transition matrix, average class change, average mobility score
+  - Redistribution policies: 6 policy types (tax/wealth_tax/welfare/universal_basic_income/subsidy/custom), priority ordering, enable/disable, redistribution interval
+  - Event system: 10 event types (distribution/allocation/transfer/inequality/class/mobility/policy events)
+  - Full serialization/deserialization support
+  - 52 tests
 
 ## [2.9.0] - 2026-09-07
 

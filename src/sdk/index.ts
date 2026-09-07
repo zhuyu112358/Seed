@@ -769,4 +769,26 @@ export {
 } from '../economy/TradeExchangeTypes.js';
 export { TradeExchangeSystem } from '../economy/TradeExchangeSystem.js';
 
+// --- Distribution System (M14 Phase 3) ---
+export type {
+  EconomicAgent,
+  DistributionPool,
+  AllocationResult,
+  WealthTransfer,
+  InequalityMetrics,
+  ClassDistribution,
+  MobilityMetrics,
+  RedistributionPolicy,
+  DistributionConfig,
+  DistributionStats,
+} from '../economy/DistributionTypes.js';
+export {
+  DistributionMethod,
+  EconomicClass,
+  WealthSourceType,
+  DistributionEventType,
+  DEFAULT_DISTRIBUTION_CONFIG,
+} from '../economy/DistributionTypes.js';
+export { DistributionSystem } from '../economy/DistributionSystem.js';
+
 

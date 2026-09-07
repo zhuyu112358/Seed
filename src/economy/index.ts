@@ -9,3 +9,7 @@ export { ResourceProductionSystem } from './ResourceProductionSystem.js';
 // Trade Exchange System (Phase 2)
 export * from './TradeExchangeTypes.js';
 export { TradeExchangeSystem } from './TradeExchangeSystem.js';
+
+// Distribution System (Phase 3)
+export * from './DistributionTypes.js';
+export { DistributionSystem } from './DistributionSystem.js';
