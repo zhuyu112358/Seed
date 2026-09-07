@@ -12269,3 +12269,65 @@ M14（经济基础层与文明模拟）全部7个phase已完成：
 - `research/arboreus/001-004` 预研报告
 - `research/shared/unimplemented_directions.md`
 
+
+
+---
+
+## 2026-09-07 M15生态基础层详细技术设计文档创建（第141轮迭代）
+
+### 本轮工作
+创建了 `docs/M15_ECOSYSTEM_TECHNICAL_DESIGN.md`（28KB），为M15生态基础层方向提供完整的技术预研和架构设计。
+
+### 文档内容概览
+
+| 章节 | 内容 |
+|------|------|
+| 一、设计目标 | 核心目标/与现有系统协同/设计原则 |
+| 二、系统架构 | 7个子系统架构图/模块依赖关系 |
+| 三、核心数据结构 | 6个核心接口（ResourceNode/Organism/Species/FoodWebRelation/Population/EcosystemEvent） |
+| 四、核心API设计 | 7个子系统的完整API设计 |
+| 五、与现有系统集成点 | 与M14/M13/M12/战策RTS的6个集成方向 |
+| 六、开发计划与Phase划分 | 8个Phase的详细计划/预估测试数 |
+| 七、性能优化策略 | 6种优化策略（空间分区/对象池/LOD/休眠/批量处理/种群级模拟） |
+| 八、风险与挑战 | 5个风险及缓解措施 |
+| 九、参考资料 | 研究文档/经典理论/游戏参考 |
+| 十、下一步行动 | 等待方向确认/设计评审/Phase 1启动 |
+
+### 7个子系统设计
+
+1. **ResourceNodeSystem**（资源节点系统）：6种类型/再生机制/采集交互/季节乘数
+2. **FoodWebSystem**（食物网系统）：物种管理/7种关系类型/营养级/食物网分析
+3. **OrganismSystem**（生物代理系统）：生命周期/13种行为/能量系统/简单AI
+4. **EnergyFlowSystem**（能量流动系统）：光合作用/捕食/10%传递效率/生态效率
+5. **PopulationDynamicsSystem**（种群动态系统）：4种种群模型/出生死亡/迁移/灭绝风险
+6. **EcosystemEventSystem**（生态事件系统）：16种事件类型/影响计算/风险检测
+7. **EcosystemSystem**（生态系统总控）：统一接口/生态健康度/生物多样性/跨系统集成
+
+### 开发计划（8个Phase）
+
+| Phase | 系统 | 预估测试 |
+|-------|------|---------|
+| 1 | ResourceNodeSystem | 50-60 |
+| 2 | Species + FoodWebSystem | 50-60 |
+| 3 | OrganismSystem | 60-70 |
+| 4 | EnergyFlowSystem | 40-50 |
+| 5 | PopulationDynamicsSystem | 50-60 |
+| 6 | EcosystemEventSystem | 50-60 |
+| 7 | EcosystemSystem + Integration | 40-50 |
+| 8 | 性能优化 + SDK v3.1.0发布 | 30-40 |
+| **总计** | | **370-450** |
+
+### 目标
+- **SDK版本**：v3.1.0
+- **总测试数**：2650+（当前2285 + 370-450）
+- **完成标准**：全绿/构建0错误/无P0P1 bug/端到端演示通过
+
+### M14状态确认
+- SDK v3.0.0 ✅
+- 2285/2285测试全绿 ✅
+- 构建0错误 ✅
+- Git status干净 ✅
+
+### 下一步
+等待监控评估确认M15方向，如确认生态基础层则启动Phase 1开发。
+
