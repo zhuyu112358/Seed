@@ -416,6 +416,13 @@ export class LargeScaleSimulationSystem {
   // ECS Architecture Evaluation
   // ---------------------------------------------------------------------------
 
+  /**
+   * Evaluate the ECS (Entity Component System) architecture effectiveness.
+   * Analyzes component density, entity-component distribution, memory usage,
+   * and query performance to assess how well the ECS pattern is utilized.
+   * @returns ECSEvaluationReport containing architecture metrics, component
+   *          density analysis, performance benchmarks, and optimization recommendations
+   */
   evaluateECSArchitecture(): ECSEvaluationReport {
     const totalEntities = this.getEntityCount();
     const totalComponents = this.components.size;

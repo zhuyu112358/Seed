@@ -410,6 +410,14 @@ export class EconSocialCouplingSystem {
   // Coupling Metrics
   // ---------------------------------------------------------------------------
 
+  /**
+   * Calculate comprehensive economic-social coupling metrics.
+   * Aggregates data from coupling links, modifiers, norms, interactions,
+   * and feedback loops to measure the strength and direction of economic
+   * influence on social structures and vice versa.
+   * @returns CouplingMetrics containing coupling strength, influence distribution,
+   *          norm compliance rates, interaction statistics, and feedback loop activity
+   */
   calculateMetrics(): CouplingMetrics {
     const activeModifiers = this.getActiveModifiers();
     const activeNorms = this.getActiveNorms();

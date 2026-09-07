@@ -534,6 +534,15 @@ export class CivilizationSimulationSystem {
   // Civilization Comparison
   // ---------------------------------------------------------------------------
 
+  /**
+   * Compare two civilizations across all domains and metrics.
+   * Computes score differences, relative power ratios, domain-by-domain
+   * comparisons, and overall civilization strength assessment.
+   * @param civilizationAId - ID of first civilization to compare
+   * @param civilizationBId - ID of second civilization to compare
+   * @returns CivilizationComparison containing domain score differences,
+   *          overall score ratio, relative power assessment, and comparison summary
+   */
   compareCivilizations(civilizationAId: string, civilizationBId: string): CivilizationComparison | null {
     const civA = this.civilizations.get(civilizationAId);
     const civB = this.civilizations.get(civilizationBId);

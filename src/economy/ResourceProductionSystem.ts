@@ -410,6 +410,15 @@ export class ResourceProductionSystem {
     );
   }
 
+  /**
+   * Analyze the production chain for a given recipe or output resource.
+   * Traverses the dependency graph to identify raw materials, intermediate products,
+   * total production time, and any missing recipes in the chain.
+   * @param recipeId - The recipe ID or output resource ID to analyze
+   * @param maxDepth - Maximum recursion depth to prevent infinite loops (default: 10)
+   * @returns ProductionChainResult containing raw materials, intermediate products,
+   *          total time, depth, and missing recipes
+   */
   analyzeProductionChain(recipeId: string, maxDepth: number = 10): ProductionChainResult {
     const visited = new Set<string>();
     const rawMaterials: ProductionInput[] = [];
@@ -509,6 +518,13 @@ export class ResourceProductionSystem {
     return { ...this.stats };
   }
 
+  /**
+   * Analyze production bottlenecks by examining job failure rates, delays,
+   * and completion statistics across all recipes.
+   * @param topN - Number of top bottlenecks to return (default: 5)
+   * @returns Array of BottleneckAnalysis sorted by severity, containing
+   *          recipe ID, failure rate, average delay, and improvement suggestions
+   */
   analyzeBottlenecks(topN: number = 5): BottleneckAnalysis[] {
     const recipeStats: Map<string, { total: number; failed: number; totalDelay: number; completed: number }> = new Map();
 

@@ -462,6 +462,13 @@ export class DistributionSystem {
   // Inequality Measurement
   // ---------------------------------------------------------------------------
 
+  /**
+   * Calculate wealth inequality metrics across all registered agents.
+   * Computes Gini coefficient, Palma ratio, quartile shares, and other
+   * inequality indicators to measure wealth distribution fairness.
+   * @returns InequalityMetrics containing Gini coefficient, Palma ratio,
+   *          quartile/decile shares, and wealth distribution statistics
+   */
   calculateInequality(): InequalityMetrics {
     const agents = this.getAllAgents();
     const n = agents.length;
@@ -597,6 +604,13 @@ export class DistributionSystem {
   // Social Mobility
   // ---------------------------------------------------------------------------
 
+  /**
+   * Calculate social mobility metrics by tracking economic class transitions
+   * over time. Computes upward/downward mobility rates, transition matrix,
+   * and overall mobility index to measure how fluid the social structure is.
+   * @returns MobilityMetrics containing upward/downward move counts,
+   *          transition matrix, mobility index, and class change statistics
+   */
   calculateMobility(): MobilityMetrics {
     const agents = this.getAllAgents();
     const transitionMatrix: Record<string, Record<string, number>> = {};
