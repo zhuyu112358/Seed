@@ -5,7 +5,7 @@
  *
  * Provides large-scale entity simulation, ECS architecture evaluation,
  * and performance benchmarking at scale. Used for performance optimization
- * and大规模验证.
+ * and large-scale validation.
  */
 
 import type { World } from '../engine/World.js';
