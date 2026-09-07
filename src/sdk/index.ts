@@ -812,4 +812,25 @@ export {
 } from '../economy/EconSocialCouplingTypes.js';
 export { EconSocialCouplingSystem } from '../economy/EconSocialCouplingSystem.js';
 
+// --- Civilization Simulation System (M14 Phase 5) ---
+export type {
+  CivilizationDomainScore,
+  CivilizationMetrics,
+  CivilizationCrisis,
+  CivilizationMilestone,
+  CivilizationInteraction,
+  Civilization,
+  CivilizationSimulationConfig,
+  CivilizationComparison,
+  CivilizationSimulationStats,
+} from '../economy/CivilizationSimulationTypes.js';
+export {
+  CivilizationState,
+  CivilizationDomainType,
+  CivilizationInteractionType,
+  CivilizationEventType,
+  DEFAULT_CIVILIZATION_SIMULATION_CONFIG,
+} from '../economy/CivilizationSimulationTypes.js';
+export { CivilizationSimulationSystem } from '../economy/CivilizationSimulationSystem.js';
+
 

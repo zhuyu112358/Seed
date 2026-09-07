@@ -17,3 +17,7 @@ export { DistributionSystem } from './DistributionSystem.js';
 // Economic-Social Coupling System (Phase 4)
 export * from './EconSocialCouplingTypes.js';
 export { EconSocialCouplingSystem } from './EconSocialCouplingSystem.js';
+
+// Civilization Simulation System (Phase 5)
+export * from './CivilizationSimulationTypes.js';
+export { CivilizationSimulationSystem } from './CivilizationSimulationSystem.js';

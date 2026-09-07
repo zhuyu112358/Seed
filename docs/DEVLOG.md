@@ -11852,3 +11852,130 @@ CurrencySystem → MarketSystem → ProductionSystem → TradingSystem → Build
    - 多文明互动
 2. 继续按M14 phase顺序开发
 
+
+
+---
+
+## 2026-09-07 M14 Phase 5: 文明模拟集成系统（第136轮迭代）
+
+### 里程碑确认
+- **M14进行中**：经济基础层与文明模拟（Economic Foundation & Civilization Simulation），目标SDK v3.0.0
+- Phase 1已完成：ResourceProductionSystem（63测试）
+- Phase 2已完成：TradeExchangeSystem（60测试）
+- Phase 3已完成：DistributionSystem（52测试）
+- Phase 4已完成：EconSocialCouplingSystem（47测试）
+- Phase 5完成：CivilizationSimulationSystem（42测试）
+
+### M14 Phase 5: CivilizationSimulationSystem（文明模拟集成系统）
+
+#### 创建文件
+1. `src/economy/CivilizationSimulationTypes.ts` — 类型定义（9068字节）
+2. `src/economy/CivilizationSimulationSystem.ts` — 系统实现（约25KB）
+3. `tests/civilization-simulation-system.test.ts` — 单元测试（42测试，10套件）
+
+#### 修改文件
+1. `src/economy/index.ts` — 添加CivilizationSimulation导出
+2. `src/sdk/index.ts` — 添加CivilizationSimulation SDK导出
+3. `CHANGELOG.md` — 添加Phase 5条目
+4. `docs/DEVLOG.md` — 第136轮记录
+
+#### 核心功能
+
+**1. 文明管理（Civilization Management）**
+- createCivilization / getCivilization / getAllCivilizations
+- getActiveCivilizations / getCivilizationsByState
+- updateCivilization / updateMetrics / updateDomainScore
+- 文明属性：ID/名称/描述/状态/指标/危机/里程碑/互动/建立时间/领袖/首都/主导文化/主导信仰
+
+**2. 文明状态（Civilization State）**
+- 8种状态：EMERGING/GROWING/PROSPERING/STAGNATING/DECLINING/COLLAPSING/COLLAPSED/REVIVING
+- 自动状态检测（基于总体分数阈值）
+- 黄金时代检测（分数≥阈值，乘数1.5x）
+- 崩溃检测（分数<阈值）
+- 文明复兴（reviveCivilization）
+
+**3. 文明指标（Civilization Metrics）**
+- 总体分数（0-100，加权平均）
+- 6个领域分数：ECONOMIC/SOCIAL/CULTURAL/MILITARY/TECHNOLOGICAL/POLITICAL
+- 每个领域：当前分数/前次分数/趋势/变化率/贡献因素
+- 人口/领土/财富/文化影响力/科技水平/军事力量/社会凝聚力/政治稳定/幸福感
+- 不平等指数/危机水平/黄金时代乘数/文明年龄
+
+**4. 危机系统（Crisis System）**
+- triggerCrisis / resolveCrisis / getActiveCrises
+- 7种危机类型：economic/social/cultural/military/environmental/political/combined
+- 严重程度（0-100）/持续时间/预期持续时间
+- 受影响领域/领域影响
+- 解决进度/自动解决（超过预期持续时间）
+- 危机等级累积
+
+**5. 里程碑系统（Milestone System）**
+- 5个默认里程碑：Founding/Early Development/Cultural Flowering/Technological Breakthrough/Golden Age
+- 自动检测（分数达到要求）
+- 里程碑效果/达成时间
+- getMilestones / getReachedMilestones
+
+**6. 多文明互动（Multi-Civilization Interactions）**
+- startInteraction / endInteraction / getInteraction
+- getAllInteractions / getActiveInteractions / getInteractionsForCivilization
+- 10种互动类型：TRADE/ALLIANCE/WAR/CULTURAL_EXCHANGE/TECHNOLOGY_TRANSFER/MIGRATION/CONQUEST/VASSALAGE/DIPLOMACY/CUSTOM
+- 互动强度/双方收益/持续时间
+- 最大互动数限制/崩溃文明不可互动
+
+**7. 文明比较（Civilization Comparison）**
+- compareCivilizations
+- 分数差异/相对权力（A/B）/领域差异/主导文明/权力比率
+
+**8. 统计（Statistics）**
+- getStats
+- 总文明数/活跃/崩溃/总互动/活跃互动/总危机/活跃危机
+- 总里程碑/已达成/黄金时代数/崩溃数/复兴数
+- 平均总体分数/最高分/最低分
+
+**9. 事件系统（Event System）**
+- 14种事件类型：CREATED/UPDATED/STATE_CHANGED/GOLDEN_AGE_STARTED/ENDED/CRISIS_TRIGGERED/RESOLVED/COLLAPSE_TRIGGERED/REVIVAL_TRIGGERED/INTERACTION_STARTED/ENDED/DOMAIN_SCORE_CHANGED/MILESTONE_REACHED
+
+**10. 序列化（Serialization）**
+- serialize() / deserialize(data)
+- 完整保存：配置/文明/互动/当前tick/计数器/统计
+
+#### 测试覆盖（42测试，10套件）
+
+| 测试套件 | 测试数 | 覆盖内容 |
+|---------|--------|---------|
+| Configuration | 3 | 默认配置/自定义配置/默认值验证 |
+| Civilization Management | 8 | 创建/自定义选项/检索/列表/活跃过滤/按状态/更新 |
+| Metrics | 5 | 更新指标/更新领域分数/分数钳制/总体重算/趋势追踪 |
+| State Changes | 5 | 状态变化/黄金时代/崩溃/复兴/非崩溃不可复兴 |
+| Crises | 5 | 触发危机/危机等级/解决危机/不存在危机/严重程度钳制 |
+| Milestones | 4 | 默认里程碑/达成里程碑/黄金时代里程碑/获取所有 |
+| Interactions | 7 | 开始互动/双方添加/结束互动/崩溃文明不可/按文明获取/最大限制 |
+| Comparison | 3 | 比较文明/不存在文明/领域差异 |
+| Statistics | 1 | 统计计算 |
+| Serialization | 3 | 序列化反序列化/指标保持/空系统 |
+
+#### 关键修复
+1. **类型错误**：domainImpacts默认值`{}`不能赋值给`Record<CivilizationDomainType, number>`，添加createEmptyDomainImpacts辅助方法创建包含所有领域类型的默认对象
+
+### 全量验证
+- **单元测试**：2227/2227 全绿（2185 + 42）
+- **构建**：0错误
+- **SDK构建**：0错误
+- **测试文件**：113个
+
+### M14进度
+- Phase 1: ResourceProduction ✅ 完成（63测试）
+- Phase 2: TradeExchange ✅ 完成（60测试）
+- Phase 3: Distribution ✅ 完成（52测试）
+- Phase 4: EconSocialCoupling ✅ 完成（47测试）
+- Phase 5: CivilizationSimulation ✅ 完成（42测试）
+- Phase 6: Performance Optimization ⏳ 待开发
+- Phase 7: SDK v3.0.0 Release ⏳ 待开发
+
+### 下一轮计划
+1. M14 Phase 6: 性能优化与大规模验证
+   - ECS架构评估
+   - 大规模实体测试
+   - 性能基准
+2. M14 Phase 7: SDK v3.0.0发布
+

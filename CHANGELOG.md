@@ -55,6 +55,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Event system: 10 coupling event types with EventSystem integration
   - Full serialization/deserialization support
   - 47 tests
+- **Civilization Simulation System** (`src/economy/CivilizationSimulationSystem.ts`): M14 Phase 5 - Economy-society-culture integration with civilization rise/fall
+  - Civilization management: create/retrieve/list/filter by state/update, attributes (ID/name/description/state/metrics/crises/milestones/interactions/founding/leader/capital/dominant culture/belief)
+  - Civilization states: 8 states (EMERGING/GROWING/PROSPERING/STAGNATING/DECLINING/COLLAPSING/COLLAPSED/REVIVING), auto state detection, golden age detection (1.5x multiplier), collapse detection, civilization revival
+  - Civilization metrics: overall score (0-100 weighted average), 6 domain scores (ECONOMIC/SOCIAL/CULTURAL/MILITARY/TECHNOLOGICAL/POLITICAL), each with current/previous/trend/change rate/contributing factors, population/territory/wealth/cultural influence/tech level/military strength/social cohesion/political stability/happiness, inequality index/crisis level/golden age multiplier/civilization age
+  - Crisis system: 7 types (economic/social/cultural/military/environmental/political/combined), severity (0-100)/duration/expected duration, affected domains/domain impacts, resolution progress/auto-resolve, crisis level accumulation
+  - Milestone system: 5 default milestones (Founding/Early Development/Cultural Flowering/Technological Breakthrough/Golden Age), auto detection, milestone effects/reached time
+  - Multi-civilization interactions: 10 types (TRADE/ALLIANCE/WAR/CULTURAL_EXCHANGE/TECHNOLOGY_TRANSFER/MIGRATION/CONQUEST/VASSALAGE/DIPLOMACY/CUSTOM), interaction strength/benefits/duration, max interactions limit, collapsed civilizations cannot interact
+  - Civilization comparison: score difference/relative power/domain differences/dominant civilization/power ratio
+  - Statistics: total/active/collapsed civilizations, total/active interactions, total/active crises, total/reached milestones, golden ages/collapses/revivals, average/highest/lowest scores
+  - Event system: 14 event types (CREATED/UPDATED/STATE_CHANGED/GOLDEN_AGE_STARTED/ENDED/CRISIS_TRIGGERED/RESOLVED/COLLAPSE_TRIGGERED/REVIVAL_TRIGGERED/INTERACTION_STARTED/ENDED/DOMAIN_SCORE_CHANGED/MILESTONE_REACHED)
+  - Full serialization/deserialization support
+  - 42 tests
 
 ## [2.9.0] - 2026-09-07
 
