@@ -11227,3 +11227,146 @@ CurrencySystem → MarketSystem → ProductionSystem → TradingSystem → Build
 2. 如M14方向已确定为"经济与文明系统"，按Phase 1（CurrencySystem+MarketSystem）开始开发
 3. 如M14未确定，继续维护性工作或M14准备
 
+
+
+---
+
+## 2026-09-07 M14 Phase 1: 资源生产系统（第132轮迭代）
+
+### 里程碑确认
+- **M14方向已确定**：经济基础层与文明模拟（Economic Foundation & Civilization Simulation），目标SDK v3.0.0
+- M13已完成：社会模拟与文化演化（SDK v2.9.0，1963测试）
+- M14是M13社会模拟的自然延续，与战策RTS资源系统呼应
+
+### M14 Phase 1: ResourceProductionSystem（资源生产系统）
+
+#### 创建文件
+1. `src/economy/ResourceProductionTypes.ts` — 类型定义（9079字节）
+2. `src/economy/ResourceProductionSystem.ts` — 系统实现（约28KB）
+3. `src/economy/index.ts` — 模块导出
+4. `tests/resource-production-system.test.ts` — 单元测试（63测试，12套件）
+
+#### 修改文件
+1. `src/sdk/index.ts` — 新增economy模块导出（类型+枚举+系统）
+
+#### 核心功能
+
+**1. 配方管理（Recipe Management）**
+- registerRecipe / getRecipe / getAllRecipes
+- getRecipesByCategory / getRecipesByTag
+- removeRecipe
+- 支持多输入/多输出配方
+- 支持批量生产（supportsBatch + maxBatchSize）
+- 支持生产者类型要求（requiredProducerType）
+- 支持最低工人技能要求（minWorkerSkill）
+
+**2. 生产者管理（Producer Management）**
+- registerProducer / getProducer / getAllProducers / getActiveProducers
+- updateProducer / setProducerActive
+- addPermanentModifier / removePermanentModifier
+- 支持7种生产者类型：NPC/BUILDING/WORKSHOP/FACTORY/FARM/MINE/CUSTOM
+- 支持最大并发任务数（maxConcurrentJobs）
+- 支持基础效率（baseEfficiency）和工人技能（workerSkill）
+- 支持永久效率修饰器（permanentModifiers）
+
+**3. 生产任务管理（Job Management）**
+- createJob / getJob / getJobsByProducer
+- getActiveJobs / getPendingJobs / getCompletedJobs
+- startJob / pauseJob / resumeJob / cancelJob
+- 支持批量生产（batchSize）
+- 支持4级优先级：LOW/NORMAL/HIGH/CRITICAL
+- 任务状态机：PENDING → ACTIVE → PAUSED → COMPLETED/FAILED/CANCELLED
+- 自动启动（autoStartJobs配置）
+- 队列大小限制（maxQueueSize）
+
+**4. 效率修饰系统（Efficiency Modifiers）**
+- 9种修饰器类型：TECHNOLOGY/BUILDING/WORKER_SKILL/TOOL_QUALITY/RESOURCE_QUALITY/ENVIRONMENT/CULTURE/SOCIAL/CUSTOM
+- 乘法修饰器（multiplier）
+- 时间减少（timeReduction）
+- 输出加成（outputBonus）
+- 过期时间（expiresAtTick）
+- 工人技能自动转换为效率乘数（0-100技能 → 0.5-1.5乘数）
+- recalculateJobEfficiency方法动态重算
+
+**5. 生产链分析（Production Chain Analysis）**
+- analyzeProductionChain(recipeId, maxDepth)
+- 递归解析生产链深度
+- 自动识别原材料（rawMaterials）
+- 自动识别中间产品（intermediateProducts）
+- 计算总预估时间（totalEstimatedTime）
+- 检测缺失配方（missingRecipes）
+- 支持通过output资源ID查找配方（findRecipeByOutput）
+- 循环引用检测（visited集合）
+
+**6. 统计与瓶颈分析（Statistics & Bottleneck Analysis）**
+- getStats()：完整生产统计
+  - 任务创建/完成/失败/取消计数
+  - 活跃/待处理任务数
+  - 总生产单位数/总资源消耗
+  - 平均效率/平均生产时间
+  - 按配方/生产者/资源类型统计
+- analyzeBottlenecks(topN)：瓶颈分析
+  - 失败率计算
+  - 平均延迟计算
+  - 严重度评分（0-100）
+  - 自动生成改进建议
+
+**7. 事件系统（Event System）**
+- 14种事件类型：
+  - JOB_CREATED / JOB_STARTED / JOB_COMPLETED / JOB_FAILED / JOB_CANCELLED
+  - JOB_PAUSED / JOB_RESUMED / UNIT_COMPLETED
+  - EFFICIENCY_CHANGED / PRODUCER_REGISTERED / PRODUCER_UPDATED
+  - MODIFIER_ADDED / MODIFIER_REMOVED / BOTTLENECK_DETECTED
+- 支持通过EventSystem发射事件
+- emitEvents配置开关
+
+**8. 序列化（Serialization）**
+- serialize() / deserialize(data)
+- 完整保存：配置/配方/生产者/任务/队列/统计/计数器
+- 支持系统状态完整恢复
+
+#### 测试覆盖（63测试，12套件）
+
+| 测试套件 | 测试数 | 覆盖内容 |
+|---------|--------|---------|
+| Configuration | 3 | 默认配置/自定义配置/默认值验证 |
+| Recipe Management | 8 | 注册/检索/列表/分类过滤/标签过滤/删除 |
+| Producer Management | 11 | 注册/检索/列表/活跃过滤/更新/启停/修饰器增删 |
+| Job Creation | 10 | 成功创建/配方不存在/生产者不存在/ inactive/类型不匹配/技能不足/批量/超批量/不支持批量/自动启动 |
+| Job Lifecycle | 8 | 手动启动/暂停/恢复/取消/不可取消已完成/处理完成/批量完成/按生产者检索 |
+| Efficiency Modifiers | 4 | 工人技能/永久修饰器/重算/禁用修饰器 |
+| Production Chain Analysis | 4 | 简单链/缺失配方/循环引用/真正缺失配方 |
+| Statistics | 5 | 创建统计/完成统计/取消统计/按配方统计/活跃待处理计数 |
+| Bottleneck Analysis | 2 | 数据不足/足够数据分析 |
+| Serialization | 3 | 序列化反序列化/状态保持/空系统 |
+| Queue Management | 3 | 队列维护/最大队列/优先级排序 |
+| Event Emission | 2 | 启用事件/禁用事件 |
+
+#### 关键修复
+1. **tryStartJob变量未定义**：emitEvent中使用了未定义的recipeId/producerId，改为从job对象获取
+2. **生产链分析逻辑**：原实现通过recipe ID查找，改为通过output资源ID查找（findRecipeByOutput），更符合生产链语义
+3. **队列排序位置**：原排序只在autoStartJobs=true时执行，改为始终执行排序
+4. **事件发射参数**：createJob和tryStartJob添加可选events参数，支持创建时即发射事件
+
+### 全量验证
+- **单元测试**：2026/2026 全绿（1963 + 63）
+- **构建**：0错误
+- **SDK构建**：0错误
+- **测试文件**：109个
+
+### M14进度
+- Phase 1: ResourceProduction ✅ 完成（63测试）
+- Phase 2: TradeExchange ⏳ 待开发
+- Phase 3: Distribution ⏳ 待开发
+- Phase 4: EconSocialCoupling ⏳ 待开发
+- Phase 5: CivilizationSimulation ⏳ 待开发
+- Phase 6: Performance Optimization ⏳ 待开发
+- Phase 7: SDK v3.0.0 Release ⏳ 待开发
+
+### 下一轮计划
+1. M14 Phase 2: TradeExchange（交换与贸易系统）
+   - 市场/定价/交易
+   - 供需关系+价格动态
+   - 贸易路线
+2. 继续按M14 phase顺序开发
+

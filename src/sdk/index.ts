@@ -719,4 +719,29 @@ export {
   NpcNarrativeBridge,
 } from '../narrative/index.js';
 
+// --- Economy System (M14 Phase 1) ---
+export type {
+  ProductionInput,
+  ProductionOutput,
+  EfficiencyModifier,
+  ProductionRecipe,
+  ProductionJob,
+  Producer,
+  ProductionStats,
+  ResourceProductionConfig,
+  ProductionStartResult,
+  ProductionUnitResult,
+  ProductionChainResult,
+  BottleneckAnalysis,
+} from '../economy/ResourceProductionTypes.js';
+export {
+  ProductionStatus,
+  ProducerType,
+  EfficiencyModifierType,
+  ProductionPriority,
+  ProductionEventType,
+  DEFAULT_RESOURCE_PRODUCTION_CONFIG,
+} from '../economy/ResourceProductionTypes.js';
+export { ResourceProductionSystem } from '../economy/ResourceProductionSystem.js';
+
 

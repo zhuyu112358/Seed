@@ -5,6 +5,22 @@ All notable changes to the Seed virtual world engine will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - Unreleased
+
+### Milestone M14: Economic Foundation & Civilization Simulation
+
+#### Added
+- **Resource Production System** (`src/economy/ResourceProductionSystem.ts`): M14 Phase 1 - Advanced production management
+  - Recipe management: multi-input/multi-output recipes, batch production, producer type requirements, worker skill requirements
+  - Producer management: 7 producer types (NPC/BUILDING/WORKSHOP/FACTORY/FARM/MINE/CUSTOM), concurrent job limits, base efficiency, worker skill
+  - Production job management: batch sizes, 4 priority levels (LOW/NORMAL/HIGH/CRITICAL), full state machine (PENDING→ACTIVE→PAUSED→COMPLETED/FAILED/CANCELLED), auto-start, queue limits
+  - Efficiency modifier system: 9 modifier types (TECHNOLOGY/BUILDING/WORKER_SKILL/TOOL_QUALITY/RESOURCE_QUALITY/ENVIRONMENT/CULTURE/SOCIAL/CUSTOM), multiplicative modifiers, time reduction, output bonus, expiration
+  - Production chain analysis: recursive chain depth resolution, raw material identification, intermediate product detection, total time estimation, missing recipe detection, circular reference detection
+  - Statistics & bottleneck analysis: comprehensive production stats, failure rate calculation, average delay calculation, severity scoring, auto-generated improvement suggestions
+  - Event system: 14 event types (JOB_CREATED/STARTED/COMPLETED/FAILED/CANCELLED/PAUSED/RESUMED/UNIT_COMPLETED/EFFICIENCY_CHANGED/PRODUCER_REGISTERED/UPDATED/MODIFIER_ADDED/REMOVED/BOTTLENECK_DETECTED)
+  - Full serialization/deserialization support
+  - 63 tests
+
 ## [2.9.0] - 2026-09-07
 
 ### Milestone M13: Social Simulation & Cultural Evolution
