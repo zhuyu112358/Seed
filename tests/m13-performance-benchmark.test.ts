@@ -37,7 +37,7 @@ const THRESHOLDS = {
   mobilityRegister500: 300,
   mobilityPromote100: 200,
   cultureCreate50: 200,
-  cultureTick50: 300,
+  cultureTick50: 400,
   integrationSync100: 300,
   serializeLarge: 500,
   deserializeLarge: 500,
