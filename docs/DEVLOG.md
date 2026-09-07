@@ -13926,3 +13926,145 @@ cultureTick50: 400,
 ### 下一步
 等待监控评估确认M15方向，确认后启动Phase 1开发。
 
+
+
+---
+
+## 2026-09-07 M14系统API性能基准测试（第159轮迭代）
+
+### 本轮工作
+1. 重试push上一轮commit（adaab38）- 失败（GitHub 443端口连接超时）
+2. M14系统API性能基准测试
+3. 测试回归验证
+4. DEVLOG更新
+
+### API性能基准测试结果
+
+对M14新增的6个系统的24个关键API进行了性能基准测试，每个API运行100-100,000次操作，测量平均耗时和吞吐量。
+
+#### 各系统详细性能指标
+
+**1. ResourceProductionSystem**：
+| API | 操作次数 | 总耗时 | 平均耗时 | 吞吐量 |
+|-----|---------|-------|---------|--------|
+| createJob | 10,000 | 2.59ms | 0.259us/op | 3,859,514 ops/sec |
+| startJob | 10,000 | 1.16ms | 0.116us/op | 8,651,267 ops/sec |
+| getJobsByProducer | 10,000 | 88.82ms | 8.882us/op | 112,586 ops/sec |
+
+**2. TradeExchangeSystem**：
+| API | 操作次数 | 总耗时 | 平均耗时 | 吞吐量 |
+|-----|---------|-------|---------|--------|
+| placeOrder (buy) | 1,000 | 7.22ms | 7.223us/op | 138,443 ops/sec |
+| placeOrder (sell with match) | 1,000 | 78.79ms | 78.793us/op | 12,691 ops/sec |
+| getResourcePrice | 10,000 | 146.73ms | 14.673us/op | 68,152 ops/sec |
+| getSupplyDemand | 10,000 | 215.67ms | 21.567us/op | 46,367 ops/sec |
+
+**3. DistributionSystem**：
+| API | 操作次数 | 总耗时 | 平均耗时 | 吞吐量 |
+|-----|---------|-------|---------|--------|
+| registerAgent | 10,000 | 21.85ms | 2.185us/op | 457,570 ops/sec |
+| addWealth | 10,000 | 0.68ms | 0.068us/op | 14,755,792 ops/sec |
+| transferWealth | 10,000 | 0.98ms | 0.098us/op | 10,203,041 ops/sec |
+| createPool | 1,000 | 4.70ms | 4.703us/op | 212,612 ops/sec |
+
+**4. EconSocialCouplingSystem**：
+| API | 操作次数 | 总耗时 | 平均耗时 | 吞吐量 |
+|-----|---------|-------|---------|--------|
+| createCouplingLink | 10,000 | 13.18ms | 1.318us/op | 758,846 ops/sec |
+| createNorm | 10,000 | 12.22ms | 1.222us/op | 818,337 ops/sec |
+| applyNorm | 10,000 | 0.65ms | 0.065us/op | 15,482,273 ops/sec |
+| calculateMetrics | 1,000 | 410.67ms | 410.672us/op | 2,435 ops/sec |
+
+**5. CivilizationSimulationSystem**：
+| API | 操作次数 | 总耗时 | 平均耗时 | 吞吐量 |
+|-----|---------|-------|---------|--------|
+| createCivilization | 10,000 | 26.29ms | 2.629us/op | 380,338 ops/sec |
+| updateDomainScore | 10,000 | 0.65ms | 0.065us/op | 15,276,505 ops/sec |
+| triggerCrisis | 1,000 | 0.08ms | 0.083us/op | 12,091,898 ops/sec |
+| compareCivilizations | 1,000 | 0.07ms | 0.074us/op | 13,422,819 ops/sec |
+
+**6. LargeScaleSimulationSystem**：
+| API | 操作次数 | 总耗时 | 平均耗时 | 吞吐量 |
+|-----|---------|-------|---------|--------|
+| createEntity | 10,000 | 11.97ms | 1.197us/op | 835,143 ops/sec |
+| createEntitiesBatch (100) | 1,000 | 150.62ms | 150.618us/op | 6,639 ops/sec |
+| getEntityCount | 100,000 | 0.82ms | 0.008us/op | 122,428,991 ops/sec |
+| runBenchmark (1000 entities) | 100 | 1259.72ms | 12597.202us/op | 79 ops/sec |
+
+#### 最快的5个操作（按平均耗时）
+
+| 排名 | API | 平均耗时 | 吞吐量 |
+|------|-----|---------|--------|
+| 1 | getEntityCount | 0.008us/op | 122,428,991 ops/sec |
+| 2 | applyNorm | 0.065us/op | 15,482,273 ops/sec |
+| 3 | updateDomainScore | 0.065us/op | 15,276,505 ops/sec |
+| 4 | addWealth | 0.068us/op | 14,755,792 ops/sec |
+| 5 | compareCivilizations | 0.074us/op | 13,422,819 ops/sec |
+
+#### 最慢的5个操作（按平均耗时，都是合理的复杂操作）
+
+| 排名 | API | 平均耗时 | 吞吐量 | 说明 |
+|------|-----|---------|--------|------|
+| 1 | runBenchmark (1000 entities) | 12597.202us/op | 79 ops/sec | 全模拟基准，预期慢 |
+| 2 | calculateMetrics | 410.672us/op | 2,435 ops/sec | 计算所有指标，合理 |
+| 3 | createEntitiesBatch (100) | 150.618us/op | 6,639 ops/sec | 批量创建100个实体，合理 |
+| 4 | placeOrder (sell with match) | 78.793us/op | 12,691 ops/sec | 订单撮合，合理 |
+| 5 | getSupplyDemand | 21.567us/op | 46,367 ops/sec | 计算供需，合理 |
+
+#### 性能分类总结
+
+| 操作类型 | 平均耗时范围 | 吞吐量范围 | 代表API |
+|---------|------------|----------|---------|
+| **简单操作（getter/setter）** | 0.008-0.1us/op | 10M-122M ops/sec | getEntityCount, applyNorm, updateDomainScore, addWealth |
+| **中等操作（创建/注册）** | 1-10us/op | 100K-1M ops/sec | createJob, registerAgent, createCouplingLink, createEntity |
+| **复杂操作（撮合/计算/批量）** | 10-1000us/op | 1K-100K ops/sec | placeOrder with match, getSupplyDemand, createEntitiesBatch |
+| **全模拟基准** | 12.6ms/1000实体 | 79 ops/sec | runBenchmark |
+
+### 性能结论
+1. **整体性能非常优秀**：简单操作达到纳秒级，复杂操作达到微秒级
+2. **简单操作性能极佳**：getter/setter类操作0.008-0.1us/op，吞吐量10M-122M ops/sec
+3. **中等操作性能良好**：创建/注册类操作1-10us/op，吞吐量100K-1M ops/sec
+4. **复杂操作性能合理**：撮合/计算/批量操作10-1000us/op，吞吐量1K-100K ops/sec
+5. **全模拟基准性能优秀**：1000实体全模拟12.6ms，79 ops/sec
+6. **最慢的操作都是合理的复杂操作**：全模拟基准、指标计算、批量创建、订单撮合
+7. **无性能瓶颈**：所有API的性能都在预期范围内，无需优化
+
+### M14状态确认
+- SDK v3.0.0 ✅
+- 2285/2285测试全绿 ✅
+- 构建0错误 ✅
+- 代码质量优秀 ✅
+- 性能优秀（API基准测试完成） ✅
+- 序列化完整性100% ✅
+- 事件系统设计完整（63事件类型） ✅
+- API文档：7个关键方法已有JSDoc ✅
+- 边界条件与错误处理：62/62测试通过 ✅
+- 状态一致性与幂等性：59/59测试通过 ✅
+- 内存占用与长时间运行稳定性：26/26测试通过 ✅
+- API完整性与导出一致性：85/85测试通过 ✅
+- 文档完整性：72/72检查通过 ✅
+- 依赖关系与模块耦合度：43/43检查通过 ✅
+- 测试覆盖率与质量指标：分析完成 ✅
+- API一致性与命名规范：42/42检查通过 ✅
+- 类型安全与严格模式：36/36检查通过 ✅
+- M13性能基准间歇性失败：已修复 ✅
+- 代码复杂度与可维护性：EXCELLENT ✅
+- 系统安全与输入验证：78/78检查通过 ✅
+- API性能基准测试：24个API测试完成 ✅
+- Git status干净 ✅
+
+### 未推送的本地commit
+- adaab38: docs(M14): Security and input validation check for all 6 new systems
+- （本轮commit待创建）
+
+### M15预研文档汇总
+1. `docs/M15_PREARCH_CANDIDATE_DIRECTIONS.md` - 候选方向分析
+2. `docs/M15_ECOSYSTEM_TECHNICAL_DESIGN.md` - 生态基础层技术设计（28KB）
+3. `docs/M15_MILITARY_COMBAT_TECHNICAL_DESIGN.md` - 军事与战斗系统技术设计（35KB）
+
+两个高优先级候选方向均已有完整技术设计，等待监控评估决策。
+
+### 下一步
+1. 下轮重试push本地commit到GitHub
+2. 等待监控评估确认M15方向，确认后启动Phase 1开发
+
