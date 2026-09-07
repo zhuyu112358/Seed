@@ -11708,3 +11708,147 @@ CurrencySystem → MarketSystem → ProductionSystem → TradingSystem → Build
    - 文化与经济互动
 2. 继续按M14 phase顺序开发
 
+
+
+---
+
+## 2026-09-07 M14 Phase 4: 经济-社会耦合系统（第135轮迭代）
+
+### 里程碑确认
+- **M14进行中**：经济基础层与文明模拟（Economic Foundation & Civilization Simulation），目标SDK v3.0.0
+- Phase 1已完成：ResourceProductionSystem（63测试）
+- Phase 2已完成：TradeExchangeSystem（60测试）
+- Phase 3已完成：DistributionSystem（52测试）
+- Phase 4完成：EconSocialCouplingSystem（47测试）
+
+### M14 Phase 4: EconSocialCouplingSystem（经济-社会耦合系统）
+
+#### 创建文件
+1. `src/economy/EconSocialCouplingTypes.ts` — 类型定义（7664字节）
+2. `src/economy/EconSocialCouplingSystem.ts` — 系统实现（约20KB）
+3. `tests/econ-social-coupling-system.test.ts` — 单元测试（47测试，9套件）
+
+#### 修改文件
+1. `src/economy/index.ts` — 添加EconSocialCoupling导出
+2. `src/sdk/index.ts` — 添加EconSocialCoupling SDK导出
+3. `CHANGELOG.md` — 添加Phase 4条目
+4. `docs/DEVLOG.md` — 第135轮记录
+
+#### 核心功能
+
+**1. 关系经济修饰符（Relation Economic Modifiers）**
+- createRelationModifier / getModifier / getAllModifiers / getActiveModifiers
+- getModifiersByAgent / getModifiersByRelation
+- updateModifier / removeModifier
+- 9种修饰符类型：WEALTH_BASED/CLASS_BASED/TRADE_PARTNER/EMPLOYER_EMPLOYEE/LANDLORD_TENANT/DEBTOR_CREDITOR/BUSINESS_PARTNER/PATRON_CLIENT/CUSTOM
+- 影响强度（influenceStrength 0-1）
+- 财富差异（wealthDifference）
+- 阶层差异（classDifference）
+- 激活状态
+
+**2. 经济社会规范（Economic Social Norms）**
+- createNorm / addNorm / getNorm / getAllNorms / getActiveNorms
+- getNormsForClass / applyNorm / violateNorm / removeNorm
+- 10种规范类型：TAX_COMPLIANCE/CHARITY/CONSPICUOUS_CONSUMPTION/FRUGALITY/HARD_WORK/WEALTH_ACCUMULATION/REDISTRIBUTION/PROPERTY_RIGHTS/TRADE_ETIQUETTE/CUSTOM
+- 适用阶层（applicableClasses）
+- 期望行为（expectedBehavior）
+- 合规率（complianceRate 0-1）
+- 违规惩罚（violationPenalty）
+- 合规奖励（complianceReward）
+- 文化起源（culturalOrigin）
+
+**3. 文化-经济互动（Culture-Economy Interactions）**
+- createInteraction / getInteraction / getAllInteractions / getActiveInteractions
+- getInteractionsByCulture / getInteractionsByDomain
+- updateInteraction / removeInteraction
+- 8种互动类型：CULTURE_INFLUENCES_PRODUCTION/CULTURE_INFLUENCES_CONSUMPTION/CULTURE_INFLUENCES_TRADE/ECON_INFLUENCES_CULTURE/ECON_DRIVES_CULTURAL_CHANGE/CULTURAL_RESISTANCE_TO_ECON/SYMBIOTIC/CUSTOM
+- 文化ID（cultureId）
+- 经济领域（economicDomain）
+- 影响方向（direction：ECON_TO_SOCIAL/SOCIAL_TO_ECON/BIDIRECTIONAL）
+- 互动强度（strength 0-1）
+- 效果（effects）
+
+**4. 耦合链接（Coupling Links）**
+- createCouplingLink / getCouplingLink / getAllCouplingLinks
+- updateCouplingLink / removeCouplingLink
+- 经济阶层（economicClass）
+- 派生社会地位（derivedSocialStatus 0-100，基于经济阶层自动计算）
+- 财富影响力（wealthInfluence）
+- 经济资本转社会资本（socialCapitalFromEcon）
+- 活跃修饰符/适用规范/活跃互动列表
+
+**5. 反馈循环（Feedback Loops）**
+- createFeedbackLoop / addFeedbackLoop / getFeedbackLoop / getAllFeedbackLoops
+- getActiveFeedbackLoops / triggerFeedbackLoop / removeFeedbackLoop
+- 反馈类型：positive（强化）/ negative（平衡）
+- 触发条件（triggerCondition）
+- 效果（effect）
+- 强度（strength 0-1）
+- 触发计数（triggerCount）
+- 自动检查（feedbackInterval）
+
+**6. 耦合指标（Coupling Metrics）**
+- calculateMetrics
+- 总耦合数（totalCouplings）
+- 平均影响强度（averageInfluenceStrength）
+- 财富-地位相关性（wealthStatusCorrelation）
+- 经济/社会流动率（economicMobilityRate/socialMobilityRate）
+- 平均规范合规率（averageNormCompliance）
+- 活跃互动数（activeInteractions）
+- 活跃反馈循环数（activeFeedbackLoops）
+- 总反馈触发数（totalFeedbackTriggers）
+- 不平等社会影响（inequalitySocialImpact）
+- 文化抵抗水平（culturalResistanceLevel）
+
+**7. 历史追踪（History Tracking）**
+- getHistory / getHistoryByAgent
+- 10种事件类型：COUPLING_ESTABLISHED/STRENGTHENED/WEAKENED/SEVERED/ECON_STATUS_CHANGED/SOCIAL_RELATION_MODIFIED/NORM_APPLIED/NORM_VIOLATED/CULTURE_ECON_INTERACTION/FEEDBACK_TRIGGERED
+- 历史大小限制（maxHistorySize）
+
+**8. 事件系统（Event System）**
+- 10种耦合事件类型
+- EventSystem集成
+
+**9. 序列化（Serialization）**
+- serialize() / deserialize(data)
+- 完整保存：配置/修饰符/规范/互动/耦合链接/反馈循环/历史/计数器
+
+#### 测试覆盖（47测试，9套件）
+
+| 测试套件 | 测试数 | 覆盖内容 |
+|---------|--------|---------|
+| Configuration | 3 | 默认配置/自定义配置/默认值验证 |
+| Relation Modifiers | 9 | 创建/检索/列表/活跃过滤/按主体/按关系/更新/删除 |
+| Economic Norms | 9 | 创建/检索/列表/活跃过滤/按阶层/应用/违规/删除 |
+| Culture-Economy Interactions | 9 | 创建/检索/列表/活跃过滤/按文化/按领域/更新/删除 |
+| Coupling Links | 6 | 创建/地位派生/检索/列表/更新/删除 |
+| Feedback Loops | 7 | 创建/检索/列表/活跃过滤/触发/不触发非活跃/删除 |
+| Metrics | 2 | 指标计算/财富地位相关性 |
+| History | 2 | 历史追踪/数量限制 |
+| Serialization | 3 | 序列化反序列化/数据保持/空系统 |
+
+#### 关键修复
+1. **历史记录缺失**：createNorm未添加到历史记录，添加addToHistory调用（NORM_APPLIED事件）
+
+### 全量验证
+- **单元测试**：2185/2185 全绿（2138 + 47）
+- **构建**：0错误
+- **SDK构建**：0错误
+- **测试文件**：112个
+
+### M14进度
+- Phase 1: ResourceProduction ✅ 完成（63测试）
+- Phase 2: TradeExchange ✅ 完成（60测试）
+- Phase 3: Distribution ✅ 完成（52测试）
+- Phase 4: EconSocialCoupling ✅ 完成（47测试）
+- Phase 5: CivilizationSimulation ⏳ 待开发
+- Phase 6: Performance Optimization ⏳ 待开发
+- Phase 7: SDK v3.0.0 Release ⏳ 待开发
+
+### 下一轮计划
+1. M14 Phase 5: CivilizationSimulation（文明模拟集成）
+   - 经济+社会+文化三者协同
+   - 文明兴衰指标
+   - 多文明互动
+2. 继续按M14 phase顺序开发
+

@@ -13,3 +13,7 @@ export { TradeExchangeSystem } from './TradeExchangeSystem.js';
 // Distribution System (Phase 3)
 export * from './DistributionTypes.js';
 export { DistributionSystem } from './DistributionSystem.js';
+
+// Economic-Social Coupling System (Phase 4)
+export * from './EconSocialCouplingTypes.js';
+export { EconSocialCouplingSystem } from './EconSocialCouplingSystem.js';

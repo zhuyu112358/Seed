@@ -44,6 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Event system: 10 event types (distribution/allocation/transfer/inequality/class/mobility/policy events)
   - Full serialization/deserialization support
   - 52 tests
+- **Economic-Social Coupling System** (`src/economy/EconSocialCouplingSystem.ts`): M14 Phase 4 - Economy-society-culture bridging
+  - Relation economic modifiers: 9 types (WEALTH_BASED/CLASS_BASED/TRADE_PARTNER/EMPLOYER_EMPLOYEE/LANDLORD_TENANT/DEBTOR_CREDITOR/BUSINESS_PARTNER/PATRON_CLIENT/CUSTOM), influence strength, wealth/class difference, agent/relation filtering
+  - Economic social norms: 10 types (TAX_COMPLIANCE/CHARITY/CONSPICUOUS_CONSUMPTION/FRUGALITY/HARD_WORK/WEALTH_ACCUMULATION/REDISTRIBUTION/PROPERTY_RIGHTS/TRADE_ETIQUETTE/CUSTOM), applicable classes, expected behavior, compliance rate, violation penalty, compliance reward, cultural origin, norm application/violation
+  - Culture-economy interactions: 8 types (CULTURE_INFLUENCES_PRODUCTION/CONSUMPTION/TRADE, ECON_INFLUENCES_CULTURE, ECON_DRIVES_CULTURAL_CHANGE, CULTURAL_RESISTANCE, SYMBIOTIC, CUSTOM), culture ID, economic domain, direction (ECON_TO_SOCIAL/SOCIAL_TO_ECON/BIDIRECTIONAL), strength, effects
+  - Coupling links: economic class, derived social status (auto-calculated 0-100), wealth influence, social capital from economy, active modifiers/norms/interactions
+  - Feedback loops: positive (reinforcing) / negative (balancing), trigger condition, effect, strength, trigger count, auto-check interval
+  - Coupling metrics: total couplings, average influence strength, wealth-status correlation, economic/social mobility rates, average norm compliance, active interactions/loops, total feedback triggers, inequality social impact, cultural resistance level
+  - History tracking: 10 event types, size-limited history
+  - Event system: 10 coupling event types with EventSystem integration
+  - Full serialization/deserialization support
+  - 47 tests
 
 ## [2.9.0] - 2026-09-07
 

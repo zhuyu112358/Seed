@@ -791,4 +791,25 @@ export {
 } from '../economy/DistributionTypes.js';
 export { DistributionSystem } from '../economy/DistributionSystem.js';
 
+// --- Economic-Social Coupling System (M14 Phase 4) ---
+export type {
+  RelationEconomicModifier,
+  EconomicSocialNorm,
+  CultureEconomyInteraction,
+  EconSocialCouplingLink,
+  CouplingFeedbackLoop,
+  CouplingMetrics,
+  EconSocialCouplingConfig,
+  CouplingHistoryEntry,
+} from '../economy/EconSocialCouplingTypes.js';
+export {
+  CouplingDirection,
+  RelationEconomicModifierType,
+  EconomicNormType,
+  CultureEconomyInteractionType,
+  CouplingEventType,
+  DEFAULT_ECON_SOCIAL_COUPLING_CONFIG,
+} from '../economy/EconSocialCouplingTypes.js';
+export { EconSocialCouplingSystem } from '../economy/EconSocialCouplingSystem.js';
+
 
