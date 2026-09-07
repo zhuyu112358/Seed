@@ -11370,3 +11370,172 @@ CurrencySystem → MarketSystem → ProductionSystem → TradingSystem → Build
    - 贸易路线
 2. 继续按M14 phase顺序开发
 
+
+
+---
+
+## 2026-09-07 M14 Phase 2: 交换与贸易系统（第133轮迭代）
+
+### 里程碑确认
+- **M14进行中**：经济基础层与文明模拟（Economic Foundation & Civilization Simulation），目标SDK v3.0.0
+- Phase 1已完成：ResourceProductionSystem（63测试）
+- Phase 2完成：TradeExchangeSystem（60测试）
+
+### M14 Phase 2: TradeExchangeSystem（交换与贸易系统）
+
+#### 创建文件
+1. `src/economy/TradeExchangeTypes.ts` — 类型定义（8412字节）
+2. `src/economy/TradeExchangeSystem.ts` — 系统实现（约29KB）
+3. `tests/trade-exchange-system.test.ts` — 单元测试（60测试，12套件）
+
+#### 修改文件
+1. `src/economy/index.ts` — 添加TradeExchange导出
+2. `src/sdk/index.ts` — 添加TradeExchange SDK导出（移除重复的TradeResult，M7已有）
+3. `CHANGELOG.md` — 添加Phase 2条目
+4. `docs/DEVLOG.md` — 第133轮记录
+
+#### 核心功能
+
+**1. 市场管理（Market Management）**
+- createMarket / getMarket / getAllMarkets / getOpenMarkets
+- updateMarket / openMarket / closeMarket
+- 7种市场类型：LOCAL/REGIONAL/NATIONAL/GLOBAL/BLACK_MARKET/AUCTION/CUSTOM
+- 税率（taxRate）和交易费（transactionFee）
+- 价格上下限（minPrice/maxPrice）
+- 支持资源类型过滤（supportedResources）
+- 市场声誉（reputation）
+- 营业时间（operatingHours）
+- 空间位置（location）
+
+**2. 订单管理（Order Management）**
+- placeOrder（买入/卖出）
+- getOrder / getOrdersByTrader / getOrdersByMarket
+- getPendingOrders / cancelOrder
+- 订单类型：BUY/SELL
+- 订单状态：PENDING/PARTIAL/FILLED/CANCELLED/EXPIRED
+- 限价单（limitPrice）
+- 过期时间（expiresAtTick）
+- 优先级（priority）
+- 数量验证（minOrderAmount/maxOrderAmount）
+- 价格验证（市场上下限）
+- 资源类型验证
+
+**3. 订单撮合（Order Matching）**
+- 自动撮合（autoMatchOrders配置）
+- 价格匹配：买价 >= 卖价
+- 限价单验证
+- 部分成交（PARTIAL状态）
+- 多订单撮合（一个大买单匹配多个小卖单）
+- 价格优先级：买单优先匹配低价卖单
+- Maker-Taker定价：以挂单价格成交
+- 撮合间隔（matchInterval）
+
+**4. 动态定价（Dynamic Pricing）**
+- 成交后自动记录价格
+- 价格历史（priceHistory）
+- 当前价格/前次价格/价格变化/变化百分比
+- 价格趋势：RISING/FALLING/STABLE/VOLATILE
+- 24周期最高/最低价
+- 24周期成交量
+- 最佳买价/最佳卖价/买卖价差
+- 价格历史大小限制（priceHistorySize）
+
+**5. 供需分析（Supply-Demand Analysis）**
+- getSupplyDemand（市场+资源）
+- 总供给/总需求
+- 供需比率（ratio）
+- 均衡价格（equilibriumPrice）
+- 价格压力（pricePressure）
+- 市场深度（depth）：各价格档位的买卖量
+
+**6. 贸易路线（Trade Routes）**
+- createTradeRoute / getTradeRoute / getAllTradeRoutes / getActiveTradeRoutes
+- updateTradeRoute
+- 起点/终点市场
+- 距离（distance）
+- 危险等级（dangerLevel）
+- 状态：ACTIVE/INACTIVE/BLOCKED/DANGEROUS
+- 典型商品（typicalGoods）
+- 平均利润率（averageProfitMargin）
+- 成功/失败行程统计
+
+**7. 商队管理（Caravan Management）**
+- sendCaravan / getCaravan / getCaravansByOwner / getActiveCaravans
+- 商队状态：IDLE/TRAVELING/TRADING/RETURNING/DELAYED/ATTACKED
+- 货物（cargo）：资源类型+数量+采购价
+- 货物总价值（cargoValue）
+- 携带金币（gold）
+- 行程进度（progress 0-1）
+- 出发/预计到达/实际到达时间
+- 速度修饰符（speedModifier）
+- 护卫等级（guardLevel）：影响遇袭生存
+- 危险路线遇袭概率计算
+
+**8. 交易记录与统计（Trade History & Stats）**
+- getTradeHistory（按市场/资源/数量过滤）
+- 完整交易记录：买卖双方/订单ID/资源/数量/价格/税费
+- getStats：完整市场统计
+  - 市场数量/活跃市场
+  - 订单总数/待处理/已成交/已取消
+  - 交易总数/总成交量/总成交额
+  - 总税收/总手续费
+  - 平均交易规模/平均价格
+  - 按资源成交量/成交额统计
+
+**9. 事件系统（Event System）**
+- 18种事件类型：
+  - MARKET_CREATED/UPDATED/OPENED/CLOSED
+  - ORDER_PLACED/FILLED/PARTIAL/CANCELLED/EXPIRED
+  - TRADE_EXECUTED
+  - PRICE_CHANGED/SUPPLY_DEMAND_CHANGED
+  - ROUTE_CREATED/UPDATED
+  - CARAVAN_DEPARTED/ARRIVED/ATTACKED
+
+**10. 序列化（Serialization）**
+- serialize() / deserialize(data)
+- 完整保存：配置/市场/订单/交易/价格历史/路线/商队/统计/计数器
+
+#### 测试覆盖（60测试，12套件）
+
+| 测试套件 | 测试数 | 覆盖内容 |
+|---------|--------|---------|
+| Configuration | 3 | 默认配置/自定义配置/默认值验证 |
+| Market Management | 8 | 创建/检索/列表/开放过滤/更新/开关/重复关闭 |
+| Order Management | 12 | 买单/卖单/市场不存在/市场关闭/数量下限/数量上限/价格下限/资源不支持/按交易者检索/按市场检索/取消/不可取消已成交 |
+| Order Matching | 8 | 同价匹配/买价>=卖价/买价<卖价/部分成交/多单撮合/低价优先/交易记录/税费计算 |
+| Pricing | 5 | 成交记录价格/无历史返回undefined/价格变化/价格历史/历史大小限制 |
+| Supply-Demand | 3 | 供需计算/价格压力/市场深度 |
+| Trade Routes | 6 | 创建/起点不存在/终点不存在/列表/活跃过滤/更新 |
+| Caravan Management | 6 | 发送/路线不存在/路线不活跃/按所有者检索/进度更新/行程完成 |
+| Order Expiration | 2 | 过期/不过期 |
+| Statistics | 2 | 市场统计/按资源成交量 |
+| Trade History | 3 | 按市场/按资源/数量限制 |
+| Serialization | 3 | 序列化反序列化/订单状态保持/空系统 |
+
+#### 关键修复
+1. **导入路径错误**：测试文件从TradeExchangeTypes.js导入TradeExchangeSystem，改为从TradeExchangeSystem.js导入系统，从Types.js导入枚举
+2. **executedPrice错误**：placeOrder返回order.price而非实际执行价格，添加lastExecutedPrice字段，在executeTrade中设置，placeOrder返回该值
+3. **重复导出TradeResult**：M7 TradingSystem已导出TradeResult，SDK导出中移除重复项
+
+### 全量验证
+- **单元测试**：2086/2086 全绿（2026 + 60）
+- **构建**：0错误
+- **SDK构建**：0错误
+- **测试文件**：110个
+
+### M14进度
+- Phase 1: ResourceProduction ✅ 完成（63测试）
+- Phase 2: TradeExchange ✅ 完成（60测试）
+- Phase 3: Distribution ⏳ 待开发
+- Phase 4: EconSocialCoupling ⏳ 待开发
+- Phase 5: CivilizationSimulation ⏳ 待开发
+- Phase 6: Performance Optimization ⏳ 待开发
+- Phase 7: SDK v3.0.0 Release ⏳ 待开发
+
+### 下一轮计划
+1. M14 Phase 3: Distribution（分配系统）
+   - 财富/资源分配/不平等
+   - 分配机制+贫富差距
+   - 社会流动经济维度
+2. 继续按M14 phase顺序开发
+

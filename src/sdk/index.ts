@@ -744,4 +744,29 @@ export {
 } from '../economy/ResourceProductionTypes.js';
 export { ResourceProductionSystem } from '../economy/ResourceProductionSystem.js';
 
+// --- Trade Exchange System (M14 Phase 2) ---
+export type {
+  Market,
+  TradeOrder,
+  PricePoint,
+  ResourcePrice,
+  SupplyDemand,
+  TradeRoute,
+  Caravan,
+  TradeExchangeConfig,
+  TradeRecord,
+  MarketStats,
+} from '../economy/TradeExchangeTypes.js';
+export {
+  MarketType,
+  OrderType,
+  OrderStatus,
+  PriceTrend,
+  TradeRouteStatus,
+  CaravanStatus,
+  TradeExchangeEventType,
+  DEFAULT_TRADE_EXCHANGE_CONFIG,
+} from '../economy/TradeExchangeTypes.js';
+export { TradeExchangeSystem } from '../economy/TradeExchangeSystem.js';
+
 

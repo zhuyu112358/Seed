@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Event system: 14 event types (JOB_CREATED/STARTED/COMPLETED/FAILED/CANCELLED/PAUSED/RESUMED/UNIT_COMPLETED/EFFICIENCY_CHANGED/PRODUCER_REGISTERED/UPDATED/MODIFIER_ADDED/REMOVED/BOTTLENECK_DETECTED)
   - Full serialization/deserialization support
   - 63 tests
+- **Trade Exchange System** (`src/economy/TradeExchangeSystem.ts`): M14 Phase 2 - Advanced market and trading
+  - Market management: 7 market types (LOCAL/REGIONAL/NATIONAL/GLOBAL/BLACK_MARKET/AUCTION/CUSTOM), tax rates, transaction fees, price limits, resource filtering, reputation, operating hours
+  - Order management: BUY/SELL orders, limit orders, expiration, priority, amount/price validation, full state machine (PENDING->PARTIAL->FILLED/CANCELLED/EXPIRED)
+  - Order matching: auto-matching, price compatibility (buy >= sell), partial fills, multi-order matching, price priority, maker-taker pricing
+  - Dynamic pricing: price history, current/previous price, change/percent, trend detection (RISING/FALLING/STABLE/VOLATILE), 24-tick high/low/volume, best bid/ask/spread
+  - Supply-demand analysis: total supply/demand, ratio, equilibrium price, price pressure, market depth at price levels
+  - Trade routes: origin/destination markets, distance, danger level, status (ACTIVE/INACTIVE/BLOCKED/DANGEROUS), typical goods, profit margin, trip statistics
+  - Caravan management: cargo tracking, cargo value, gold, travel progress, speed modifier, guard level, attack probability on dangerous routes
+  - Trade history & stats: full trade records with tax/fee, comprehensive market statistics, volume/value by resource
+  - Event system: 18 event types (market/order/trade/price/route/caravan events)
+  - Full serialization/deserialization support
+  - 60 tests
 
 ## [2.9.0] - 2026-09-07
 
